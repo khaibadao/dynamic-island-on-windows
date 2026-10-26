@@ -71,6 +71,7 @@ public static class WpnDatabase
                 var attribution = MatchAndGetAttribution(xml, title, body);
                 if (attribution != null) return attribution;
             }
+            DebugLog.Note("wpndatabase: no row matched this notification's title/body");
         }
         catch (Exception ex)
         {
@@ -94,8 +95,35 @@ public static class WpnDatabase
         if (!plain.Contains(title)) return null;
         if (!string.IsNullOrEmpty(body) && !plain.Contains(body)) return null;
 
-        return texts
+        DebugLog.Note("wpndatabase matched payload: " +
+                      (xml.Length > 2500 ? xml[..2500] + "…" : xml));
+
+        // 1) Chrome-style attribution line.
+        var attribution = texts
             .FirstOrDefault(t => (string?)t.Attribute("placement") == "attribution")
             ?.Value;
+        if (!string.IsNullOrWhiteSpace(attribution)) return attribution;
+
+        // 2) Chromium puts the site's origin in the toast's launch argument,
+        //    e.g. launch="0|0|Default|0|https://claude.ai/|p#https://claude.ai#..."
+        var launch = (string?)doc.Root?.Attribute("launch") ?? "";
+        var host = FirstWebHost(launch) ?? FirstWebHost(xml);
+        return host ?? "";   // "" = matched, but no site found
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex UrlRegex = new(
+        @"https?://([a-z0-9-]+(?:\.[a-z0-9-]+)+)",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    private static string? FirstWebHost(string s)
+    {
+        foreach (System.Text.RegularExpressions.Match m in UrlRegex.Matches(s))
+        {
+            var host = m.Groups[1].Value.ToLowerInvariant();
+            // Skip schema / Microsoft resource URLs that aren't the site itself.
+            if (host.EndsWith("schemas.microsoft.com") || host.EndsWith("w3.org")) continue;
+            return host;
+        }
+        return null;
     }
 }
