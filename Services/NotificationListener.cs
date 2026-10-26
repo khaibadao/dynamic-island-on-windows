@@ -138,6 +138,10 @@ public sealed class NotificationListener
             var webTitle = web.Texts.ElementAtOrDefault(0) ?? "";
             var webBody  = web.Texts.ElementAtOrDefault(1) ?? "";
 
+            // Drop a title that just repeats the site's name ("Instagram: …").
+            if (string.Equals(webTitle.Trim(), web.DisplayName, StringComparison.OrdinalIgnoreCase))
+                webTitle = "";
+
             return new AppNotification
             {
                 AppName        = web.DisplayName,
