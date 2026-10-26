@@ -11,10 +11,19 @@ public partial class App : Application
     private MediaWatcher? _media;
     private MusicWindow? _music;
     private bool _enabled = true;
+    private static System.Threading.Mutex? _singleInstance;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        // Only one copy at a time (e.g. started both by Windows and by hand)
+        _singleInstance = new System.Threading.Mutex(true, @"Local\DynamicIslandNotifier.SingleInstance", out bool isFirst);
+        if (!isFirst)
+        {
+            Shutdown();
+            return;
+        }
 
         // Create the overlay pill window (invisible until a notification arrives)
         _island = new IslandWindow();
@@ -39,6 +48,10 @@ public partial class App : Application
         };
         UpdateMusicMenuHeader();
 
+        // Start with Windows: on by default from the first run
+        AutoStart.EnsureOnStartup(AppSettings.Current);
+        UpdateAutoStartMenu();
+
         await _listener.StartAsync();
         await _media.StartAsync();
     }
@@ -50,6 +63,22 @@ public partial class App : Application
         AppSettings.Current.MusicEnabled = _media.Enabled;
         AppSettings.Current.Save();
         UpdateMusicMenuHeader();
+    }
+
+    private void AutoStartToggle_Click(object sender, RoutedEventArgs e)
+    {
+        if (AutoStart.IsEnabled) AutoStart.Disable();
+        else                     AutoStart.Enable();
+        UpdateAutoStartMenu();
+    }
+
+    private void UpdateAutoStartMenu()
+    {
+        var tray = (Hardcodet.Wpf.TaskbarNotification.TaskbarIcon?)Current.Resources["TrayIcon"];
+        if (tray?.ContextMenu == null) return;
+        foreach (var obj in tray.ContextMenu.Items)
+            if (obj is MenuItem { Tag: "autostart" } item)
+                item.IsChecked = AutoStart.IsEnabled;
     }
 
     private void UpdateMusicMenuHeader()

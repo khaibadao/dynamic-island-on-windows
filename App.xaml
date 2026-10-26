@@ -15,6 +15,7 @@
                         <Separator/>
                         <MenuItem Header="Enable / Disable" Click="Toggle_Click"/>
                         <MenuItem Header="Music player: On" Tag="music" Click="MusicToggle_Click"/>
+                        <MenuItem Header="Start with Windows" Tag="autostart" IsCheckable="True" Click="AutoStartToggle_Click"/>
                         <Separator/>
                         <MenuItem Header="Quit" Click="Quit_Click"/>
                     </ContextMenu>

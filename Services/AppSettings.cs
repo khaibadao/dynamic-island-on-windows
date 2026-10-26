@@ -16,6 +16,9 @@ public sealed class AppSettings
 
     public bool MusicEnabled { get; set; } = true;
 
+    /// <summary>True once "start with Windows" was set up on first run (the user may have turned it off since).</summary>
+    public bool AutoStartConfigured { get; set; }
+
     private static readonly string FilePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "DynamicIslandNotifier", "settings.json");
