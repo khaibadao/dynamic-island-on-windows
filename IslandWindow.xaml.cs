@@ -208,7 +208,13 @@ public partial class IslandWindow : Window
             if (data?.BrowserExe != null && data.BrowserLaunchId != null)
             {
                 var psi = new System.Diagnostics.ProcessStartInfo(data.BrowserExe) { UseShellExecute = false };
-                psi.ArgumentList.Add($"--notification-launch-id={data.BrowserLaunchId}");
+                var launch = data.BrowserLaunchId.Trim();
+
+                // Edge stores the whole switch ("--notification-launch-id=0|0|Default|..."),
+                // Chrome only the id ("0|0|Default|..."). Either way pass ONE argument;
+                // ArgumentList quotes it if the profile name has spaces ("Profile 1").
+                psi.ArgumentList.Add(launch.StartsWith("--") ? launch : $"--notification-launch-id={launch}");
+
                 System.Diagnostics.Process.Start(psi);
                 return;
             }
