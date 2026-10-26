@@ -13,6 +13,9 @@ using Windows.UI.Notifications;
 /// </summary>
 public static class DebugLog
 {
+    /// <summary>Off by default: the log contains message contents. Set to true to troubleshoot.</summary>
+    public static bool Enabled { get; set; } = false;
+
     private static readonly object Gate = new();
     private static readonly string LogFile = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -20,6 +23,7 @@ public static class DebugLog
 
     public static void Note(string message)
     {
+        if (!Enabled) return;
         try
         {
             lock (Gate)
@@ -34,6 +38,7 @@ public static class DebugLog
     public static void Write(string? appId, string appName,
                              IEnumerable<NotificationBinding>? bindings, IReadOnlyList<string> texts)
     {
+        if (!Enabled) return;
         try
         {
             var sb = new StringBuilder();

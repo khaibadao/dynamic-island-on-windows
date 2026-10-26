@@ -141,10 +141,15 @@ public sealed class NotificationListener
             return new AppNotification
             {
                 AppName        = web.DisplayName,
-                Title          = string.IsNullOrWhiteSpace(webTitle)
-                                     ? web.DisplayName
-                                     : $"{web.DisplayName} · {webTitle}",
-                Body           = webBody,
+                // Line 1: the site's name. Line 2: "<sender/title>: <message>".
+                Title          = web.DisplayName,
+                Body           = (string.IsNullOrWhiteSpace(webTitle), string.IsNullOrWhiteSpace(webBody)) switch
+                                 {
+                                     (true,  true ) => "",
+                                     (true,  false) => webBody,
+                                     (false, true ) => webTitle,
+                                     _              => $"{webTitle}: {webBody}"
+                                 },
                 Icon           = await WebSourceResolver.GetIconAsync(web.Host),
                 AppUserModelId = appId
             };
