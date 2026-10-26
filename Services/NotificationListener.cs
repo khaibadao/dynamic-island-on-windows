@@ -83,7 +83,11 @@ public sealed class NotificationListener
                         var data = await ExtractNotificationData(n);
                         OnNotificationReceived?.Invoke(data);
 
-                        try { listener.RemoveNotification(n.Id); } catch { }
+                        // Keep browser notifications in the notification center:
+                        // if we remove them, the browser treats them as closed and
+                        // ignores a later click (which is how the island opens the tab).
+                        if (data.BrowserLaunchId == null)
+                            try { listener.RemoveNotification(n.Id); } catch { }
                     }
 
                     var currentIds = notifications.Select(n => n.Id).ToHashSet();
@@ -122,15 +126,16 @@ public sealed class NotificationListener
         // ── Web notifications (sent by a browser for a website) ──────────
         // Show the site's name and favicon instead of the browser's.
         WebSourceResolver.WebSource? web = null;
-        if (WebSourceResolver.IsBrowser(appId) &&
-            !WebSourceResolver.TryResolve(appId, texts, allTexts, out web))
+        WpnDatabase.WpnInfo? wpn = null;
+        if (WebSourceResolver.IsBrowser(appId))
         {
-            // The listener API hides the attribution line, so read it from
-            // Windows' notification database instead.
-            var attribution = await WpnDatabase.FindAttributionAsync(
-                texts.ElementAtOrDefault(0), texts.ElementAtOrDefault(1));
-            DebugLog.Note($"wpndatabase attribution: \"{attribution}\"");
-            WebSourceResolver.TryFromAttribution(attribution, texts, out web);
+            // The listener API hides the site and the click (launch) argument,
+            // so read them from Windows' notification database.
+            wpn = await WpnDatabase.FindAsync(texts.ElementAtOrDefault(0), texts.ElementAtOrDefault(1));
+            DebugLog.Note($"wpndatabase host: \"{wpn?.Host}\" launch: \"{wpn?.Launch}\"");
+
+            if (!WebSourceResolver.TryResolve(appId, texts, allTexts, out web))
+                WebSourceResolver.TryFromAttribution(wpn?.Host, texts, out web);
         }
 
         if (web != null)
@@ -154,8 +159,11 @@ public sealed class NotificationListener
                                      (false, true ) => webTitle,
                                      _              => $"{webTitle}: {webBody}"
                                  },
-                Icon           = await WebSourceResolver.GetIconAsync(web.Host),
-                AppUserModelId = appId
+                Icon            = await WebSourceResolver.GetIconAsync(web.Host),
+                AppUserModelId  = appId,
+                BrowserExe      = BrowserLocator.FindExe(appId),
+                BrowserLaunchId = wpn?.Launch,
+                SiteUrl         = $"https://{web.Host}/"
             };
         }
 
@@ -193,8 +201,10 @@ public sealed class NotificationListener
             AppName        = appName,
             Title          = title,
             Body           = body,
-            Icon           = icon,
-            AppUserModelId = n.AppInfo?.AppUserModelId
+            Icon            = icon,
+            AppUserModelId  = n.AppInfo?.AppUserModelId,
+            BrowserExe      = wpn?.Launch != null ? BrowserLocator.FindExe(appId) : null,
+            BrowserLaunchId = wpn?.Launch
         };
     }
 }

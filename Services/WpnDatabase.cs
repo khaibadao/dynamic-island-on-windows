@@ -16,15 +16,22 @@ using Microsoft.Data.Sqlite;
 /// </summary>
 public static class WpnDatabase
 {
+    /// <summary>
+    /// What the database adds for a notification: the website's host
+    /// ("claude.ai") and the toast's launch argument, which the browser needs
+    /// to open the right tab when the notification is clicked.
+    /// </summary>
+    public sealed record WpnInfo(string? Host, string? Launch);
+
     private static readonly string DbPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "Microsoft", "Windows", "Notifications", "wpndatabase.db");
 
     /// <summary>
     /// Finds the most recent notification whose title (and body, if given)
-    /// match, and returns its attribution text, or null.
+    /// match, and returns its site and launch argument, or null.
     /// </summary>
-    public static async Task<string?> FindAttributionAsync(string? title, string? body)
+    public static async Task<WpnInfo?> FindAsync(string? title, string? body)
     {
         if (string.IsNullOrEmpty(title) || !File.Exists(DbPath)) return null;
 
@@ -38,7 +45,7 @@ public static class WpnDatabase
         return null;
     }
 
-    private static string? TryQuery(string title, string? body)
+    private static WpnInfo? TryQuery(string title, string? body)
     {
         try
         {
@@ -68,8 +75,8 @@ public static class WpnDatabase
                 };
                 if (string.IsNullOrEmpty(xml)) continue;
 
-                var attribution = MatchAndGetAttribution(xml, title, body);
-                if (attribution != null) return attribution;
+                var info = MatchAndGetInfo(xml, title, body);
+                if (info != null) return info;
             }
             DebugLog.Note("wpndatabase: no row matched this notification's title/body");
         }
@@ -80,7 +87,7 @@ public static class WpnDatabase
         return null;
     }
 
-    private static string? MatchAndGetAttribution(string xml, string title, string? body)
+    private static WpnInfo? MatchAndGetInfo(string xml, string title, string? body)
     {
         XDocument doc;
         try { doc = XDocument.Parse(xml.TrimEnd('\0')); }
@@ -98,17 +105,19 @@ public static class WpnDatabase
         DebugLog.Note("wpndatabase matched payload: " +
                       (xml.Length > 2500 ? xml[..2500] + "…" : xml));
 
-        // 1) Chrome-style attribution line.
+        // Chromium puts the site's origin in the toast's launch argument,
+        // e.g. launch="1|1|0|Default|0|https://claude.ai/|p#https://claude.ai#..."
+        var launch = (string?)doc.Root?.Attribute("launch");
+
+        // Site: the Chrome-style attribution line, else the origin in launch.
         var attribution = texts
             .FirstOrDefault(t => (string?)t.Attribute("placement") == "attribution")
             ?.Value;
-        if (!string.IsNullOrWhiteSpace(attribution)) return attribution;
+        var host = !string.IsNullOrWhiteSpace(attribution)
+            ? attribution
+            : FirstWebHost(launch ?? "") ?? FirstWebHost(xml);
 
-        // 2) Chromium puts the site's origin in the toast's launch argument,
-        //    e.g. launch="0|0|Default|0|https://claude.ai/|p#https://claude.ai#..."
-        var launch = (string?)doc.Root?.Attribute("launch") ?? "";
-        var host = FirstWebHost(launch) ?? FirstWebHost(xml);
-        return host ?? "";   // "" = matched, but no site found
+        return new WpnInfo(host, string.IsNullOrWhiteSpace(launch) ? null : launch);
     }
 
     private static readonly System.Text.RegularExpressions.Regex UrlRegex = new(

@@ -28,6 +28,7 @@ public partial class IslandWindow : Window
     private bool _isExpanded;
     private bool _isFullyOpen;
     private string? _currentAppId;
+    private NotificationData? _current;
 
     public IslandWindow()
     {
@@ -51,6 +52,7 @@ public partial class IslandWindow : Window
     {
         Dispatcher.Invoke(() =>
         {
+            _current         = data;
             _currentAppId    = data.AppUserModelId;
             SetFullTextLayout(false);
             TitleText.Text   = data.Title;
@@ -185,19 +187,48 @@ public partial class IslandWindow : Window
 
     private void PillBorder_MouseLeftButtonUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
-        if (!_isFullyOpen || string.IsNullOrEmpty(_currentAppId)) return;
+        if (!_isFullyOpen) return;
+        OpenSource(_current, _currentAppId);
+        Collapse();
+    }
+
+    /// <summary>
+    /// Opens whatever sent the notification, like clicking the real Windows toast:
+    /// 1) a browser notification is handed back to the browser with the toast's
+    ///    launch id, so the site focuses its tab (or opens the page it wants);
+    /// 2) otherwise a website notification opens the site;
+    /// 3) otherwise the app itself is launched.
+    /// </summary>
+    private static void OpenSource(NotificationData? data, string? appId)
+    {
         try
         {
-            var psi = new System.Diagnostics.ProcessStartInfo
+            if (data?.BrowserExe != null && data.BrowserLaunchId != null)
             {
-                FileName       = "explorer.exe",
-                Arguments      = $"shell:appsFolder\\{_currentAppId}",
-                UseShellExecute = false
-            };
-            System.Diagnostics.Process.Start(psi);
+                var psi = new System.Diagnostics.ProcessStartInfo(data.BrowserExe) { UseShellExecute = false };
+                psi.ArgumentList.Add($"--notification-launch-id={data.BrowserLaunchId}");
+                System.Diagnostics.Process.Start(psi);
+                return;
+            }
+
+            if (data?.SiteUrl != null)
+            {
+                System.Diagnostics.Process.Start(
+                    new System.Diagnostics.ProcessStartInfo(data.SiteUrl) { UseShellExecute = true });
+                return;
+            }
+
+            if (!string.IsNullOrEmpty(appId))
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName        = "explorer.exe",
+                    Arguments       = $"shell:appsFolder\\{appId}",
+                    UseShellExecute = false
+                });
+            }
         }
         catch { }
-        Collapse();
     }
 
     private void ClearBtn_Click(object sender, RoutedEventArgs e) => Collapse();
