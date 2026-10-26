@@ -69,6 +69,10 @@
                         Margin="6,0,0,0"
                         VerticalAlignment="Center">
                     <Grid>
+                        <!-- ClipToBounds ignores CornerRadius, so clip to a circle explicitly -->
+                        <Grid.Clip>
+                            <EllipseGeometry Center="26,26" RadiusX="26" RadiusY="26"/>
+                        </Grid.Clip>
                         <Border x:Name="AvatarFallback" CornerRadius="26">
                             <TextBlock x:Name="AvatarInitial"
                                        Foreground="White"
