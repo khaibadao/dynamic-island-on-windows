@@ -8,6 +8,24 @@ A sleek, iOS-inspired Dynamic Island notification overlay for Windows 11. Replac
 
 ![DIN](https://github.com/user-attachments/assets/59539079-a559-4a2a-a816-9133f4aefe4c)
 
+## 🇻🇳 Bản chỉnh sửa (fork)
+
+Đây là bản chỉnh sửa từ [sadeeshasathsara/dynamic-island-on-windows](https://github.com/sadeeshasathsara/dynamic-island-on-windows) (giấy phép MIT). Những gì đã thêm:
+
+- **Thông báo từ trang web** (Messenger, Claude, Gmail, Zalo…): hiện đúng tên và logo của trang thay vì logo trình duyệt
+- **Di chuột vào đảo** để xem toàn bộ nội dung thông báo
+- **Trình phát nhạc** (Spotify, YouTube…): viên nhỏ có sóng nhạc, kéo đặt ở đâu cũng được; di chuột vào để mở trình phát có thanh tua, ⏮ ⏯ ⏭ và chỉnh âm lượng riêng cho app đang phát
+- Sửa lỗi đảo không tự thu lại khi có thông báo mới đến lúc đang mở
+
+### Cài đặt nhanh
+
+1. Vào trang **Releases** bên phải, tải `DynamicIslandNotifier.exe` và chạy (không cần cài .NET)
+2. Windows báo *"Windows protected your PC"* → **More info** → **Run anyway** (file chưa được ký số)
+3. Cho phép đọc thông báo: **Settings → Privacy & Security → Notifications**
+4. Để thông báo web lên đảo: **Settings → System → Notifications → Microsoft Edge** → tick **Show notifications in notification center**
+
+Yêu cầu: Windows 11 (build 22621+), máy x64. App đọc thông báo ngay trên máy, không gửi nội dung đi đâu (chỉ gửi tên miền tới dịch vụ favicon của Google để tải logo). Thoát app bằng **Quit** ở khay hệ thống để bật lại thông báo kiểu cũ của Windows.
+
 ## Features
 
 - **Dynamic Island Pill** — Animated notification overlay at the top-center of your screen
