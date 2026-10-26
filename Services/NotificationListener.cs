@@ -107,9 +107,21 @@ public sealed class NotificationListener
         var texts = binding?.GetTextElements().Select(e => e.Text ?? "").ToList() ?? new List<string>();
         var appId = n.AppInfo?.AppUserModelId;
 
+        // Text from every binding (not just ToastGeneric), in case the browser
+        // puts the site's domain somewhere else.
+        var allTexts = new List<string>();
+        try
+        {
+            foreach (var b in n.Notification?.Visual?.Bindings ?? Enumerable.Empty<NotificationBinding>())
+                allTexts.AddRange(b.GetTextElements().Select(e => e.Text ?? ""));
+        }
+        catch { }
+
+        DebugLog.Write(appId, appName, n.Notification?.Visual?.Bindings, texts);
+
         // ── Web notifications (sent by a browser for a website) ──────────
         // Show the site's name and favicon instead of the browser's.
-        if (WebSourceResolver.TryResolve(appId, texts, out var web) && web != null)
+        if (WebSourceResolver.TryResolve(appId, texts, allTexts, out var web) && web != null)
         {
             var webTitle = web.Texts.ElementAtOrDefault(0) ?? "";
             var webBody  = web.Texts.ElementAtOrDefault(1) ?? "";

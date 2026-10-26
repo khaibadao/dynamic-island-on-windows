@@ -77,14 +77,16 @@ public static class WebSourceResolver
     /// If the notification came from a browser and carries a site domain,
     /// returns the site plus the text elements with the domain removed.
     /// </summary>
-    public static bool TryResolve(string? appUserModelId, IReadOnlyList<string> texts, out WebSource? source)
+    public static bool TryResolve(string? appUserModelId, IReadOnlyList<string> texts,
+                                  IReadOnlyList<string> allTexts, out WebSource? source)
     {
         source = null;
-        if (string.IsNullOrEmpty(appUserModelId) || texts.Count < 2) return false;
+        if (string.IsNullOrEmpty(appUserModelId)) return false;
         if (!BrowserIdHints.Any(h => appUserModelId.Contains(h, StringComparison.OrdinalIgnoreCase)))
             return false;
 
-        // The attribution (domain) is normally the last text element.
+        // 1) A text element that is exactly a domain (the attribution line),
+        //    normally the last one. Remove it from the visible texts.
         for (int i = texts.Count - 1; i >= 1; i--)
         {
             var m = DomainRegex.Match(texts[i].Trim());
@@ -95,8 +97,27 @@ public static class WebSourceResolver
             source = new WebSource(host, FriendlyName(host), remaining);
             return true;
         }
+
+        // 2) A short text (in any binding) that is not title/body and contains
+        //    a domain, e.g. "claude.ai - Microsoft Edge" or "via claude.ai".
+        var visible = new HashSet<string>(texts.Take(2));
+        foreach (var t in allTexts.Reverse())
+        {
+            if (visible.Contains(t) || t.Length > 80) continue;
+            var m = LooseDomainRegex.Match(t);
+            if (!m.Success) continue;
+
+            var host = m.Groups[1].Value.ToLowerInvariant();
+            if (host.StartsWith("www.")) host = host[4..];
+            source = new WebSource(host, FriendlyName(host), texts.Where(x => x != t).ToList());
+            return true;
+        }
         return false;
     }
+
+    private static readonly Regex LooseDomainRegex = new(
+        @"\b((?:[a-z0-9-]+\.)+(?:com|net|org|ai|io|me|vn|so|app|dev|co|tv|gg|edu\.vn|com\.vn))\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public static string FriendlyName(string host)
     {
