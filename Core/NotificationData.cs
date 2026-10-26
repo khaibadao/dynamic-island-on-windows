@@ -13,7 +13,4 @@ public sealed class NotificationData
     public string Body { get; init; } = "";
     public BitmapSource? Icon { get; init; }
     public string? AppUserModelId { get; init; }
-
-    /// <summary>True for a "now playing" track rather than a notification.</summary>
-    public bool IsMedia { get; init; }
 }

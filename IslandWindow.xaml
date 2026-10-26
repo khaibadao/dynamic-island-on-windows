@@ -162,23 +162,6 @@
                         </Button>
                     </Grid>
 
-                    <!-- Music actions: previous / play-pause / next -->
-                    <Grid x:Name="MediaActions" Visibility="Collapsed">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <Button Grid.Column="0" Click="PrevBtn_Click" Style="{StaticResource IslandButtonStyle}" HorizontalAlignment="Stretch" ToolTip="Previous">
-                            <TextBlock Text="&#xE892;" FontFamily="Segoe Fluent Icons" FontSize="18"/>
-                        </Button>
-                        <Button Grid.Column="1" Click="PlayPauseBtn_Click" Style="{StaticResource IslandButtonStyle}" HorizontalAlignment="Stretch" ToolTip="Play / Pause">
-                            <TextBlock x:Name="PlayPauseGlyph" Text="&#xE769;" FontFamily="Segoe Fluent Icons" FontSize="20"/>
-                        </Button>
-                        <Button Grid.Column="2" Click="NextBtn_Click" Style="{StaticResource IslandButtonStyle}" HorizontalAlignment="Stretch" ToolTip="Next">
-                            <TextBlock Text="&#xE893;" FontFamily="Segoe Fluent Icons" FontSize="18"/>
-                        </Button>
-                    </Grid>
                 </Grid>
             </Grid>
         </Border>

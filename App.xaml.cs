@@ -9,6 +9,7 @@ public partial class App : Application
     private NotificationListener? _listener;
     private IslandWindow? _island;
     private MediaWatcher? _media;
+    private MusicWindow? _music;
     private bool _enabled = true;
 
     protected override async void OnStartup(StartupEventArgs e)
@@ -29,14 +30,14 @@ public partial class App : Application
             _island.Dispatcher.Invoke(() => _island.ShowNotification(data));
         };
 
-        // Music: show the song when a new track starts (Spotify, YouTube, ...)
-        _media = new MediaWatcher();
-        _island.Media = _media;
-        _media.TrackChanged += data =>
+        // Music: a separate, draggable player (Spotify, YouTube, ...)
+        _media = new MediaWatcher { Enabled = AppSettings.Current.MusicEnabled };
+        _music = new MusicWindow(_media);
+        _media.Changed += (state, newTrack) =>
         {
-            if (_enabled) _island.Dispatcher.Invoke(() => _island.ShowNotification(data));
+            _music.Dispatcher.Invoke(() => _music.UpdateState(state, newTrack));
         };
-        _media.PlayingChanged += playing => _island.SetPlaying(playing);
+        UpdateMusicMenuHeader();
 
         await _listener.StartAsync();
         await _media.StartAsync();
@@ -45,9 +46,19 @@ public partial class App : Application
     private void MusicToggle_Click(object sender, RoutedEventArgs e)
     {
         if (_media == null) return;
-        _media.Enabled = !_media.Enabled;
-        if (sender is MenuItem item)
-            item.Header = _media.Enabled ? "Music: On" : "Music: Off";
+        _media.Enabled = !_media.Enabled;   // turning it off hides the player
+        AppSettings.Current.MusicEnabled = _media.Enabled;
+        AppSettings.Current.Save();
+        UpdateMusicMenuHeader();
+    }
+
+    private void UpdateMusicMenuHeader()
+    {
+        var tray = (Hardcodet.Wpf.TaskbarNotification.TaskbarIcon?)Current.Resources["TrayIcon"];
+        if (tray?.ContextMenu == null) return;
+        foreach (var obj in tray.ContextMenu.Items)
+            if (obj is MenuItem { Tag: "music" } item)
+                item.Header = _media?.Enabled == true ? "Music player: On" : "Music player: Off";
     }
 
     protected override void OnExit(ExitEventArgs e)

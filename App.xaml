@@ -14,7 +14,7 @@
                         <MenuItem Header="Dynamic Island Notifier" IsEnabled="False" FontWeight="Bold"/>
                         <Separator/>
                         <MenuItem Header="Enable / Disable" Click="Toggle_Click"/>
-                        <MenuItem Header="Music: On" Click="MusicToggle_Click"/>
+                        <MenuItem Header="Music player: On" Tag="music" Click="MusicToggle_Click"/>
                         <Separator/>
                         <MenuItem Header="Quit" Click="Quit_Click"/>
                     </ContextMenu>

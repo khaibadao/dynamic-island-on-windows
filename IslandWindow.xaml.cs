@@ -29,9 +29,6 @@ public partial class IslandWindow : Window
     private bool _isFullyOpen;
     private string? _currentAppId;
 
-    /// <summary>Set by App: lets the ⏮ ⏯ ⏭ buttons control the music player.</summary>
-    public Services.MediaWatcher? Media { get; set; }
-
     public IslandWindow()
     {
         InitializeComponent();
@@ -54,18 +51,10 @@ public partial class IslandWindow : Window
     {
         Dispatcher.Invoke(() =>
         {
-            // Music players often report an exe name ("Spotify.exe") rather than
-            // an app id that shell:appsFolder can launch, so only keep packaged ids.
-            _currentAppId    = !data.IsMedia || data.AppUserModelId?.Contains('!') == true
-                                   ? data.AppUserModelId : null;
+            _currentAppId    = data.AppUserModelId;
             SetFullTextLayout(false);
             TitleText.Text   = data.Title;
-            TimeText.Text    = data.IsMedia ? "♪" : "now";   // ♪ for music
-
-            // Hover row: Mute/Clear for notifications, ⏮ ⏯ ⏭ for music
-            NotificationActions.Visibility = data.IsMedia ? Visibility.Collapsed : Visibility.Visible;
-            MediaActions.Visibility        = data.IsMedia ? Visibility.Visible   : Visibility.Collapsed;
-            if (data.IsMedia) SetPlaying(true);
+            TimeText.Text    = "now";
 
             bool hasBody = !string.IsNullOrWhiteSpace(data.Body);
             BodyText.Text       = data.Body;
@@ -107,12 +96,6 @@ public partial class IslandWindow : Window
                 }
             }
         });
-    }
-
-    /// <summary>Updates the ⏯ glyph: pause icon while playing, play icon while paused.</summary>
-    public void SetPlaying(bool playing)
-    {
-        Dispatcher.Invoke(() => PlayPauseGlyph.Text = playing ? "" : "");
     }
 
     // ── Animation Orchestration ───────────────────────────────────────
@@ -219,16 +202,6 @@ public partial class IslandWindow : Window
 
     private void ClearBtn_Click(object sender, RoutedEventArgs e) => Collapse();
     private void MuteBtn_Click(object sender, RoutedEventArgs e)  { /* Placeholder */ }
-
-    // ── Music controls ────────────────────────────────────────────────
-    private void PrevBtn_Click(object sender, RoutedEventArgs e) => Media?.Previous();
-    private void NextBtn_Click(object sender, RoutedEventArgs e) => Media?.Next();
-    private void PlayPauseBtn_Click(object sender, RoutedEventArgs e)
-    {
-        Media?.PlayPause();
-        // Flip the icon right away; PlayingChanged confirms it shortly after.
-        PlayPauseGlyph.Text = PlayPauseGlyph.Text == "" ? "" : "";
-    }
 
     // ── Helpers ────────────────────────────────────────────────────────
     private void CentreWindow()
