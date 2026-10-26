@@ -201,6 +201,8 @@ public partial class IslandWindow : Window
     /// </summary>
     private static void OpenSource(NotificationData? data, string? appId)
     {
+        Services.DebugLog.Note($"click: exe=\"{data?.BrowserExe}\" launch=\"{data?.BrowserLaunchId}\" url=\"{data?.SiteUrl}\" app=\"{appId}\"");
+        NativeInterop.AllowAnyToTakeForeground();
         try
         {
             if (data?.BrowserExe != null && data.BrowserLaunchId != null)
@@ -228,7 +230,7 @@ public partial class IslandWindow : Window
                 });
             }
         }
-        catch { }
+        catch (Exception ex) { Services.DebugLog.Note($"click failed: {ex.Message}"); }
     }
 
     private void ClearBtn_Click(object sender, RoutedEventArgs e) => Collapse();

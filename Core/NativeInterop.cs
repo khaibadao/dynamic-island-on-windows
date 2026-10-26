@@ -19,6 +19,16 @@ public static class NativeInterop
     private const uint SWP_NOMOVE = 0x0002, SWP_NOSIZE = 0x0001, SWP_NOACTIVATE = 0x0010;
 
     // ── Imports ────────────────────────────────────────────────────────
+    [DllImport("user32.dll")] private static extern bool AllowSetForegroundWindow(int processId);
+    private const int ASFW_ANY = -1;
+
+    /// <summary>
+    /// Lets the next app we start bring its window to the front. Windows only
+    /// allows this for the process that received the last click (us, when the
+    /// island is clicked); a real toast click gets the same permission.
+    /// </summary>
+    public static void AllowAnyToTakeForeground() => AllowSetForegroundWindow(ASFW_ANY);
+
     [DllImport("user32.dll")] private static extern int  GetWindowLong(IntPtr h, int idx);
     [DllImport("user32.dll")] private static extern int  SetWindowLong(IntPtr h, int idx, int val);
     [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr hWnd, IntPtr insert,

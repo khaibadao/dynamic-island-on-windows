@@ -13,13 +13,18 @@ using Windows.UI.Notifications;
 /// </summary>
 public static class DebugLog
 {
-    /// <summary>Off by default: the log contains message contents. Set to true to troubleshoot.</summary>
-    public static bool Enabled { get; set; } = false;
+    private static readonly string Folder = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "DynamicIslandNotifier");
 
     private static readonly object Gate = new();
-    private static readonly string LogFile = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "DynamicIslandNotifier", "notifications.log");
+    private static readonly string LogFile = Path.Combine(Folder, "notifications.log");
+
+    /// <summary>
+    /// Off by default: the log contains message contents. To troubleshoot,
+    /// create an empty file named "debug.on" in the same folder and restart.
+    /// </summary>
+    public static bool Enabled { get; set; } = File.Exists(Path.Combine(Folder, "debug.on"));
 
     public static void Note(string message)
     {
