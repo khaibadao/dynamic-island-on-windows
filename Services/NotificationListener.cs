@@ -121,7 +121,19 @@ public sealed class NotificationListener
 
         // ── Web notifications (sent by a browser for a website) ──────────
         // Show the site's name and favicon instead of the browser's.
-        if (WebSourceResolver.TryResolve(appId, texts, allTexts, out var web) && web != null)
+        WebSourceResolver.WebSource? web = null;
+        if (WebSourceResolver.IsBrowser(appId) &&
+            !WebSourceResolver.TryResolve(appId, texts, allTexts, out web))
+        {
+            // The listener API hides the attribution line, so read it from
+            // Windows' notification database instead.
+            var attribution = await WpnDatabase.FindAttributionAsync(
+                texts.ElementAtOrDefault(0), texts.ElementAtOrDefault(1));
+            DebugLog.Note($"wpndatabase attribution: \"{attribution}\"");
+            WebSourceResolver.TryFromAttribution(attribution, texts, out web);
+        }
+
+        if (web != null)
         {
             var webTitle = web.Texts.ElementAtOrDefault(0) ?? "";
             var webBody  = web.Texts.ElementAtOrDefault(1) ?? "";

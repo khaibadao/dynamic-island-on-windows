@@ -115,6 +115,26 @@ public static class WebSourceResolver
         return false;
     }
 
+    public static bool IsBrowser(string? appUserModelId) =>
+        !string.IsNullOrEmpty(appUserModelId) &&
+        BrowserIdHints.Any(h => appUserModelId.Contains(h, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Builds a WebSource from an attribution string such as "claude.ai".</summary>
+    public static bool TryFromAttribution(string? attribution, IReadOnlyList<string> texts, out WebSource? source)
+    {
+        source = null;
+        if (string.IsNullOrWhiteSpace(attribution)) return false;
+
+        var m = DomainRegex.Match(attribution.Trim());
+        if (!m.Success) m = LooseDomainRegex.Match(attribution);
+        if (!m.Success) return false;
+
+        var host = m.Groups[1].Value.ToLowerInvariant();
+        if (host.StartsWith("www.")) host = host[4..];
+        source = new WebSource(host, FriendlyName(host), texts.ToList());
+        return true;
+    }
+
     private static readonly Regex LooseDomainRegex = new(
         @"\b((?:[a-z0-9-]+\.)+(?:com|net|org|ai|io|me|vn|so|app|dev|co|tv|gg|edu\.vn|com\.vn))\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);

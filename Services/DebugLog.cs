@@ -18,6 +18,19 @@ public static class DebugLog
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "DynamicIslandNotifier", "notifications.log");
 
+    public static void Note(string message)
+    {
+        try
+        {
+            lock (Gate)
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(LogFile)!);
+                File.AppendAllText(LogFile, $"[{DateTime.Now:HH:mm:ss}] {message}{Environment.NewLine}");
+            }
+        }
+        catch { }
+    }
+
     public static void Write(string? appId, string appName,
                              IEnumerable<NotificationBinding>? bindings, IReadOnlyList<string> texts)
     {
