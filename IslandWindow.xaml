@@ -102,6 +102,7 @@
 
                 <!-- ── TEXT ──────────────────────────────── -->
                 <StackPanel Grid.Column="0"
+                            x:Name="TextStack"
                             VerticalAlignment="Center"
                             Margin="0,14,8,14">
 

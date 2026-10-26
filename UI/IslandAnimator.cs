@@ -38,7 +38,7 @@ public sealed class IslandAnimator
             double r = h / 2;
             if (h > 84)
             {
-                double progress = (h - 84) / (120.0 - 84.0);
+                double progress = Math.Min(1.0, (h - 84) / (120.0 - 84.0));
                 r = 42.0 - (progress * (42.0 - 24.0));
             }
             _pill.CornerRadius = new CornerRadius(r);
@@ -76,9 +76,9 @@ public sealed class IslandAnimator
         });
     }
 
-    public void ExpandToHover()
+    public void ExpandToHover(double targetH = PILL_H_HOVER)
     {
-        SizePill(PILL_W_OPEN, PILL_H_HOVER, 250,
+        SizePill(PILL_W_OPEN, Math.Max(PILL_H_HOVER, targetH), 250,
             new CubicEase { EasingMode = EasingMode.EaseOut });
         FadeIn(_hoverPanel, 200, delay: 100);
     }

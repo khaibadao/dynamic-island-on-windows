@@ -15,7 +15,13 @@ namespace DynamicIslandNotifier;
 public partial class IslandWindow : Window
 {
     // ── Sizes ──────────────────────────────────────────────────────────
-    const double WIN_W = 560, WIN_H = 160;
+    // The window is tall enough for the hover-expanded pill. Its transparent
+    // area doesn't take mouse input, so clicks pass through to what's below.
+    const double WIN_W = 560, WIN_H = 470;
+
+    // Hover-expanded layout
+    const double HOVER_ACTIONS_H = 48;   // space for the Mute / Clear row
+    const double HOVER_MAX_H     = 440;  // tallest the pill may grow
 
     private IslandAnimator _animator = null!;
     private DispatcherTimer? _hideTimer;
@@ -46,6 +52,7 @@ public partial class IslandWindow : Window
         Dispatcher.Invoke(() =>
         {
             _currentAppId    = data.AppUserModelId;
+            SetFullTextLayout(false);
             TitleText.Text   = data.Title;
             TimeText.Text    = "now";
 
@@ -119,14 +126,46 @@ public partial class IslandWindow : Window
     private void TriggerHover()
     {
         _hideTimer?.Stop();
-        _animator.ExpandToHover();
+        SetFullTextLayout(true);
+        _animator.ExpandToHover(MeasureFullTextHeight());
     }
 
     private void PillBorder_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
     {
         if (!_isFullyOpen) return;
+        SetFullTextLayout(false);
         _animator.CollapseFromHover(BodyText.Visibility == Visibility.Visible);
         StartHideTimer();
+    }
+
+    /// <summary>
+    /// true  = show the whole title and message, wrapped, above the action row.
+    /// false = the compact one-line-each layout.
+    /// </summary>
+    private void SetFullTextLayout(bool full)
+    {
+        var wrap = full ? TextWrapping.Wrap : TextWrapping.NoWrap;
+        TitleText.TextWrapping = wrap;
+        BodyText.TextWrapping  = wrap;
+
+        // Keep a very long message inside the pill (trimmed with "…" at the end).
+        BodyText.MaxHeight = full ? HOVER_MAX_H - HOVER_ACTIONS_H - 80 : double.PositiveInfinity;
+
+        TextStack.VerticalAlignment = full ? VerticalAlignment.Top : VerticalAlignment.Center;
+        ContentRoot.Margin = new Thickness(68, 0, 0, full ? HOVER_ACTIONS_H : 0);
+    }
+
+    /// <summary>Pill height needed to show the full text plus the action row.</summary>
+    private double MeasureFullTextHeight()
+    {
+        double timeW = TimeText.ActualWidth + TimeText.Margin.Left + TimeText.Margin.Right;
+        double textW = IslandAnimator.PILL_W_OPEN - ContentRoot.Margin.Left - timeW;
+
+        // DesiredSize includes the StackPanel's own top/bottom margin.
+        TextStack.Measure(new Size(Math.Max(100, textW), double.PositiveInfinity));
+        double needed = TextStack.DesiredSize.Height + HOVER_ACTIONS_H;
+
+        return Math.Clamp(needed, IslandAnimator.PILL_H_HOVER, HOVER_MAX_H);
     }
 
     private void PillBorder_MouseLeftButtonUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
