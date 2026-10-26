@@ -104,13 +104,30 @@ public sealed class NotificationListener
         var appName = n.AppInfo?.DisplayInfo?.DisplayName ?? "App";
         var binding = n.Notification?.Visual?.GetBinding(KnownNotificationBindings.ToastGeneric);
 
-        string title = "", body = "";
-        if (binding != null)
+        var texts = binding?.GetTextElements().Select(e => e.Text ?? "").ToList() ?? new List<string>();
+        var appId = n.AppInfo?.AppUserModelId;
+
+        // ── Web notifications (sent by a browser for a website) ──────────
+        // Show the site's name and favicon instead of the browser's.
+        if (WebSourceResolver.TryResolve(appId, texts, out var web) && web != null)
         {
-            var elements = binding.GetTextElements().ToList();
-            title = elements.ElementAtOrDefault(0)?.Text ?? "";
-            body  = elements.ElementAtOrDefault(1)?.Text ?? "";
+            var webTitle = web.Texts.ElementAtOrDefault(0) ?? "";
+            var webBody  = web.Texts.ElementAtOrDefault(1) ?? "";
+
+            return new AppNotification
+            {
+                AppName        = web.DisplayName,
+                Title          = string.IsNullOrWhiteSpace(webTitle)
+                                     ? web.DisplayName
+                                     : $"{web.DisplayName} · {webTitle}",
+                Body           = webBody,
+                Icon           = await WebSourceResolver.GetIconAsync(web.Host),
+                AppUserModelId = appId
+            };
         }
+
+        string title = texts.ElementAtOrDefault(0) ?? "";
+        string body  = texts.ElementAtOrDefault(1) ?? "";
 
         BitmapSource? icon = null;
         try
