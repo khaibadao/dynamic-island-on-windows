@@ -163,7 +163,8 @@ public sealed class NotificationListener
                 AppUserModelId  = appId,
                 BrowserExe      = BrowserLocator.FindExe(appId),
                 BrowserLaunchId = wpn?.Launch,
-                SiteUrl         = $"https://{web.Host}/"
+                SiteUrl         = $"https://{web.Host}/",
+                SourceKey       = $"site:{web.Host}"
             };
         }
 
@@ -204,7 +205,8 @@ public sealed class NotificationListener
             Icon            = icon,
             AppUserModelId  = n.AppInfo?.AppUserModelId,
             BrowserExe      = wpn?.Launch != null ? BrowserLocator.FindExe(appId) : null,
-            BrowserLaunchId = wpn?.Launch
+            BrowserLaunchId = wpn?.Launch,
+            SourceKey       = string.IsNullOrEmpty(appId) ? null : $"app:{appId}"
         };
     }
 }

@@ -30,6 +30,12 @@ public partial class IslandWindow : Window
     private string? _currentAppId;
     private NotificationData? _current;
 
+    /// <summary>The Mute button was pressed for this notification's sender.</summary>
+    public event Action<NotificationData>? MuteRequested;
+
+    private static readonly FontFamily LetterFont = new("Segoe UI");
+    private static readonly FontFamily GlyphFont  = new("Segoe Fluent Icons, Segoe MDL2 Assets");
+
     public IslandWindow()
     {
         InitializeComponent();
@@ -69,14 +75,33 @@ public partial class IslandWindow : Window
                 AppIcon.Visibility = Visibility.Visible;
                 AvatarFallback.Visibility = Visibility.Collapsed;
             }
+            else if (data.Glyph != null)
+            {
+                AppIcon.Visibility         = Visibility.Collapsed;
+                AvatarFallback.Visibility  = Visibility.Visible;
+                AvatarInitial.FontFamily   = GlyphFont;
+                AvatarInitial.FontWeight   = FontWeights.Normal;
+                AvatarInitial.FontSize     = 26;
+                AvatarInitial.Text         = data.Glyph;
+                AvatarFallback.Background  = data.GlyphColor != null
+                    ? new SolidColorBrush((Color)ColorConverter.ConvertFromString(data.GlyphColor))
+                    : AccentBrush(data.AppName);
+            }
             else
             {
                 AppIcon.Visibility        = Visibility.Collapsed;
                 AvatarFallback.Visibility = Visibility.Visible;
+                AvatarInitial.FontFamily  = LetterFont;
+                AvatarInitial.FontWeight  = FontWeights.Bold;
+                AvatarInitial.FontSize    = 24;
                 AvatarInitial.Text        = data.AppName.Length > 0
                     ? data.AppName[0].ToString().ToUpperInvariant() : "?";
                 AvatarFallback.Background = AccentBrush(data.AppName);
             }
+
+            // Mute only makes sense when we know who sent it
+            MuteBtn.IsEnabled = data.SourceKey != null;
+            MuteBtn.ToolTip   = data.SourceKey != null ? $"Tắt thông báo từ {data.AppName}" : null;
 
             _hideTimer?.Stop();
             Visibility = Visibility.Visible;
@@ -199,7 +224,7 @@ public partial class IslandWindow : Window
     /// 2) otherwise a website notification opens the site;
     /// 3) otherwise the app itself is launched.
     /// </summary>
-    private static void OpenSource(NotificationData? data, string? appId)
+    public static void OpenSource(NotificationData? data, string? appId)
     {
         Services.DebugLog.Note($"click: exe=\"{data?.BrowserExe}\" launch=\"{data?.BrowserLaunchId}\" url=\"{data?.SiteUrl}\" app=\"{appId}\"");
         NativeInterop.AllowAnyToTakeForeground();
@@ -240,7 +265,11 @@ public partial class IslandWindow : Window
     }
 
     private void ClearBtn_Click(object sender, RoutedEventArgs e) => Collapse();
-    private void MuteBtn_Click(object sender, RoutedEventArgs e)  { /* Placeholder */ }
+    private void MuteBtn_Click(object sender, RoutedEventArgs e)
+    {
+        if (_current?.SourceKey != null) MuteRequested?.Invoke(_current);
+        Collapse();
+    }
 
     // ── Helpers ────────────────────────────────────────────────────────
     private void CentreWindow()

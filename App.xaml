@@ -17,6 +17,14 @@
                         <MenuItem Header="Music player: On" Tag="music" Click="MusicToggle_Click"/>
                         <MenuItem Header="Start with Windows" Tag="autostart" IsCheckable="True" Click="AutoStartToggle_Click"/>
                         <Separator/>
+                        <!-- Filled in code each time the menu opens -->
+                        <MenuItem Header="Recent notifications" Tag="history">
+                            <MenuItem Header="…" IsEnabled="False"/>
+                        </MenuItem>
+                        <MenuItem Header="Muted" Tag="muted">
+                            <MenuItem Header="…" IsEnabled="False"/>
+                        </MenuItem>
+                        <Separator/>
                         <MenuItem Header="Quit" Click="Quit_Click"/>
                     </ContextMenu>
                 </tb:TaskbarIcon.ContextMenu>

@@ -1,6 +1,7 @@
 namespace DynamicIslandNotifier.Services;
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 
@@ -18,6 +19,9 @@ public sealed class AppSettings
 
     /// <summary>True once "start with Windows" was set up on first run (the user may have turned it off since).</summary>
     public bool AutoStartConfigured { get; set; }
+
+    /// <summary>Muted senders: source key → name to show in the menu.</summary>
+    public Dictionary<string, string> MutedSources { get; set; } = new();
 
     private static readonly string FilePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),

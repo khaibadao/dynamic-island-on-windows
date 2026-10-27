@@ -14,6 +14,18 @@ public sealed class NotificationData
     public BitmapSource? Icon { get; init; }
     public string? AppUserModelId { get; init; }
 
+    /// <summary>
+    /// Who sent it, for muting: "site:messenger.com", "app:&lt;AppUserModelId&gt;",
+    /// or "system:battery". Null = can't be muted.
+    /// </summary>
+    public string? SourceKey { get; init; }
+
+    /// <summary>Optional icon-font glyph shown in the avatar instead of a letter (e.g. a battery).</summary>
+    public string? Glyph { get; init; }
+
+    /// <summary>Avatar colour for <see cref="Glyph"/>, e.g. "#30D158".</summary>
+    public string? GlyphColor { get; init; }
+
     // ── What clicking the island does ─────────────────────────────────
     /// <summary>Browser to hand the click to (e.g. ...\msedge.exe).</summary>
     public string? BrowserExe { get; init; }

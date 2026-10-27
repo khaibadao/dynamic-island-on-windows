@@ -16,6 +16,8 @@ A sleek, iOS-inspired Dynamic Island notification overlay for Windows 11. Replac
 - **Di chuột vào đảo** để xem toàn bộ nội dung thông báo
 - **Trình phát nhạc** (Spotify, YouTube…): viên nhỏ có sóng nhạc, kéo đặt ở đâu cũng được; di chuột vào để mở trình phát có thanh tua, ⏮ ⏯ ⏭ và chỉnh âm lượng riêng cho app đang phát
 - **Bấm vào đảo** để mở đúng tab/trang đã gửi thông báo
+- **Nút Mute** tắt thông báo theo từng app / trang (bật lại ở menu khay → *Muted*), **lịch sử thông báo** (*Recent notifications*)
+- **Đảo báo pin**: cắm / rút sạc, cảnh báo pin yếu 20% và 10%
 - **Tự chạy khi bật máy** (bật/tắt ở menu khay hệ thống: *Start with Windows*)
 - Sửa lỗi đảo không tự thu lại khi có thông báo mới đến lúc đang mở
 

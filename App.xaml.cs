@@ -1,5 +1,9 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using DynamicIslandNotifier.Core;
 using DynamicIslandNotifier.Services;
 
 namespace DynamicIslandNotifier;
@@ -12,6 +16,11 @@ public partial class App : Application
     private MusicWindow? _music;
     private bool _enabled = true;
     private static System.Threading.Mutex? _singleInstance;
+    private BatteryWatcher? _battery;
+
+    // Newest first; shown under "Recent notifications" in the tray menu
+    private const int HistorySize = 15;
+    private readonly List<(DateTime Time, NotificationData Data)> _history = new();
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -34,10 +43,17 @@ public partial class App : Application
         _listener = new NotificationListener(suppressor);
 
         // Wire notification events to the UI
-        _listener.OnNotificationReceived += data =>
-        {
-            _island.Dispatcher.Invoke(() => _island.ShowNotification(data));
-        };
+        _listener.OnNotificationReceived += data => _island.Dispatcher.Invoke(() => ShowOnIsland(data, keepInHistory: true));
+        _island.MuteRequested += Mute;
+
+        // Battery: charger plugged in / out, low battery
+        _battery = new BatteryWatcher();
+        _battery.Notify += data => _island.Dispatcher.Invoke(() => ShowOnIsland(data, keepInHistory: false));
+        _battery.Start();
+
+        // Rebuild the history / muted lists each time the tray menu opens
+        if (Current.Resources["TrayIcon"] is Hardcodet.Wpf.TaskbarNotification.TaskbarIcon { ContextMenu: { } menu })
+            menu.Opened += (_, _) => RebuildDynamicMenus();
 
         // Music: a separate, draggable player (Spotify, YouTube, ...)
         _media = new MediaWatcher { Enabled = AppSettings.Current.MusicEnabled };
@@ -54,6 +70,98 @@ public partial class App : Application
 
         await _listener.StartAsync();
         await _media.StartAsync();
+    }
+
+    // ── Notifications: mute + history ─────────────────────────────────
+    private void ShowOnIsland(NotificationData data, bool keepInHistory)
+    {
+        if (!_enabled || _island == null) return;
+        if (data.SourceKey != null && AppSettings.Current.MutedSources.ContainsKey(data.SourceKey)) return;
+
+        if (keepInHistory)
+        {
+            _history.Insert(0, (DateTime.Now, data));
+            if (_history.Count > HistorySize) _history.RemoveAt(_history.Count - 1);
+        }
+        _island.ShowNotification(data);
+    }
+
+    private void Mute(NotificationData data)
+    {
+        if (data.SourceKey == null) return;
+        AppSettings.Current.MutedSources[data.SourceKey] = data.AppName;
+        AppSettings.Current.Save();
+    }
+
+    private void RebuildDynamicMenus()
+    {
+        if (Current.Resources["TrayIcon"] is not Hardcodet.Wpf.TaskbarNotification.TaskbarIcon { ContextMenu: { } menu })
+            return;
+
+        foreach (var item in menu.Items.OfType<MenuItem>())
+        {
+            if (item.Tag as string == "history") FillHistory(item);
+            if (item.Tag as string == "muted")   FillMuted(item);
+        }
+    }
+
+    private void FillHistory(MenuItem parent)
+    {
+        parent.Items.Clear();
+        if (_history.Count == 0)
+        {
+            parent.Items.Add(new MenuItem { Header = Plain("Chưa có thông báo nào"), IsEnabled = false });
+            return;
+        }
+
+        foreach (var (time, data) in _history)
+        {
+            var text = string.IsNullOrWhiteSpace(data.Body) ? data.Title : data.Body;
+            var item = new MenuItem
+            {
+                Header  = Plain($"{time:HH:mm}   {data.AppName} — {Shorten(text, 45)}"),
+                ToolTip = text
+            };
+            var captured = data;
+            item.Click += (_, _) => IslandWindow.OpenSource(captured, captured.AppUserModelId);
+            parent.Items.Add(item);
+        }
+
+        parent.Items.Add(new Separator());
+        var clear = new MenuItem { Header = Plain("Xoá lịch sử") };
+        clear.Click += (_, _) => _history.Clear();
+        parent.Items.Add(clear);
+    }
+
+    private static void FillMuted(MenuItem parent)
+    {
+        parent.Items.Clear();
+        var muted = AppSettings.Current.MutedSources;
+        if (muted.Count == 0)
+        {
+            parent.Items.Add(new MenuItem { Header = Plain("Chưa tắt nguồn nào"), IsEnabled = false });
+            return;
+        }
+
+        foreach (var (key, name) in muted.OrderBy(kv => kv.Value))
+        {
+            var item = new MenuItem { Header = Plain($"Bật lại: {name}"), ToolTip = key };
+            item.Click += (_, _) =>
+            {
+                AppSettings.Current.MutedSources.Remove(key);
+                AppSettings.Current.Save();
+            };
+            parent.Items.Add(item);
+        }
+    }
+
+    /// <summary>A header that shows "_" literally instead of as a keyboard shortcut.</summary>
+    private static TextBlock Plain(string text) => new() { Text = text };
+
+    private static string Shorten(string s, int max)
+    {
+        s = s.ReplaceLineEndings(" ").Trim();
+        return s.Length <= max ? s : s[..(max - 1)] + "…";
     }
 
     private void MusicToggle_Click(object sender, RoutedEventArgs e)

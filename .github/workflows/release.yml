@@ -41,13 +41,13 @@ jobs:
         run: >
           dotnet publish DynamicIslandNotifier.csproj -c Release -r win-x64
           -p:Version=${{ steps.ver.outputs.version }} --self-contained -p:PublishSingleFile=true
-          -p:IncludeNativeLibrariesForSelfExtract=true -o out/x64
+          -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o out/x64
 
       - name: Build ARM64
         run: >
           dotnet publish DynamicIslandNotifier.csproj -c Release -r win-arm64
           -p:Version=${{ steps.ver.outputs.version }} --self-contained -p:PublishSingleFile=true
-          -p:IncludeNativeLibrariesForSelfExtract=true -o out/arm64
+          -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o out/arm64
 
       - name: Name the files
         shell: pwsh
