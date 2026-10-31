@@ -23,6 +23,11 @@ public sealed class IslandAnimator
     private readonly UIElement _contentRoot;
     private readonly UIElement _hoverPanel;
 
+    // Bumped by every Expand/Collapse. Each step of a chained animation checks
+    // it, so a hide that's still running stops as soon as a new notification
+    // starts showing (otherwise it would slide the new one away mid-way).
+    private int _generation;
+
     public IslandAnimator(Border pill, TranslateTransform pillTransform,
                           UIElement contentRoot, UIElement hoverPanel)
     {
@@ -48,6 +53,11 @@ public sealed class IslandAnimator
     // ── Expand / Collapse Orchestration ───────────────────────────────
     public void Expand(bool hasBody, Action onFullyOpen)
     {
+        int gen = ++_generation;
+
+        // Drop whatever animation still holds these values (e.g. a hide that was
+        // interrupted), then start from the small hidden circle.
+        StopAll();
         _pill.Width  = 64;
         _pill.Height = 64;
         _hoverPanel.Opacity    = 0;
@@ -57,23 +67,37 @@ public sealed class IslandAnimator
 
         SlideY(-150, 0, 450, new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.5 }, () =>
         {
+            if (gen != _generation) return;
             double targetH = hasBody ? PILL_H_OPEN_BODY : PILL_H_OPEN;
             SizePill(PILL_W_OPEN, targetH, 350,
-                new CubicEase { EasingMode = EasingMode.EaseOut }, onDone: onFullyOpen);
+                new CubicEase { EasingMode = EasingMode.EaseOut },
+                onDone: () => { if (gen == _generation) onFullyOpen(); });
             FadeIn(_contentRoot, 250, delay: 100);
         });
     }
 
     public void Collapse(Action onHidden)
     {
+        int gen = ++_generation;
         FadeOut(_contentRoot, 150, () =>
         {
+            if (gen != _generation) return;
             SizePill(64, 64, 300, new CubicEase { EasingMode = EasingMode.EaseIn }, onDone: () =>
             {
+                if (gen != _generation) return;
                 SlideY(0, -150, 300, new CubicEase { EasingMode = EasingMode.EaseIn },
-                    onDone: onHidden);
+                    onDone: () => { if (gen == _generation) onHidden(); });
             });
         });
+    }
+
+    private void StopAll()
+    {
+        _pill.BeginAnimation(FrameworkElement.WidthProperty,  null);
+        _pill.BeginAnimation(FrameworkElement.HeightProperty, null);
+        _pillTransform.BeginAnimation(TranslateTransform.YProperty, null);
+        _contentRoot.BeginAnimation(UIElement.OpacityProperty, null);
+        _hoverPanel.BeginAnimation(UIElement.OpacityProperty, null);
     }
 
     public void ExpandToHover(double targetH = PILL_H_HOVER)

@@ -15,6 +15,9 @@ public sealed class ToastSuppressor
     private readonly HashSet<string> _suppressedApps = new();
 
     // ── Global DND ────────────────────────────────────────────────────
+    // Not used any more: switching off ALL notifications system-wide is risky
+    // (it stays off if the app is killed). Per-app banner suppression is enough.
+    [Obsolete("Turns off every Windows notification; use SuppressApp instead.")]
     public void EnableDND()
     {
         try

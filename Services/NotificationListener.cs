@@ -20,7 +20,11 @@ using AppNotification = DynamicIslandNotifier.Core.NotificationData;
 public sealed class NotificationListener
 {
     private CancellationTokenSource _cts = new();
-    private readonly HashSet<uint> _seenIds = new();
+    // "id|created" of notifications already handled. The creation time is part of
+    // the key because a site that replaces its notification (Messenger does, one
+    // per chat) can reuse the same id for the new message.
+    private readonly HashSet<string> _seen = new();
+    private bool _baselineTaken;
     private readonly ToastSuppressor _suppressor;
 
     /// <summary>Fired on the background thread when a new notification arrives.</summary>
@@ -50,7 +54,10 @@ public sealed class NotificationListener
             return;
         }
 
-        _suppressor.EnableDND();
+        // Older versions switched off ALL Windows notifications while running and
+        // only switched them back on at a clean Quit; after a crash or a forced
+        // shutdown they stayed off, so nothing reached the island. Undo that.
+        _suppressor.DisableDND();
         _ = Task.Run(() => PollLoop(_cts.Token));
     }
 
@@ -71,27 +78,42 @@ public sealed class NotificationListener
                 if (Enabled)
                 {
                     var notifications = await listener.GetNotificationsAsync(NotificationKinds.Toast);
+                    var current = notifications.Select(KeyOf).ToHashSet();
 
-                    foreach (var n in notifications)
+                    // At startup, whatever is already in the notification center is
+                    // old news: remember it without popping it all up again.
+                    if (!_baselineTaken)
                     {
-                        if (_seenIds.Contains(n.Id)) continue;
-                        _seenIds.Add(n.Id);
-
-                        var appModelId = n.AppInfo?.AppUserModelId;
-                        if (appModelId != null) _suppressor.SuppressApp(appModelId);
-
-                        var data = await ExtractNotificationData(n);
-                        OnNotificationReceived?.Invoke(data);
-
-                        // Keep browser notifications in the notification center:
-                        // if we remove them, the browser treats them as closed and
-                        // ignores a later click (which is how the island opens the tab).
-                        if (data.BrowserLaunchId == null)
-                            try { listener.RemoveNotification(n.Id); } catch { }
+                        _seen.UnionWith(current);
+                        _baselineTaken = true;
                     }
 
-                    var currentIds = notifications.Select(n => n.Id).ToHashSet();
-                    _seenIds.IntersectWith(currentIds);
+                    foreach (var n in notifications.OrderBy(n => n.CreationTime))
+                    {
+                        if (!_seen.Add(KeyOf(n))) continue;
+
+                        // One bad notification must not stop the rest from showing.
+                        try
+                        {
+                            var appModelId = n.AppInfo?.AppUserModelId;
+                            if (appModelId != null) _suppressor.SuppressApp(appModelId);
+
+                            var data = await ExtractNotificationData(n);
+                            OnNotificationReceived?.Invoke(data);
+
+                            // Keep browser notifications in the notification center:
+                            // if we remove them, the browser treats them as closed and
+                            // ignores a later click (which is how the island opens the tab).
+                            if (data.BrowserLaunchId == null)
+                                try { listener.RemoveNotification(n.Id); } catch { }
+                        }
+                        catch (Exception ex)
+                        {
+                            DebugLog.Note($"notification {n.Id} failed: {ex}");
+                        }
+                    }
+
+                    _seen.IntersectWith(current);
                 }
             }
             catch (Exception ex) when (!token.IsCancellationRequested)
@@ -102,6 +124,8 @@ public sealed class NotificationListener
             await Task.Delay(500, token);
         }
     }
+
+    private static string KeyOf(UserNotification n) => $"{n.Id}|{n.CreationTime.UtcTicks}";
 
     private static async Task<AppNotification> ExtractNotificationData(UserNotification n)
     {
