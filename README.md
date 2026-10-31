@@ -14,7 +14,7 @@ A sleek, iOS-inspired Dynamic Island notification overlay for Windows 11. Replac
 
 - **Thông báo từ trang web** (Messenger, Claude, Gmail, Zalo…): hiện đúng tên và logo của trang thay vì logo trình duyệt
 - **Di chuột vào đảo** để xem toàn bộ nội dung thông báo
-- **Trình phát nhạc** (Spotify, YouTube…): viên nhỏ có sóng nhạc, kéo đặt ở đâu cũng được; di chuột vào để mở trình phát có thanh tua, ⏮ ⏯ ⏭ và chỉnh âm lượng riêng cho app đang phát
+- **Tai thỏ** ở giữa mép trên màn hình: di chuột vào để mở trình phát nhạc (đổi màu theo ảnh bìa, thanh tua, ⏮ ⏯ ⏭, âm lượng riêng từng app), **trồng cây tập trung** kiểu Forest, giờ & pin, thông báo gần đây; hiện thanh âm lượng khi chỉnh âm lượng
 - **Bấm vào đảo** để mở đúng tab/trang đã gửi thông báo
 - **Nút Mute** tắt thông báo theo từng app / trang (bật lại ở menu khay → *Muted*), **lịch sử thông báo** (*Recent notifications*)
 - **Đảo báo pin**: cắm / rút sạc, cảnh báo pin yếu 20% và 10%

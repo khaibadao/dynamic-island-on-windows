@@ -46,6 +46,31 @@ public static class NativeInterop
     [StructLayout(LayoutKind.Sequential)]
     private struct RECT { public int Left, Top, Right, Bottom; }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct POINT { public int X, Y; }
+
+    [DllImport("user32.dll")] private static extern bool GetCursorPos(out POINT point);
+
+    /// <summary>
+    /// Whether the mouse pointer is inside the window right now, asked from
+    /// Windows directly (WPF's IsMouseOver can lag when content appears or
+    /// disappears under a pointer that isn't moving).
+    /// </summary>
+    public static bool IsCursorOver(Window window)
+    {
+        try
+        {
+            if (!window.IsVisible || !GetCursorPos(out var p)) return false;
+            var hwnd = new WindowInteropHelper(window).Handle;
+            return GetWindowRect(hwnd, out var r)
+                && p.X >= r.Left && p.X < r.Right && p.Y >= r.Top && p.Y < r.Bottom;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct MONITORINFO
     {

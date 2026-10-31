@@ -60,8 +60,8 @@ public partial class NotchWindow : Window
         _recent = recent;
         _ready  = true;
 
-        _openTimer.Tick   += (_, _) => { _openTimer.Stop();   if (Pill.IsMouseOver) Expand(); };
-        _closeTimer.Tick  += (_, _) => { _closeTimer.Stop();  if (!Expanded.IsMouseOver && !_seeking) Collapse(); };
+        _openTimer.Tick   += (_, _) => { _openTimer.Stop();   if (Pill.IsMouseOver || NativeInterop.IsCursorOver(this)) Expand(); };
+        _closeTimer.Tick  += (_, _) => { _closeTimer.Stop();  if (!_seeking && !NativeInterop.IsCursorOver(this)) Collapse(); };
         _volumeTimer.Tick += (_, _) => { _volumeTimer.Stop(); VolumeView.Visibility = Visibility.Collapsed; if (!_expanded) Pill.Visibility = Visibility.Visible; };
         _peekTimer.Tick   += (_, _) => { _peekTimer.Stop();   PillText.Visibility = Visibility.Collapsed; };
         _giveUpTimer.Tick += (_, _) => { _giveUpTimer.Stop(); ResetGiveUp(); };
@@ -194,6 +194,10 @@ public partial class NotchWindow : Window
         {
             UpdateClock();
             if (_hasMusic) UpdateProgress();
+
+            // Safety net in case MouseLeave never came: close once the pointer is gone.
+            if (!_seeking && !_closeTimer.IsEnabled && !NativeInterop.IsCursorOver(this))
+                _closeTimer.Start();
         }
     }
 
