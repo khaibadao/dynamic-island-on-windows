@@ -11,11 +11,16 @@ using System.Text.Json;
 /// </summary>
 public sealed class AppSettings
 {
-    /// <summary>Where the music pill sits on screen (null = default spot).</summary>
-    public double? MusicLeft { get; set; }
-    public double? MusicTop  { get; set; }
-
     public bool MusicEnabled { get; set; } = true;
+
+    /// <summary>The notch bar at the top centre of the screen.</summary>
+    public bool NotchEnabled { get; set; } = true;
+
+    // ── Focus (tree planting) ─────────────────────────────────────────
+    /// <summary>Start of the focus session in progress, so it survives a restart.</summary>
+    public DateTime? FocusStartUtc { get; set; }
+    public int FocusMinutes { get; set; }
+    public int LastFocusMinutes { get; set; } = 25;
 
     /// <summary>True once "start with Windows" was set up on first run (the user may have turned it off since).</summary>
     public bool AutoStartConfigured { get; set; }

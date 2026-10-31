@@ -30,6 +30,9 @@ public partial class IslandWindow : Window
     private string? _currentAppId;
     private NotificationData? _current;
 
+    /// <summary>True when a notification starts showing, false once it's fully hidden.</summary>
+    public event Action<bool>? ActiveChanged;
+
     /// <summary>The Mute button was pressed for this notification's sender.</summary>
     public event Action<NotificationData>? MuteRequested;
 
@@ -104,6 +107,7 @@ public partial class IslandWindow : Window
             MuteBtn.ToolTip   = data.SourceKey != null ? $"Tắt thông báo từ {data.AppName}" : null;
 
             _hideTimer?.Stop();
+            if (!IsVisible) ActiveChanged?.Invoke(true);
             Visibility = Visibility.Visible;
             NativeInterop.ForceTopMost(this);
 
@@ -147,7 +151,11 @@ public partial class IslandWindow : Window
         _isFullyOpen = false;
         _hideTimer?.Stop();
 
-        _animator.Collapse(onHidden: () => Visibility = Visibility.Hidden);
+        _animator.Collapse(onHidden: () =>
+        {
+            Visibility = Visibility.Hidden;
+            ActiveChanged?.Invoke(false);
+        });
     }
 
     private void StartHideTimer()

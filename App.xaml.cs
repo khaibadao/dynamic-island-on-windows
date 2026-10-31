@@ -13,7 +13,9 @@ public partial class App : Application
     private NotificationListener? _listener;
     private IslandWindow? _island;
     private MediaWatcher? _media;
-    private MusicWindow? _music;
+    private NotchWindow? _notch;
+    private FocusService? _focus;
+    private VolumeWatcher? _volume;
     private bool _enabled = true;
     private static System.Threading.Mutex? _singleInstance;
     private BatteryWatcher? _battery;
@@ -45,6 +47,7 @@ public partial class App : Application
         // Wire notification events to the UI
         _listener.OnNotificationReceived += data => _island.Dispatcher.Invoke(() => ShowOnIsland(data, keepInHistory: true));
         _island.MuteRequested += Mute;
+        _island.ActiveChanged += active => _notch?.SetIslandActive(active);
 
         // Battery: charger plugged in / out, low battery
         _battery = new BatteryWatcher();
@@ -55,14 +58,21 @@ public partial class App : Application
         if (Current.Resources["TrayIcon"] is Hardcodet.Wpf.TaskbarNotification.TaskbarIcon { ContextMenu: { } menu })
             menu.Opened += (_, _) => RebuildDynamicMenus();
 
-        // Music: a separate, draggable player (Spotify, YouTube, ...)
-        _media = new MediaWatcher { Enabled = AppSettings.Current.MusicEnabled };
-        _music = new MusicWindow(_media);
-        _media.Changed += (state, newTrack) =>
-        {
-            _music.Dispatcher.Invoke(() => _music.UpdateState(state, newTrack));
-        };
+        // The notch: music, tree planting, volume, recent notifications
+        _media  = new MediaWatcher { Enabled = AppSettings.Current.MusicEnabled };
+        _focus  = new FocusService();
+        _notch  = new NotchWindow(_media, _focus, () => _history.ToList());
+        _media.Changed += (state, newTrack) => _notch.Dispatcher.Invoke(() => _notch.UpdateMedia(state, newTrack));
+        _focus.Finished += session => _island.Dispatcher.Invoke(() => ShowOnIsland(MakeFocusNotification(session), keepInHistory: false));
+        _notch.Show();
+        _notch.NotchEnabled = AppSettings.Current.NotchEnabled;
+
+        _volume = new VolumeWatcher();
+        _volume.Changed += (level, muted) => _notch.Dispatcher.BeginInvoke(new Action(() => _notch.ShowVolume(level, muted)));
+        _volume.Start();
+
         UpdateMusicMenuHeader();
+        UpdateNotchMenu();
 
         // Start with Windows: on by default from the first run
         AutoStart.EnsureOnStartup(AppSettings.Current);
@@ -164,6 +174,41 @@ public partial class App : Application
         return s.Length <= max ? s : s[..(max - 1)] + "…";
     }
 
+    private NotificationData MakeFocusNotification(FocusSession session)
+    {
+        int grownToday = _focus?.Today().Count(s => s.Success) ?? 0;
+        if (session.Success) System.Media.SystemSounds.Asterisk.Play();
+
+        return new NotificationData
+        {
+            AppName   = "Trồng cây",
+            Title     = session.Success ? "Cây đã lớn!" : "Cây đã chết",
+            Body      = session.Success
+                ? $"Bạn đã tập trung {session.Minutes} phút · Hôm nay đã trồng {grownToday} cây"
+                : "Bạn đã bỏ cuộc giữa chừng. Lần sau cố lên nhé!",
+            Icon      = DynamicIslandNotifier.UI.TreeShape.Render(1, dead: !session.Success),
+            SourceKey = "system:focus"
+        };
+    }
+
+    private void NotchToggle_Click(object sender, RoutedEventArgs e)
+    {
+        if (_notch == null) return;
+        _notch.NotchEnabled = !_notch.NotchEnabled;
+        AppSettings.Current.NotchEnabled = _notch.NotchEnabled;
+        AppSettings.Current.Save();
+        UpdateNotchMenu();
+    }
+
+    private void UpdateNotchMenu()
+    {
+        var tray = (Hardcodet.Wpf.TaskbarNotification.TaskbarIcon?)Current.Resources["TrayIcon"];
+        if (tray?.ContextMenu == null) return;
+        foreach (var obj in tray.ContextMenu.Items)
+            if (obj is MenuItem { Tag: "notch" } item)
+                item.IsChecked = _notch?.NotchEnabled == true;
+    }
+
     private void MusicToggle_Click(object sender, RoutedEventArgs e)
     {
         if (_media == null) return;
@@ -195,7 +240,7 @@ public partial class App : Application
         if (tray?.ContextMenu == null) return;
         foreach (var obj in tray.ContextMenu.Items)
             if (obj is MenuItem { Tag: "music" } item)
-                item.Header = _media?.Enabled == true ? "Music player: On" : "Music player: Off";
+                item.Header = _media?.Enabled == true ? "Music: On" : "Music: Off";
     }
 
     protected override void OnExit(ExitEventArgs e)

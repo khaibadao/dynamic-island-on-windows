@@ -2,6 +2,7 @@ namespace DynamicIslandNotifier.Core;
 
 using System;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Windows;
 using System.Windows.Interop;
 
@@ -33,6 +34,65 @@ public static class NativeInterop
     [DllImport("user32.dll")] private static extern int  SetWindowLong(IntPtr h, int idx, int val);
     [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr hWnd, IntPtr insert,
         int x, int y, int cx, int cy, uint flags);
+
+    [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] private static extern IntPtr GetShellWindow();
+    [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+    [DllImport("user32.dll")] private static extern IntPtr MonitorFromWindow(IntPtr hWnd, uint flags);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO info);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetClassName(IntPtr hWnd, StringBuilder name, int max);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT { public int Left, Top, Right, Bottom; }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct MONITORINFO
+    {
+        public int  cbSize;
+        public RECT rcMonitor;
+        public RECT rcWork;
+        public uint dwFlags;
+    }
+
+    private const uint MONITOR_DEFAULTTONEAREST = 2;
+    private const uint MONITORINFOF_PRIMARY     = 1;
+
+    /// <summary>
+    /// True when the active window covers the whole primary screen, taskbar
+    /// included: a video in fullscreen, a game, a browser after F11.
+    /// The desktop, the taskbar and this app's own windows don't count.
+    /// </summary>
+    public static bool IsForegroundFullscreenOnPrimary()
+    {
+        try
+        {
+            var hwnd = GetForegroundWindow();
+            if (hwnd == IntPtr.Zero || hwnd == GetShellWindow()) return false;
+
+            GetWindowThreadProcessId(hwnd, out uint pid);
+            if (pid == (uint)Environment.ProcessId) return false;
+
+            var cls = new StringBuilder(64);
+            GetClassName(hwnd, cls, cls.Capacity);
+            var name = cls.ToString();
+            if (name is "Progman" or "WorkerW" or "Shell_TrayWnd" or "Shell_SecondaryTrayWnd") return false;
+
+            if (!GetWindowRect(hwnd, out var r)) return false;
+
+            var info = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+            var monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+            if (!GetMonitorInfo(monitor, ref info)) return false;
+            if ((info.dwFlags & MONITORINFOF_PRIMARY) == 0) return false;
+
+            var m = info.rcMonitor;
+            return r.Left <= m.Left && r.Top <= m.Top && r.Right >= m.Right && r.Bottom >= m.Bottom;
+        }
+        catch
+        {
+            return false;
+        }
+    }
 
     // ── Public API ────────────────────────────────────────────────────
     /// <summary>

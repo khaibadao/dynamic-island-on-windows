@@ -14,7 +14,8 @@
                         <MenuItem Header="Dynamic Island Notifier" IsEnabled="False" FontWeight="Bold"/>
                         <Separator/>
                         <MenuItem Header="Enable / Disable" Click="Toggle_Click"/>
-                        <MenuItem Header="Music player: On" Tag="music" Click="MusicToggle_Click"/>
+                        <MenuItem Header="Notch bar" Tag="notch" IsCheckable="True" Click="NotchToggle_Click"/>
+                        <MenuItem Header="Music: On" Tag="music" Click="MusicToggle_Click"/>
                         <MenuItem Header="Start with Windows" Tag="autostart" IsCheckable="True" Click="AutoStartToggle_Click"/>
                         <Separator/>
                         <!-- Filled in code each time the menu opens -->
