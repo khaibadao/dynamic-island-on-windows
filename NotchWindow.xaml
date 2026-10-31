@@ -206,18 +206,20 @@
         <!-- ══════════ RESTING: a thin coloured strip, so browser tabs stay clickable ══════════ -->
         <!-- A slightly taller invisible area makes it easy to hit with the mouse at the top edge. -->
         <Border x:Name="StripHost"
-                Height="7"
+                Height="9"
                 Width="200"
                 Background="#01000000"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Top"
                 Cursor="Hand"
                 MouseEnter="Strip_MouseEnter">
-            <Border x:Name="Strip" Height="4" VerticalAlignment="Top" CornerRadius="0,0,3,3" Background="#3A3A3C">
-                <Border.Effect>
+            <!-- Trapezoid  \_______/ : wide along the screen edge, narrower below, soft corners -->
+            <Path x:Name="Strip" VerticalAlignment="Top" HorizontalAlignment="Center" Fill="#3A3A3C"
+                  Data="M 0,0 L 200,0 L 190,4.6 Q 187,6 183,6 L 17,6 Q 13,6 10,4.6 Z">
+                <Path.Effect>
                     <DropShadowEffect x:Name="StripGlow" Color="#5A5A5E" BlurRadius="10" ShadowDepth="0" Opacity="0.6"/>
-                </Border.Effect>
-            </Border>
+                </Path.Effect>
+            </Path>
         </Border>
 
         <!-- ══════════ COLLAPSED: the notch (on hover / for a moment on news) ══════════ -->

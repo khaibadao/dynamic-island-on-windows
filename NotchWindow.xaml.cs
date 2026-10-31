@@ -351,7 +351,7 @@ public partial class NotchWindow : Window
                 : Color.FromRgb(0x3A, 0x3A, 0x3C);
         bool lit = _hasMusic || _focus.IsRunning;
 
-        Strip.Background  = Frozen(c);
+        Strip.Fill        = Frozen(c);
         StripGlow.Color   = lit ? c : Neutral;
         StripGlow.Opacity = lit ? 0.7 : 0.3;
     }
