@@ -1,5 +1,9 @@
 Bản chỉnh sửa từ [sadeeshasathsara/dynamic-island-on-windows](https://github.com/sadeeshasathsara/dynamic-island-on-windows) (MIT).
 
+### Sửa trong v1.4.1
+- **Tai thỏ không còn che tab trình duyệt**: lúc bình thường chỉ là một **vạch mỏng 4px** ở mép trên, mang màu chủ đạo của bài hát kèm quầng sáng (xanh lá khi đang trồng cây). Đưa chuột chạm vạch → bung thành viên tai thỏ (vẫn giữ viền + quầng sáng theo màu nhạc); di tiếp vào viên → mở bảng tab. Đổi bài thì viên hiện vài giây rồi thu lại thành vạch
+- **Sửa màu bị trắng** với ảnh bìa màu nhạt (xám xanh, be…): nay vẫn lấy được màu và làm rực lên
+
 ### Mới trong v1.4.0
 - **Tai thỏ chia tab**: **Nhạc · Trồng cây · Thông báo**, giờ & pin ở góc phải. Bảng rộng hơn, thấp hơn; mở lại đúng tab dùng lần cuối (đang trồng cây thì mở thẳng tab Trồng cây)
 - **Viền và quầng sáng nhẹ theo màu ảnh bìa** cho tai thỏ nổi bật trên nền tối; thanh tua cũng đổi theo màu nhạc

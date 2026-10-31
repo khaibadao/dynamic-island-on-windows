@@ -35,6 +35,7 @@ public partial class NotchWindow : Window
     private readonly DispatcherTimer _peekTimer       = new() { Interval = TimeSpan.FromMilliseconds(3500) };
     private readonly DispatcherTimer _giveUpTimer     = new() { Interval = TimeSpan.FromSeconds(3) };
     private readonly DispatcherTimer _fullscreenTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+    private readonly DispatcherTimer _stripTimer      = new() { Interval = TimeSpan.FromMilliseconds(600) };
 
     private static readonly Color Neutral = Color.FromRgb(0x5A, 0x5A, 0x5E);
 
@@ -53,6 +54,8 @@ public partial class NotchWindow : Window
     private string _title = "";
     private int _selectedMinutes;
     private TreeKind _selectedKind;
+    private Color _accent = Colors.White;
+    private bool _hasColour;
 
     private static readonly string[] Weekdays =
         { "Chủ Nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy" };
@@ -67,8 +70,13 @@ public partial class NotchWindow : Window
 
         _openTimer.Tick   += (_, _) => { _openTimer.Stop();   if (Pill.IsMouseOver || NativeInterop.IsCursorOver(this)) Expand(); };
         _closeTimer.Tick  += (_, _) => { _closeTimer.Stop();  if (!_seeking && !NativeInterop.IsCursorOver(this)) Collapse(); };
-        _volumeTimer.Tick += (_, _) => { _volumeTimer.Stop(); VolumeView.Visibility = Visibility.Collapsed; if (!_expanded) Pill.Visibility = Visibility.Visible; };
-        _peekTimer.Tick   += (_, _) => { _peekTimer.Stop();   _peeking = false; UpdatePill(); };
+        _volumeTimer.Tick += (_, _) => { _volumeTimer.Stop(); VolumeView.Visibility = Visibility.Collapsed; if (!_expanded) ShowStrip(); };
+        _peekTimer.Tick   += (_, _) => { _peekTimer.Stop();   _peeking = false; UpdatePill(); _stripTimer.Start(); };
+        _stripTimer.Tick  += (_, _) =>
+        {
+            _stripTimer.Stop();
+            if (!_expanded && !_peeking && !NativeInterop.IsCursorOver(this)) ShowStrip();
+        };
         _giveUpTimer.Tick += (_, _) => { _giveUpTimer.Stop(); ResetGiveUp(); };
         _tickTimer.Tick   += (_, _) => OnTick();
         _fullscreenTimer.Tick += (_, _) => CheckFullscreen();
@@ -146,8 +154,39 @@ public partial class NotchWindow : Window
     }
 
     // ── Open / close ──────────────────────────────────────────────────
-    private void Pill_MouseEnter(object sender, MouseEventArgs e) => _openTimer.Start();
-    private void Pill_MouseLeave(object sender, MouseEventArgs e) => _openTimer.Stop();
+    private void Strip_MouseEnter(object sender, MouseEventArgs e) => ShowPill();
+
+    private void Pill_MouseEnter(object sender, MouseEventArgs e)
+    {
+        _stripTimer.Stop();
+        _openTimer.Start();
+    }
+
+    private void Pill_MouseLeave(object sender, MouseEventArgs e)
+    {
+        _openTimer.Stop();
+        _stripTimer.Start();
+    }
+
+    /// <summary>The thin strip grows into the full notch.</summary>
+    private void ShowPill()
+    {
+        if (_expanded) return;
+        StripHost.Visibility = Visibility.Collapsed;
+        Pill.Visibility      = Visibility.Visible;
+        Pill.BeginAnimation(OpacityProperty, new DoubleAnimation(0.3, 1, TimeSpan.FromMilliseconds(150)));
+        _stripTimer.Stop();
+        _stripTimer.Start();   // back to the strip if the mouse moves away
+    }
+
+    /// <summary>Back to resting: a thin strip that doesn't cover the browser's tabs.</summary>
+    private void ShowStrip()
+    {
+        if (_expanded) return;
+        Pill.Visibility       = Visibility.Collapsed;
+        VolumeView.Visibility = Visibility.Collapsed;
+        StripHost.Visibility  = Visibility.Visible;
+    }
     private void Pill_MouseLeftButtonUp(object sender, MouseButtonEventArgs e) => Expand();
 
     private void Expanded_MouseEnter(object sender, MouseEventArgs e) => _closeTimer.Stop();
@@ -163,7 +202,9 @@ public partial class NotchWindow : Window
         _expanded = true;
 
         _volumeTimer.Stop();
+        _stripTimer.Stop();
         VolumeView.Visibility = Visibility.Collapsed;
+        StripHost.Visibility  = Visibility.Collapsed;
         Pill.Visibility       = Visibility.Collapsed;
         Expanded.Visibility   = Visibility.Visible;
 
@@ -199,8 +240,9 @@ public partial class NotchWindow : Window
         _seeking  = false;
 
         Expanded.Visibility = Visibility.Collapsed;
-        Pill.Visibility     = Visibility.Visible;
         StopMarquee();
+        if (NativeInterop.IsCursorOver(this)) ShowPill();
+        else ShowStrip();
         ResetGiveUp();
     }
 
@@ -297,6 +339,21 @@ public partial class NotchWindow : Window
         PillText.Visibility     = _peeking && _hasMusic ? Visibility.Visible : Visibility.Collapsed;
         PillFocusMid.Visibility = _hasMusic && focus && !_peeking ? Visibility.Visible : Visibility.Collapsed;
         PillLeft.Visibility     = _hasMusic || focus ? Visibility.Visible : Visibility.Collapsed;
+        UpdateStrip();
+    }
+
+    /// <summary>The strip takes the song's colour, or green while a tree grows.</summary>
+    private void UpdateStrip()
+    {
+        Color c = _hasMusic && _hasColour ? _accent
+                : _hasMusic ? Colors.White
+                : _focus.IsRunning ? Color.FromRgb(0x34, 0xC7, 0x59)
+                : Color.FromRgb(0x3A, 0x3A, 0x3C);
+        bool lit = _hasMusic || _focus.IsRunning;
+
+        Strip.Background  = Frozen(c);
+        StripGlow.Color   = lit ? c : Neutral;
+        StripGlow.Opacity = lit ? 0.7 : 0.3;
     }
 
     // ── Music ─────────────────────────────────────────────────────────
@@ -337,6 +394,7 @@ public partial class NotchWindow : Window
         {
             PillText.Text = string.IsNullOrWhiteSpace(state.Artist) ? state.Title : $"{state.Title} · {state.Artist}";
             _peeking = true;
+            ShowPill();
             _peekTimer.Stop();
             _peekTimer.Start();
         }
@@ -358,6 +416,8 @@ public partial class NotchWindow : Window
     {
         var vivid = cover is { } c ? ColorExtractor.Vivid(c) : Colors.White;
         bool hasColour = cover != null && vivid != Colors.White;
+        _accent    = vivid;
+        _hasColour = hasColour;
 
         var accent = new SolidColorBrush(vivid);
         accent.Freeze();
@@ -387,6 +447,7 @@ public partial class NotchWindow : Window
         PillGlow.Opacity     = hasColour ? 0.45 : 0.3;
         ExpandedGlow.Color   = hasColour ? vivid : Neutral;
         ExpandedGlow.Opacity = hasColour ? 0.4 : 0.3;
+        UpdateStrip();
     }
 
     private System.Windows.Shapes.Rectangle[] Bars => new[] { Bar1, Bar2, Bar3, Bar4, Bar5, Bar6, Bar7 };
@@ -546,6 +607,7 @@ public partial class NotchWindow : Window
         VolText.Text        = muted ? "Tắt" : Math.Round(level * 100).ToString();
 
         Pill.Visibility       = Visibility.Collapsed;
+        StripHost.Visibility  = Visibility.Collapsed;
         VolumeView.Visibility = Visibility.Visible;
         _volumeTimer.Stop();
         _volumeTimer.Start();

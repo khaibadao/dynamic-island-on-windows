@@ -64,7 +64,8 @@ public static class ColorExtractor
 
     /// <summary>
     /// A bright, saturated version of the colour for accents on black (sound
-    /// bars, seek bar, glow). Near-grey covers give white.
+    /// bars, seek bar, glow). Only truly grey covers give white; pale ones
+    /// (grey-blue, beige…) are pushed to a clear, bright version of their hue.
     /// </summary>
     public static Color Vivid(Color c)
     {
@@ -74,14 +75,14 @@ public static class ColorExtractor
         if (d < 0.001) return Colors.White;
 
         double s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-        if (s < 0.12) return Colors.White;
+        if (s < 0.04) return Colors.White;
 
         double h = max == r ? (g - b) / d + (g < b ? 6 : 0)
                  : max == g ? (b - r) / d + 2
                  : (r - g) / d + 4;
         h /= 6;
 
-        return FromHsl(h, Math.Max(s, 0.6), 0.64);
+        return FromHsl(h, Math.Max(s, s < 0.15 ? 0.45 : 0.6), 0.64);
     }
 
     private static Color FromHsl(double h, double s, double l)

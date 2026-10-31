@@ -203,8 +203,26 @@
     <!-- Side and bottom margin leaves room for the glow -->
     <Grid Margin="24,0,24,24">
 
-        <!-- ══════════ COLLAPSED: the notch ══════════ -->
+        <!-- ══════════ RESTING: a thin coloured strip, so browser tabs stay clickable ══════════ -->
+        <!-- A slightly taller invisible area makes it easy to hit with the mouse at the top edge. -->
+        <Border x:Name="StripHost"
+                Height="7"
+                Width="200"
+                Background="#01000000"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Top"
+                Cursor="Hand"
+                MouseEnter="Strip_MouseEnter">
+            <Border x:Name="Strip" Height="4" VerticalAlignment="Top" CornerRadius="0,0,3,3" Background="#3A3A3C">
+                <Border.Effect>
+                    <DropShadowEffect x:Name="StripGlow" Color="#5A5A5E" BlurRadius="10" ShadowDepth="0" Opacity="0.6"/>
+                </Border.Effect>
+            </Border>
+        </Border>
+
+        <!-- ══════════ COLLAPSED: the notch (on hover / for a moment on news) ══════════ -->
         <Border x:Name="Pill"
+                Visibility="Collapsed"
                 Background="#000000"
                 BorderThickness="1,0,1,1"
                 BorderBrush="#3A3A3C"
