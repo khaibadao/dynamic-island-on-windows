@@ -223,7 +223,7 @@ public partial class NotchWindow : Window
     }
 
     // ── Music ─────────────────────────────────────────────────────────
-    public void UpdateMedia(MediaState state, bool newTrack)
+    public void UpdateMedia(Services.MediaState state, bool newTrack)
     {
         _hasMusic = state.HasSession;
         if (!state.HasSession)
