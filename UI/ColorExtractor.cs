@@ -62,6 +62,48 @@ public static class ColorExtractor
             (byte)(a.B + (b.B - a.B) * t));
     }
 
+    /// <summary>
+    /// A bright, saturated version of the colour for accents on black (sound
+    /// bars, seek bar, glow). Near-grey covers give white.
+    /// </summary>
+    public static Color Vivid(Color c)
+    {
+        double r = c.R / 255.0, g = c.G / 255.0, b = c.B / 255.0;
+        double max = Math.Max(r, Math.Max(g, b)), min = Math.Min(r, Math.Min(g, b));
+        double l = (max + min) / 2, d = max - min;
+        if (d < 0.001) return Colors.White;
+
+        double s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        if (s < 0.12) return Colors.White;
+
+        double h = max == r ? (g - b) / d + (g < b ? 6 : 0)
+                 : max == g ? (b - r) / d + 2
+                 : (r - g) / d + 4;
+        h /= 6;
+
+        return FromHsl(h, Math.Max(s, 0.6), 0.64);
+    }
+
+    private static Color FromHsl(double h, double s, double l)
+    {
+        double q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+        double p = 2 * l - q;
+        return Color.FromRgb(
+            (byte)Math.Round(255 * Hue(p, q, h + 1.0 / 3)),
+            (byte)Math.Round(255 * Hue(p, q, h)),
+            (byte)Math.Round(255 * Hue(p, q, h - 1.0 / 3)));
+    }
+
+    private static double Hue(double p, double q, double t)
+    {
+        if (t < 0) t += 1;
+        if (t > 1) t -= 1;
+        if (t < 1.0 / 6) return p + (q - p) * 6 * t;
+        if (t < 1.0 / 2) return q;
+        if (t < 2.0 / 3) return p + (q - p) * (2.0 / 3 - t) * 6;
+        return p;
+    }
+
     /// <summary>Lightens dark colours so they stay visible on black.</summary>
     public static Color EnsureBright(Color c)
     {

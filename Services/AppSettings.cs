@@ -20,7 +20,12 @@ public sealed class AppSettings
     /// <summary>Start of the focus session in progress, so it survives a restart.</summary>
     public DateTime? FocusStartUtc { get; set; }
     public int FocusMinutes { get; set; }
+    public string? FocusKind { get; set; }
     public int LastFocusMinutes { get; set; } = 25;
+    public string? LastTreeKind { get; set; }
+
+    /// <summary>The notch tab shown last: "music", "focus" or "notifications".</summary>
+    public string LastNotchTab { get; set; } = "music";
 
     /// <summary>True once "start with Windows" was set up on first run (the user may have turned it off since).</summary>
     public bool AutoStartConfigured { get; set; }

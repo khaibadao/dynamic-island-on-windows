@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Media.Effects;
 using System.Windows.Threading;
 using DynamicIslandNotifier.Core;
 using DynamicIslandNotifier.Services;
@@ -16,10 +17,10 @@ namespace DynamicIslandNotifier;
 
 /// <summary>
 /// The notch: a small black bar at the top centre of the screen, like the
-/// iPhone's. It shows what's going on (music, focus timer) in miniature;
-/// hovering it opens everything: music player, tree planting, recent
-/// notifications. It hides during fullscreen apps and while a notification
-/// is dropping down from the same spot.
+/// iPhone's. In miniature it shows the album art with sound bars and the
+/// growing tree; hovering it opens a wide panel with three tabs: music,
+/// tree planting and recent notifications. It hides during fullscreen
+/// apps and while a notification drops down from the same spot.
 /// </summary>
 public partial class NotchWindow : Window
 {
@@ -35,6 +36,8 @@ public partial class NotchWindow : Window
     private readonly DispatcherTimer _giveUpTimer     = new() { Interval = TimeSpan.FromSeconds(3) };
     private readonly DispatcherTimer _fullscreenTimer = new() { Interval = TimeSpan.FromSeconds(1) };
 
+    private static readonly Color Neutral = Color.FromRgb(0x5A, 0x5A, 0x5E);
+
     private bool _ready;           // controls exist (slider events fire during InitializeComponent)
     private bool _expanded;
     private bool _seeking;
@@ -45,8 +48,11 @@ public partial class NotchWindow : Window
     private bool _hasMusic;
     private bool _playing;
     private bool _confirmGiveUp;
+    private bool _peeking;
     private string? _appId;
+    private string _title = "";
     private int _selectedMinutes;
+    private TreeKind _selectedKind;
 
     private static readonly string[] Weekdays =
         { "Chủ Nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy" };
@@ -58,27 +64,30 @@ public partial class NotchWindow : Window
         _media  = media;
         _focus  = focus;
         _recent = recent;
-        _ready  = true;
 
         _openTimer.Tick   += (_, _) => { _openTimer.Stop();   if (Pill.IsMouseOver || NativeInterop.IsCursorOver(this)) Expand(); };
         _closeTimer.Tick  += (_, _) => { _closeTimer.Stop();  if (!_seeking && !NativeInterop.IsCursorOver(this)) Collapse(); };
         _volumeTimer.Tick += (_, _) => { _volumeTimer.Stop(); VolumeView.Visibility = Visibility.Collapsed; if (!_expanded) Pill.Visibility = Visibility.Visible; };
-        _peekTimer.Tick   += (_, _) => { _peekTimer.Stop();   PillText.Visibility = Visibility.Collapsed; };
+        _peekTimer.Tick   += (_, _) => { _peekTimer.Stop();   _peeking = false; UpdatePill(); };
         _giveUpTimer.Tick += (_, _) => { _giveUpTimer.Stop(); ResetGiveUp(); };
         _tickTimer.Tick   += (_, _) => OnTick();
         _fullscreenTimer.Tick += (_, _) => CheckFullscreen();
 
-        _selectedMinutes = FocusService.Presets.Contains(AppSettings.Current.LastFocusMinutes)
-            ? AppSettings.Current.LastFocusMinutes : 25;
+        var s = AppSettings.Current;
+        _selectedMinutes = FocusService.Presets.Contains(s.LastFocusMinutes) ? s.LastFocusMinutes : 25;
+        _selectedKind    = TreeCatalog.Parse(s.LastTreeKind);
+        if (!_focus.IsUnlocked(_selectedKind)) _selectedKind = TreeKind.Oak;
         BuildPresets();
 
         _focus.Changed += () => Dispatcher.BeginInvoke(new Action(UpdateFocusUi));
 
+        _ready = true;
         SizeChanged += (_, _) => Recenter();
         Loaded += (_, _) =>
         {
             Recenter();
             UpdateFocusUi();
+            ApplyAccent(null);
             OnTick();
             _tickTimer.Start();
             _fullscreenTimer.Start();
@@ -158,17 +167,25 @@ public partial class NotchWindow : Window
         Pill.Visibility       = Visibility.Collapsed;
         Expanded.Visibility   = Visibility.Visible;
 
-        RebuildRecent();
         UpdateClock();
-        UpdateFocusUi();
-        if (_hasMusic) { LoadAppVolume(); UpdateProgress(); }
+
+        // Open on the tab used last; straight to the tree while one is growing.
+        var tab = _focus.IsRunning ? "focus" : AppSettings.Current.LastNotchTab;
+        var button = tab switch
+        {
+            "focus"         => TabFocus,
+            "notifications" => TabNotifications,
+            _               => TabMusic
+        };
+        if (button.IsChecked == true) ShowTab(tab);
+        else button.IsChecked = true;   // → Tab_Checked → ShowTab
 
         // Drop down from the notch
         var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
         var dur  = TimeSpan.FromMilliseconds(200);
         Expanded.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, dur) { EasingFunction = ease });
-        ExpandedScale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(0.6, 1, dur) { EasingFunction = ease });
-        ExpandedScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(0.4, 1, dur) { EasingFunction = ease });
+        ExpandedScale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(0.5, 1, dur) { EasingFunction = ease });
+        ExpandedScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(0.3, 1, dur) { EasingFunction = ease });
 
         _closeTimer.Start();   // closes again if the mouse just passed by
     }
@@ -183,7 +200,44 @@ public partial class NotchWindow : Window
 
         Expanded.Visibility = Visibility.Collapsed;
         Pill.Visibility     = Visibility.Visible;
+        StopMarquee();
         ResetGiveUp();
+    }
+
+    // ── Tabs ──────────────────────────────────────────────────────────
+    private void Tab_Checked(object sender, RoutedEventArgs e)
+    {
+        if (!_ready) return;
+        var tab = sender == TabFocus ? "focus" : sender == TabNotifications ? "notifications" : "music";
+        AppSettings.Current.LastNotchTab = tab;
+        AppSettings.Current.Save();
+        ShowTab(tab);
+    }
+
+    private void ShowTab(string tab)
+    {
+        MusicTab.Visibility         = tab == "music"         ? Visibility.Visible : Visibility.Collapsed;
+        FocusTab.Visibility         = tab == "focus"         ? Visibility.Visible : Visibility.Collapsed;
+        NotificationsTab.Visibility = tab == "notifications" ? Visibility.Visible : Visibility.Collapsed;
+
+        StopMarquee();
+        switch (tab)
+        {
+            case "music":
+                if (_hasMusic)
+                {
+                    LoadAppVolume();
+                    UpdateProgress();
+                    StartMarqueeSoon();
+                }
+                break;
+            case "focus":
+                UpdateFocusUi();
+                break;
+            case "notifications":
+                RebuildRecent();
+                break;
+        }
     }
 
     // ── Every second ──────────────────────────────────────────────────
@@ -193,7 +247,7 @@ public partial class NotchWindow : Window
         if (_expanded)
         {
             UpdateClock();
-            if (_hasMusic) UpdateProgress();
+            if (_hasMusic && MusicTab.IsVisible) UpdateProgress();
 
             // Safety net in case MouseLeave never came: close once the pointer is gone.
             if (!_seeking && !_closeTimer.IsEnabled && !NativeInterop.IsCursorOver(this))
@@ -204,7 +258,7 @@ public partial class NotchWindow : Window
     private void UpdateClock()
     {
         var now = DateTime.Now;
-        ClockText.Text = $"{now:HH:mm}   {Weekdays[(int)now.DayOfWeek]}, {now:dd/MM}";
+        ClockText.Text = $"{now:HH:mm}  ·  {Weekdays[(int)now.DayOfWeek]}, {now:dd/MM}";
 
         try
         {
@@ -226,23 +280,47 @@ public partial class NotchWindow : Window
         }
     }
 
+    // ── The collapsed notch ───────────────────────────────────────────
+    /// <summary>
+    /// Left: album art (or the tree). Right: sound bars (or the time left).
+    /// Middle: the song name for a moment, or tree + time when both run.
+    /// </summary>
+    private void UpdatePill()
+    {
+        bool focus = _focus.IsRunning;
+
+        PillArtBox.Visibility   = _hasMusic ? Visibility.Visible : Visibility.Collapsed;
+        PillBars.Visibility     = _hasMusic ? Visibility.Visible : Visibility.Collapsed;
+        PillTreeLeft.Visibility = !_hasMusic && focus ? Visibility.Visible : Visibility.Collapsed;
+        PillFocusText.Visibility = !_hasMusic && focus ? Visibility.Visible : Visibility.Collapsed;
+
+        PillText.Visibility     = _peeking && _hasMusic ? Visibility.Visible : Visibility.Collapsed;
+        PillFocusMid.Visibility = _hasMusic && focus && !_peeking ? Visibility.Visible : Visibility.Collapsed;
+        PillLeft.Visibility     = _hasMusic || focus ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     // ── Music ─────────────────────────────────────────────────────────
     public void UpdateMedia(Services.MediaState state, bool newTrack)
     {
         _hasMusic = state.HasSession;
         if (!state.HasSession)
         {
-            MusicSection.Visibility = Visibility.Collapsed;
-            PillMusic.Visibility    = Visibility.Collapsed;
-            PillText.Visibility     = Visibility.Collapsed;
+            MusicContent.Visibility = Visibility.Collapsed;
+            NoMusicText.Visibility  = Visibility.Visible;
+            _peeking = false;
             SetBarsPlaying(false);
+            StopMarquee();
+            ApplyAccent(null);
+            UpdatePill();
             return;
         }
 
         _appId   = state.AppId;
         _playing = state.IsPlaying;
 
-        SongTitle.Text    = state.Title;
+        bool titleChanged = state.Title != _title;
+        _title = state.Title;
+
         SongArtist.Text   = state.Artist;
         MusicAppName.Text = state.AppName;
         PillArt.Source    = state.Art;
@@ -251,33 +329,135 @@ public partial class NotchWindow : Window
         ApplyAccent(ColorExtractor.Dominant(state.Art));
         SetBarsPlaying(_playing);
 
-        MusicSection.Visibility = Visibility.Visible;
-        PillMusic.Visibility    = Visibility.Visible;
+        MusicContent.Visibility = Visibility.Visible;
+        NoMusicText.Visibility  = Visibility.Collapsed;
 
         // A new song: show its name in the notch for a moment.
         if (newTrack && !_expanded)
         {
             PillText.Text = string.IsNullOrWhiteSpace(state.Artist) ? state.Title : $"{state.Title} · {state.Artist}";
-            PillText.Visibility = Visibility.Visible;
+            _peeking = true;
             _peekTimer.Stop();
             _peekTimer.Start();
         }
+        UpdatePill();
 
-        if (_expanded) UpdateProgress();
+        if (titleChanged || SongTitle.Text.Length == 0)
+        {
+            StopMarquee();
+            if (_expanded && MusicTab.IsVisible) StartMarqueeSoon();
+        }
+        if (_expanded && MusicTab.IsVisible) UpdateProgress();
     }
 
-    /// <summary>Tints the player with the album's main colour.</summary>
+    /// <summary>
+    /// Colours from the album art: a tint behind the player, the sound bars,
+    /// the seek bar, and a thin border + soft glow around the notch.
+    /// </summary>
     private void ApplyAccent(Color? cover)
     {
-        var baseColor = cover ?? Color.FromRgb(0x3A, 0x3A, 0x3C);
+        var vivid = cover is { } c ? ColorExtractor.Vivid(c) : Colors.White;
+        bool hasColour = cover != null && vivid != Colors.White;
 
-        var top    = ColorExtractor.Mix(baseColor, Colors.Black, 0.45);
-        var bottom = ColorExtractor.Mix(baseColor, Colors.Black, 0.82);
-        MusicSection.Background  = new LinearGradientBrush(top, bottom, 60);
-        MusicSection.BorderBrush = new SolidColorBrush(ColorExtractor.Mix(baseColor, Colors.Black, 0.25)) { Opacity = 0.6 };
+        var accent = new SolidColorBrush(vivid);
+        accent.Freeze();
+        Resources["AccentBrush"] = accent;
+        foreach (var bar in Bars) bar.Fill = accent;
 
-        var accent = new SolidColorBrush(ColorExtractor.EnsureBright(baseColor));
-        foreach (var bar in new[] { Bar1, Bar2, Bar3, Bar4 }) bar.Fill = accent;
+        if (cover is { } baseColor)
+        {
+            var tint = ColorExtractor.Mix(baseColor, vivid, 0.5);
+            MusicTint.Background = new LinearGradientBrush(
+                Color.FromArgb(0x66, tint.R, tint.G, tint.B),
+                Color.FromArgb(0x10, tint.R, tint.G, tint.B), 0);
+        }
+        else
+        {
+            MusicTint.Background = new SolidColorBrush(Color.FromArgb(0x14, 0xFF, 0xFF, 0xFF));
+        }
+
+        var edge = hasColour ? ColorExtractor.Mix(vivid, Colors.Black, 0.35) : Color.FromRgb(0x3A, 0x3A, 0x3C);
+        var border = new SolidColorBrush(edge);
+        border.Freeze();
+        Pill.BorderBrush       = border;
+        Expanded.BorderBrush   = border;
+        VolumeView.BorderBrush = border;
+
+        PillGlow.Color       = hasColour ? vivid : Neutral;
+        PillGlow.Opacity     = hasColour ? 0.45 : 0.3;
+        ExpandedGlow.Color   = hasColour ? vivid : Neutral;
+        ExpandedGlow.Opacity = hasColour ? 0.4 : 0.3;
+    }
+
+    private System.Windows.Shapes.Rectangle[] Bars => new[] { Bar1, Bar2, Bar3, Bar4, Bar5, Bar6, Bar7 };
+
+    private void SetBarsPlaying(bool playing)
+    {
+        var bars   = Bars;
+        var speeds = new[] { 420, 560, 360, 500, 440, 620, 380 };   // different speeds so they look lively
+        var rest   = new[] { 0.3, 0.55, 0.4, 0.7, 0.45, 0.6, 0.35 };
+
+        for (int i = 0; i < bars.Length; i++)
+        {
+            if (bars[i].RenderTransform is not ScaleTransform scale) continue;
+            if (playing)
+            {
+                scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(0.2, 1.0, TimeSpan.FromMilliseconds(speeds[i]))
+                {
+                    AutoReverse    = true,
+                    RepeatBehavior = RepeatBehavior.Forever,
+                    EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
+                });
+            }
+            else
+            {
+                scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+                scale.ScaleY = rest[i];
+            }
+        }
+    }
+
+    // Long song names scroll from right to left
+    private void StartMarqueeSoon() =>
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(StartMarquee));
+
+    private void StartMarquee()
+    {
+        StopMarquee();
+        SongTitle.Text = _title;
+
+        double box = TitleClip.ActualWidth;
+        double full = TextWidth(_title);
+        if (box <= 0 || full <= box) return;
+
+        const string gap = "          ";
+        double cycle = TextWidth(_title + gap);
+        SongTitle.Text = _title + gap + _title;
+
+        var anim = new DoubleAnimation(0, -cycle, TimeSpan.FromSeconds(cycle / 40))   // 40 px per second
+        {
+            BeginTime      = TimeSpan.FromSeconds(1.5),
+            RepeatBehavior = RepeatBehavior.Forever
+        };
+        TitleShift.BeginAnimation(TranslateTransform.XProperty, anim);
+    }
+
+    private void StopMarquee()
+    {
+        TitleShift.BeginAnimation(TranslateTransform.XProperty, null);
+        TitleShift.X   = 0;
+        SongTitle.Text = _title;
+    }
+
+    private double TextWidth(string text)
+    {
+        var probe = new TextBlock
+        {
+            Text = text, FontSize = SongTitle.FontSize, FontWeight = SongTitle.FontWeight,
+            FontFamily = SongTitle.FontFamily
+        };
+        probe.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        return probe.DesiredSize.Width;
     }
 
     private void Prev_Click(object sender, RoutedEventArgs e) => _media.Previous();
@@ -321,7 +501,7 @@ public partial class NotchWindow : Window
         if (!_seeking) return;
         _seeking = false;
         _media.Seek(TimeSpan.FromSeconds(SeekSlider.Value));
-        if (!Expanded.IsMouseOver) _closeTimer.Start();
+        if (!NativeInterop.IsCursorOver(this)) _closeTimer.Start();
     }
 
     private void SeekSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -356,32 +536,6 @@ public partial class NotchWindow : Window
         AppVolumeGlyph.Text = VolumeGlyph(value / 100.0, muted: false);
     }
 
-    private void SetBarsPlaying(bool playing)
-    {
-        var bars   = new[] { Bar1, Bar2, Bar3, Bar4 };
-        var speeds = new[] { 420, 560, 360, 500 };   // different speeds so they look lively
-        var rest   = new[] { 0.35, 0.6, 0.45, 0.3 };
-
-        for (int i = 0; i < bars.Length; i++)
-        {
-            if (bars[i].RenderTransform is not ScaleTransform scale) continue;
-            if (playing)
-            {
-                scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(0.25, 1.0, TimeSpan.FromMilliseconds(speeds[i]))
-                {
-                    AutoReverse    = true,
-                    RepeatBehavior = RepeatBehavior.Forever,
-                    EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
-                });
-            }
-            else
-            {
-                scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-                scale.ScaleY = rest[i];
-            }
-        }
-    }
-
     // ── System volume bar ─────────────────────────────────────────────
     public void ShowVolume(float level, bool muted)
     {
@@ -403,7 +557,7 @@ public partial class NotchWindow : Window
         : level < 0.67 ? ""           // medium
         : "";                         // high
 
-    // ── Focus: plant a tree ───────────────────────────────────────────
+    // ── Tree planting ─────────────────────────────────────────────────
     private void BuildPresets()
     {
         PresetPanel.Children.Clear();
@@ -412,7 +566,7 @@ public partial class NotchWindow : Window
             var chip = new RadioButton
             {
                 Content   = $"{minutes}p",
-                GroupName = "focus",
+                GroupName = "focusMinutes",
                 Style     = (Style)FindResource("Chip"),
                 IsChecked = minutes == _selectedMinutes,
                 ToolTip   = $"{minutes} phút"
@@ -423,10 +577,84 @@ public partial class NotchWindow : Window
         }
     }
 
+    /// <summary>One button per kind of tree; locked ones show what's needed to unlock them.</summary>
+    private void BuildSpecies()
+    {
+        SpeciesPanel.Children.Clear();
+        int grown = _focus.TotalTrees;
+
+        foreach (var info in TreeCatalog.All)
+        {
+            bool unlocked = grown >= info.UnlockAt;
+            bool selected = info.Kind == _selectedKind;
+
+            var icon = new TreeShape
+            {
+                Kind = info.Kind,
+                LayoutTransform = new ScaleTransform(0.3, 0.3),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment   = VerticalAlignment.Center,
+                Opacity = unlocked ? 1 : 0.3
+            };
+
+            var content = new Grid();
+            content.Children.Add(icon);
+            if (!unlocked)
+            {
+                content.Children.Add(new TextBlock
+                {
+                    Text = "", FontFamily = (FontFamily)FindResource("IconFont"), FontSize = 12,
+                    Foreground = Brushes.White, HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center
+                });
+            }
+
+            var tile = new Border
+            {
+                Width = 38, Height = 38, Margin = new Thickness(0, 0, 6, 0),
+                CornerRadius = new CornerRadius(10), Child = content,
+                Background = Frozen(Color.FromRgb(0x1E, 0x1E, 0x20)),
+                BorderThickness = new Thickness(1.5),
+                BorderBrush = selected ? Frozen(Color.FromRgb(0x34, 0xC7, 0x59)) : Brushes.Transparent,
+                Cursor = unlocked ? Cursors.Hand : Cursors.Arrow
+            };
+
+            string hint = unlocked
+                ? info.Name
+                : $"{info.Name} · trồng thêm {info.UnlockAt - grown} cây để mở khoá";
+            tile.MouseEnter += (_, _) => SpeciesHint.Text = hint;
+            tile.MouseLeave += (_, _) => SpeciesHint.Text = SelectedHint();
+
+            var kind = info.Kind;
+            tile.MouseLeftButtonUp += (_, _) =>
+            {
+                if (!_focus.IsUnlocked(kind)) return;
+                _selectedKind = kind;
+                AppSettings.Current.LastTreeKind = kind.ToString();
+                AppSettings.Current.Save();
+                BigTree.Kind = kind;
+                BuildSpecies();
+            };
+
+            SpeciesPanel.Children.Add(tile);
+        }
+        SpeciesHint.Text = SelectedHint();
+    }
+
+    private string SelectedHint()
+    {
+        var next = TreeCatalog.All.FirstOrDefault(i => !_focus.IsUnlocked(i.Kind));
+        var name = TreeCatalog.Get(_selectedKind).Name;
+        return next == null
+            ? $"{name} · đã mở khoá tất cả các loại cây"
+            : $"{name} · trồng thêm {next.UnlockAt - _focus.TotalTrees} cây để mở khoá {next.Name}";
+    }
+
     private void Plant_Click(object sender, RoutedEventArgs e)
     {
         AppSettings.Current.LastFocusMinutes = _selectedMinutes;
-        _focus.Start(_selectedMinutes);   // saves settings too
+        AppSettings.Current.LastTreeKind     = _selectedKind.ToString();
+        _focus.Start(_selectedMinutes, _selectedKind);   // saves settings too
     }
 
     /// <summary>Two clicks: the first asks, the second kills the tree.</summary>
@@ -456,15 +684,24 @@ public partial class NotchWindow : Window
         bool running = _focus.IsRunning;
         FocusIdle.Visibility    = running ? Visibility.Collapsed : Visibility.Visible;
         FocusRunning.Visibility = running ? Visibility.Visible   : Visibility.Collapsed;
-        PillFocus.Visibility    = running ? Visibility.Visible   : Visibility.Collapsed;
 
-        if (running) UpdateFocusTick();
+        if (running)
+        {
+            BigTree.Kind      = _focus.CurrentKind;
+            PillTreeLeft.Kind = _focus.CurrentKind;
+            PillTreeMid.Kind  = _focus.CurrentKind;
+            UpdateFocusTick();
+        }
         else
         {
+            if (!_focus.IsUnlocked(_selectedKind)) _selectedKind = TreeKind.Oak;
+            BigTree.Kind = _selectedKind;
             BigTree.Set(0.35, dead: false);   // a seedling waiting to be planted
+            BuildSpecies();
             ResetGiveUp();
         }
         UpdateForest();
+        UpdatePill();
     }
 
     private void UpdateFocusTick()
@@ -473,10 +710,12 @@ public partial class NotchWindow : Window
         var left = Format(_focus.Remaining);
         FocusRemaining.Text   = left;
         PillFocusText.Text    = left;
-        FocusSub.Text         = $"Đang tập trung · {_focus.Minutes} phút";
+        PillFocusMidText.Text = left;
+        FocusSub.Text         = $"{TreeCatalog.Get(_focus.CurrentKind).Name} · {_focus.Minutes} phút";
         FocusFillScale.ScaleX = _focus.Progress;
         BigTree.Set(_focus.Progress, dead: false);
-        PillTree.Set(_focus.Progress, dead: false);
+        PillTreeLeft.Set(_focus.Progress, dead: false);
+        PillTreeMid.Set(_focus.Progress, dead: false);
     }
 
     private void UpdateForest()
@@ -487,17 +726,19 @@ public partial class NotchWindow : Window
 
         ForestStats.Text = today.Count == 0
             ? $"Hôm nay chưa trồng cây nào · Tổng {_focus.TotalTrees} cây"
-            : $"Hôm nay {grown} cây · {minutes} phút · Tổng {_focus.TotalTrees}";
+            : $"Hôm nay {grown} cây · {minutes} phút · Tổng {_focus.TotalTrees} cây";
 
-        // A tiny forest: one tree per session today (brown = gave up)
+        // Today's forest: one tree per session (brown = gave up)
         ForestRow.Children.Clear();
-        foreach (var session in today.Skip(Math.Max(0, today.Count - 10)))
+        foreach (var session in today.Skip(Math.Max(0, today.Count - 12)))
         {
             var tree = new TreeShape
             {
+                Kind = session.TreeKind,
                 LayoutTransform = new ScaleTransform(0.2, 0.2),
                 Margin  = new Thickness(1, 0, 1, 0),
-                ToolTip = $"{session.StartUtc.ToLocalTime():HH:mm} · {session.Minutes} phút" + (session.Success ? "" : " · đã bỏ cuộc")
+                ToolTip = $"{TreeCatalog.Get(session.TreeKind).Name} · {session.StartUtc.ToLocalTime():HH:mm} · {session.Minutes} phút"
+                          + (session.Success ? "" : " · đã bỏ cuộc")
             };
             tree.Set(1, dead: !session.Success);
             ForestRow.Children.Add(tree);
@@ -508,8 +749,8 @@ public partial class NotchWindow : Window
     private void RebuildRecent()
     {
         RecentList.Children.Clear();
-        var items = _recent().Take(3).ToList();
-        RecentSection.Visibility = items.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        var items = _recent();
+        NoNotificationsText.Visibility = items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         foreach (var (time, data) in items)
             RecentList.Children.Add(MakeRecentRow(time, data));
     }
@@ -517,15 +758,15 @@ public partial class NotchWindow : Window
     private UIElement MakeRecentRow(DateTime time, NotificationData data)
     {
         var grid = new Grid();
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(30) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(32) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
         // Round avatar: the site/app logo, or its first letter
         var avatar = new Grid
         {
-            Width = 22, Height = 22, VerticalAlignment = VerticalAlignment.Center,
-            Clip  = new EllipseGeometry(new Point(11, 11), 11, 11)
+            Width = 24, Height = 24, VerticalAlignment = VerticalAlignment.Center,
+            Clip  = new EllipseGeometry(new Point(12, 12), 12, 12)
         };
         if (data.Icon != null)
         {
@@ -533,7 +774,7 @@ public partial class NotchWindow : Window
         }
         else
         {
-            avatar.Children.Add(new Border { Background = new SolidColorBrush(Color.FromRgb(0x3A, 0x3A, 0x3C)) });
+            avatar.Children.Add(new Border { Background = Frozen(Color.FromRgb(0x3A, 0x3A, 0x3C)) });
             avatar.Children.Add(new TextBlock
             {
                 Text = data.AppName.Length > 0 ? data.AppName[..1].ToUpperInvariant() : "?",
@@ -543,35 +784,39 @@ public partial class NotchWindow : Window
         }
         grid.Children.Add(avatar);
 
-        var text = new StackPanel { Margin = new Thickness(8, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
-        text.Children.Add(new TextBlock
+        var body = string.IsNullOrWhiteSpace(data.Body) ? data.Title : data.Body;
+        var line = new TextBlock
         {
-            Text = data.AppName, Foreground = Brushes.White, FontSize = 12, FontWeight = FontWeights.SemiBold,
-            FontFamily = new FontFamily("Segoe UI"), TextTrimming = TextTrimming.CharacterEllipsis
-        });
-        text.Children.Add(new TextBlock
+            Margin = new Thickness(8, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center,
+            FontFamily = new FontFamily("Segoe UI"), FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis,
+            ToolTip = body
+        };
+        line.Inlines.Add(new System.Windows.Documents.Run(data.AppName + "  ")
         {
-            Text = string.IsNullOrWhiteSpace(data.Body) ? data.Title : data.Body,
-            Foreground = new SolidColorBrush(Color.FromArgb(0xAA, 0xFF, 0xFF, 0xFF)), FontSize = 11.5,
-            FontFamily = new FontFamily("Segoe UI"), TextTrimming = TextTrimming.CharacterEllipsis
+            Foreground = Brushes.White, FontWeight = FontWeights.SemiBold
         });
-        Grid.SetColumn(text, 1);
-        grid.Children.Add(text);
+        line.Inlines.Add(new System.Windows.Documents.Run(body.ReplaceLineEndings(" "))
+        {
+            Foreground = Frozen(Color.FromArgb(0xAA, 0xFF, 0xFF, 0xFF))
+        });
+        Grid.SetColumn(line, 1);
+        grid.Children.Add(line);
 
         var when = new TextBlock
         {
-            Text = time.ToString("HH:mm"), FontSize = 11, VerticalAlignment = VerticalAlignment.Center,
-            Foreground = new SolidColorBrush(Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF)), FontFamily = new FontFamily("Segoe UI")
+            Text = time.Date == DateTime.Today ? time.ToString("HH:mm") : time.ToString("dd/MM"),
+            FontSize = 11, VerticalAlignment = VerticalAlignment.Center,
+            Foreground = Frozen(Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF)), FontFamily = new FontFamily("Segoe UI")
         };
         Grid.SetColumn(when, 2);
         grid.Children.Add(when);
 
         var row = new Border
         {
-            Child = grid, CornerRadius = new CornerRadius(10), Padding = new Thickness(6, 4, 6, 4),
+            Child = grid, CornerRadius = new CornerRadius(10), Padding = new Thickness(8, 5, 10, 5),
             Background = Brushes.Transparent, Cursor = Cursors.Hand
         };
-        var hover = new SolidColorBrush(Color.FromArgb(0x22, 0xFF, 0xFF, 0xFF));
+        var hover = Frozen(Color.FromArgb(0x1E, 0xFF, 0xFF, 0xFF));
         row.MouseEnter += (_, _) => row.Background = hover;
         row.MouseLeave += (_, _) => row.Background = Brushes.Transparent;
         row.MouseLeftButtonUp += (_, _) =>
@@ -585,4 +830,11 @@ public partial class NotchWindow : Window
     // ── Helpers ───────────────────────────────────────────────────────
     private static string Format(TimeSpan t) =>
         t.TotalHours >= 1 ? t.ToString(@"h\:mm\:ss") : t.ToString(@"m\:ss");
+
+    private static SolidColorBrush Frozen(Color c)
+    {
+        var b = new SolidColorBrush(c);
+        b.Freeze();
+        return b;
+    }
 }

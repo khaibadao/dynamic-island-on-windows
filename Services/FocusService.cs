@@ -6,9 +6,13 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
+using DynamicIslandNotifier.Core;
 
 /// <summary>One finished focus session: a tree that grew (Success) or died.</summary>
-public sealed record FocusSession(DateTime StartUtc, int Minutes, bool Success);
+public sealed record FocusSession(DateTime StartUtc, int Minutes, bool Success, string? Kind = null)
+{
+    public TreeKind TreeKind => TreeCatalog.Parse(Kind);
+}
 
 /// <summary>
 /// Forest-style focus timer: plant a tree for N minutes; it grows while the
@@ -30,6 +34,7 @@ public sealed class FocusService
 
     public DateTime? StartUtc { get; private set; }
     public int Minutes { get; private set; }
+    public TreeKind CurrentKind { get; private set; } = TreeKind.Oak;
     public bool IsRunning => StartUtc != null;
 
     /// <summary>Started, finished or given up. Raised on a background thread.</summary>
@@ -46,8 +51,9 @@ public sealed class FocusService
         var s = AppSettings.Current;
         if (s.FocusStartUtc is { } start && s.FocusMinutes > 0)
         {
-            StartUtc = start;
-            Minutes  = s.FocusMinutes;
+            StartUtc    = start;
+            Minutes     = s.FocusMinutes;
+            CurrentKind = TreeCatalog.Parse(s.FocusKind);
         }
 
         _timer = new Timer(_ => Tick(), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
@@ -75,14 +81,19 @@ public sealed class FocusService
         }
     }
 
-    public void Start(int minutes)
+    /// <summary>Whether this kind of tree has been unlocked (enough trees grown).</summary>
+    public bool IsUnlocked(TreeKind kind) => TotalTrees >= TreeCatalog.Get(kind).UnlockAt;
+
+    public void Start(int minutes, TreeKind kind)
     {
         if (minutes <= 0) return;
+        if (!IsUnlocked(kind)) kind = TreeKind.Oak;
         lock (_gate)
         {
             if (IsRunning) return;
-            StartUtc = DateTime.UtcNow;
-            Minutes  = minutes;
+            StartUtc    = DateTime.UtcNow;
+            Minutes     = minutes;
+            CurrentKind = kind;
             Persist();
         }
         Changed?.Invoke();
@@ -102,7 +113,7 @@ public sealed class FocusService
         lock (_gate)
         {
             if (StartUtc is not { } start) return;
-            session = new FocusSession(start, Minutes, success);
+            session = new FocusSession(start, Minutes, success, CurrentKind.ToString());
             _log.Add(session);
             StartUtc = null;
             Minutes  = 0;
@@ -131,6 +142,7 @@ public sealed class FocusService
     {
         AppSettings.Current.FocusStartUtc = StartUtc;
         AppSettings.Current.FocusMinutes  = Minutes;
+        AppSettings.Current.FocusKind     = StartUtc != null ? CurrentKind.ToString() : null;
         AppSettings.Current.Save();
     }
 

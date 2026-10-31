@@ -21,8 +21,7 @@ public partial class App : Application
     private BatteryWatcher? _battery;
 
     // Newest first; shown under "Recent notifications" in the tray menu
-    private const int HistorySize = 15;
-    private readonly List<(DateTime Time, NotificationData Data)> _history = new();
+    private readonly NotificationHistory _history = new();
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -61,7 +60,9 @@ public partial class App : Application
         // The notch: music, tree planting, volume, recent notifications
         _media  = new MediaWatcher { Enabled = AppSettings.Current.MusicEnabled };
         _focus  = new FocusService();
-        _notch  = new NotchWindow(_media, _focus, () => _history.ToList());
+        _notch  = new NotchWindow(_media, _focus,
+            () => _history.Items.Select(entry => (entry.Time, entry.Data)).ToList());
+        _ = _history.RestoreIconsAsync();   // site logos for notifications kept from last time
         _media.Changed += (state, newTrack) => _notch.Dispatcher.Invoke(() => _notch.UpdateMedia(state, newTrack));
         _focus.Finished += session => _island.Dispatcher.Invoke(() => ShowOnIsland(MakeFocusNotification(session), keepInHistory: false));
         _notch.Show();
@@ -90,8 +91,7 @@ public partial class App : Application
 
         if (keepInHistory)
         {
-            _history.Insert(0, (DateTime.Now, data));
-            if (_history.Count > HistorySize) _history.RemoveAt(_history.Count - 1);
+            _history.Add(data);
         }
         _island.ShowNotification(data);
     }
@@ -118,13 +118,14 @@ public partial class App : Application
     private void FillHistory(MenuItem parent)
     {
         parent.Items.Clear();
-        if (_history.Count == 0)
+        var items = _history.Items;
+        if (items.Count == 0)
         {
             parent.Items.Add(new MenuItem { Header = Plain("Chưa có thông báo nào"), IsEnabled = false });
             return;
         }
 
-        foreach (var (time, data) in _history)
+        foreach (var (time, data) in items)
         {
             var text = string.IsNullOrWhiteSpace(data.Body) ? data.Title : data.Body;
             var item = new MenuItem
@@ -182,11 +183,11 @@ public partial class App : Application
         return new NotificationData
         {
             AppName   = "Trồng cây",
-            Title     = session.Success ? "Cây đã lớn!" : "Cây đã chết",
+            Title     = session.Success ? $"{Core.TreeCatalog.Get(session.TreeKind).Name} đã lớn!" : "Cây đã chết",
             Body      = session.Success
                 ? $"Bạn đã tập trung {session.Minutes} phút · Hôm nay đã trồng {grownToday} cây"
                 : "Bạn đã bỏ cuộc giữa chừng. Lần sau cố lên nhé!",
-            Icon      = DynamicIslandNotifier.UI.TreeShape.Render(1, dead: !session.Success),
+            Icon      = DynamicIslandNotifier.UI.TreeShape.Render(1, dead: !session.Success, session.TreeKind),
             SourceKey = "system:focus"
         };
     }
