@@ -1,5 +1,13 @@
 Bản chỉnh sửa từ [sadeeshasathsara/dynamic-island-on-windows](https://github.com/sadeeshasathsara/dynamic-island-on-windows) (MIT).
 
+### Mới trong v1.4.0
+- **Tai thỏ chia tab**: **Nhạc · Trồng cây · Thông báo**, giờ & pin ở góc phải. Bảng rộng hơn, thấp hơn; mở lại đúng tab dùng lần cuối (đang trồng cây thì mở thẳng tab Trồng cây)
+- **Viền và quầng sáng nhẹ theo màu ảnh bìa** cho tai thỏ nổi bật trên nền tối; thanh tua cũng đổi theo màu nhạc
+- **Sóng nhạc dài hơn, màu rực hơn**, nằm bên phải tai thỏ (ảnh bìa bên trái) cho cân đối
+- **Tên bài hát dài tự chạy chữ** từ phải qua trái
+- **6 loại cây**: Cây xanh, Thông, Anh đào; mở khoá **Xương rồng** (3 cây), **Cây cam** (6 cây), **Tre** (10 cây). Khu rừng mỗi ngày hiện đúng loại cây đã trồng
+- **Lịch sử thông báo được lưu lại** sau khi khởi động lại (chỉ lưu trên máy, trong `%LOCALAPPDATA%\DynamicIslandNotifier\history.json`; xoá bằng menu khay → Recent notifications → Xoá lịch sử)
+
 ### Mới trong v1.3.0
 - **Tai thỏ** ở giữa mép trên màn hình (giống iPhone): lúc bình thường là một viên đen nhỏ, có ảnh bìa + sóng nhạc khi đang phát nhạc và cây + thời gian còn lại khi đang trồng cây. **Di chuột vào** để mở bảng điều khiển: giờ & pin, trình phát nhạc, trồng cây, 3 thông báo gần đây. Tự ẩn khi xem phim / chơi game toàn màn hình. Bật/tắt ở menu khay hệ thống → **Notch bar**
 - **Trồng cây tập trung** (kiểu Forest): chọn 10 / 25 / 45 / 60 / 90 phút, cây lớn dần theo thời gian; bỏ cuộc thì cây chết. Mỗi ngày có một khu rừng nhỏ và thống kê số cây, số phút
