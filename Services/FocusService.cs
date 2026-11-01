@@ -132,6 +132,39 @@ public sealed class FocusService
             return _log.Where(s => s.StartUtc.ToLocalTime().Date == DateTime.Today).ToList();
     }
 
+    /// <summary>Minutes of grown trees per day, for the last <paramref name="days"/> days (oldest first, today last).</summary>
+    public IReadOnlyList<(DateTime Day, int Minutes, int Trees)> LastDays(int days)
+    {
+        lock (_gate)
+        {
+            var today = DateTime.Today;
+            return Enumerable.Range(0, days)
+                .Select(i => today.AddDays(i - days + 1))
+                .Select(day =>
+                {
+                    var grown = _log.Where(s => s.Success && s.StartUtc.ToLocalTime().Date == day).ToList();
+                    return (day, grown.Sum(s => s.Minutes), grown.Count);
+                })
+                .ToList();
+        }
+    }
+
+    /// <summary>
+    /// Days in a row with at least one grown tree, ending today (or yesterday,
+    /// so the streak isn't shown as broken before you've planted today).
+    /// </summary>
+    public int Streak()
+    {
+        lock (_gate)
+        {
+            var days = _log.Where(s => s.Success).Select(s => s.StartUtc.ToLocalTime().Date).ToHashSet();
+            var day = days.Contains(DateTime.Today) ? DateTime.Today : DateTime.Today.AddDays(-1);
+            int streak = 0;
+            while (days.Contains(day)) { streak++; day = day.AddDays(-1); }
+            return streak;
+        }
+    }
+
     public int TotalTrees
     {
         get { lock (_gate) return _log.Count(s => s.Success); }

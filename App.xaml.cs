@@ -16,6 +16,7 @@ public partial class App : Application
     private NotchWindow? _notch;
     private FocusService? _focus;
     private VolumeWatcher? _volume;
+    private BluetoothBatteryWatcher? _headsets;
     private bool _enabled = true;
     private static System.Threading.Mutex? _singleInstance;
     private BatteryWatcher? _battery;
@@ -72,6 +73,12 @@ public partial class App : Application
         _volume.Changed += (level, muted) => _notch.Dispatcher.BeginInvoke(new Action(() => _notch.ShowVolume(level, muted)));
         _volume.Start();
 
+        // Battery of connected Bluetooth headphones
+        _headsets = new BluetoothBatteryWatcher();
+        _headsets.Changed += () => _notch.Dispatcher.BeginInvoke(new Action(() => _notch.SetHeadsets(_headsets.Devices)));
+        _headsets.Notify  += data => _island.Dispatcher.Invoke(() => ShowOnIsland(data, keepInHistory: false));
+        _headsets.Start();
+
         UpdateMusicMenuHeader();
         UpdateNotchMenu();
 
@@ -93,6 +100,10 @@ public partial class App : Application
         {
             _history.Add(data);
         }
+
+        // Do Not Disturb (quick button in the notch): keep it in the history, don't drop down.
+        if (QuickActions.DoNotDisturb) return;
+
         _island.ShowNotification(data);
     }
 

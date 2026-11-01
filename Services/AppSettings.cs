@@ -27,6 +27,9 @@ public sealed class AppSettings
     /// <summary>The notch tab shown last: "music", "focus" or "notifications".</summary>
     public string LastNotchTab { get; set; } = "music";
 
+    /// <summary>Do Not Disturb: notifications don't drop down (they still go to the history).</summary>
+    public bool DoNotDisturb { get; set; }
+
     /// <summary>True once "start with Windows" was set up on first run (the user may have turned it off since).</summary>
     public bool AutoStartConfigured { get; set; }
 

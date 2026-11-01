@@ -56,6 +56,10 @@ public partial class NotchWindow : Window
     private TreeKind _selectedKind;
     private Color _accent = Colors.White;
     private bool _hasColour;
+    private bool _showWeek;
+
+    private static readonly Color DndColour = Color.FromRgb(0x8E, 0x7C, 0xFF);
+    private static readonly string[] ShortDays = { "CN", "T2", "T3", "T4", "T5", "T6", "T7" };
 
     private static readonly string[] Weekdays =
         { "Chủ Nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy" };
@@ -218,6 +222,7 @@ public partial class NotchWindow : Window
         Expanded.Visibility   = Visibility.Visible;
 
         UpdateClock();
+        UpdateQuickButtons();
 
         // Open on the tab used last; straight to the tree while one is growing.
         var tab = _focus.IsRunning ? "focus" : AppSettings.Current.LastNotchTab;
@@ -283,6 +288,7 @@ public partial class NotchWindow : Window
                 break;
             case "focus":
                 UpdateFocusUi();
+                if (_showWeek) BuildWeekChart();
                 break;
             case "notifications":
                 RebuildRecent();
@@ -308,7 +314,8 @@ public partial class NotchWindow : Window
     private void UpdateClock()
     {
         var now = DateTime.Now;
-        ClockText.Text = $"{now:HH:mm}  ·  {Weekdays[(int)now.DayOfWeek]}, {now:dd/MM}";
+        ClockText.Text    = now.ToString("HH:mm");
+        ClockText.ToolTip = $"{Weekdays[(int)now.DayOfWeek]}, {now:dd/MM/yyyy}";
 
         try
         {
@@ -358,6 +365,11 @@ public partial class NotchWindow : Window
                 : _focus.IsRunning ? Color.FromRgb(0x34, 0xC7, 0x59)
                 : Color.FromRgb(0x3A, 0x3A, 0x3C);
         bool lit = _hasMusic || _focus.IsRunning;
+        if (!lit && QuickActions.DoNotDisturb)
+        {
+            c   = DndColour;
+            lit = true;
+        }
 
         // Black like the notch, so it blends with dark title bars;
         // the song's colour shows as a thin rim and a soft glow.
@@ -897,6 +909,126 @@ public partial class NotchWindow : Window
             Collapse();
         };
         return row;
+    }
+
+    // ── Quick buttons ─────────────────────────────────────────────────
+    private void UpdateQuickButtons()
+    {
+        var muted = QuickActions.IsMicMuted();
+        MicBtn.IsEnabled  = muted != null;
+        MicBtn.Foreground = muted == true ? Frozen(Color.FromRgb(0xFF, 0x45, 0x3A)) : Frozen(Color.FromArgb(0xCC, 0xFF, 0xFF, 0xFF));
+        MicBtn.ToolTip    = muted == null ? "Không tìm thấy micro"
+                          : muted == true ? "Micro đang tắt · bấm để bật" : "Micro đang bật · bấm để tắt";
+
+        bool dnd = QuickActions.DoNotDisturb;
+        DndBtn.Foreground = dnd ? Frozen(DndColour) : Frozen(Color.FromArgb(0xCC, 0xFF, 0xFF, 0xFF));
+        DndBtn.Background = dnd ? Frozen(Color.FromArgb(0x33, DndColour.R, DndColour.G, DndColour.B)) : Brushes.Transparent;
+        DndBtn.ToolTip    = dnd ? "Không làm phiền: BẬT · thông báo vẫn vào lịch sử" : "Không làm phiền: tắt";
+        UpdateStrip();
+    }
+
+    private void Mic_Click(object sender, RoutedEventArgs e)
+    {
+        QuickActions.ToggleMic();
+        UpdateQuickButtons();
+    }
+
+    private void Dnd_Click(object sender, RoutedEventArgs e)
+    {
+        QuickActions.DoNotDisturb = !QuickActions.DoNotDisturb;
+        UpdateQuickButtons();
+    }
+
+    private void Screenshot_Click(object sender, RoutedEventArgs e)
+    {
+        Collapse();
+        // Let the panel disappear before the snipping overlay freezes the screen.
+        var t = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+        t.Tick += (_, _) => { t.Stop(); QuickActions.Screenshot(); };
+        t.Start();
+    }
+
+    private void Lock_Click(object sender, RoutedEventArgs e)
+    {
+        Collapse();
+        QuickActions.Lock();
+    }
+
+    // ── Bluetooth headphones ──────────────────────────────────────────
+    public void SetHeadsets(IReadOnlyList<BluetoothBatteryWatcher.Device> devices)
+    {
+        if (devices.Count == 0)
+        {
+            HeadsetPanel.Visibility = Visibility.Collapsed;
+            return;
+        }
+        var first = devices[0];
+        HeadsetText.Text = devices.Count == 1 ? $"{first.Percent}%" : $"{first.Percent}% +{devices.Count - 1}";
+        HeadsetPanel.ToolTip = string.Join("\n", devices.Select(d => $"{d.Name}: {d.Percent}%"));
+        HeadsetPanel.Visibility = Visibility.Visible;
+    }
+
+    // ── Weekly focus stats ────────────────────────────────────────────
+    private void FocusViewToggle_Click(object sender, MouseButtonEventArgs e)
+    {
+        _showWeek = !_showWeek;
+        FocusMain.Visibility  = _showWeek ? Visibility.Collapsed : Visibility.Visible;
+        FocusStats.Visibility = _showWeek ? Visibility.Visible   : Visibility.Collapsed;
+        FocusViewToggle.Text  = _showWeek ? "‹ Trồng cây" : "Thống kê tuần ›";
+        if (_showWeek) BuildWeekChart();
+    }
+
+    /// <summary>One bar per day for the last 7 days (minutes of grown trees), today on the right.</summary>
+    private void BuildWeekChart()
+    {
+        var days = _focus.LastDays(7);
+        int total  = days.Sum(d => d.Minutes);
+        int trees  = days.Sum(d => d.Trees);
+        int streak = _focus.Streak();
+        WeekSummary.Text = $"{total} phút · {trees} cây · chuỗi {streak} ngày";
+
+        WeekChart.Children.Clear();
+        WeekChart.ColumnDefinitions.Clear();
+        double max = Math.Max(30, days.Max(d => d.Minutes));
+        const double barArea = 62;
+
+        for (int i = 0; i < days.Count; i++)
+        {
+            var (day, minutes, _) = days[i];
+            bool today = day == DateTime.Today;
+            WeekChart.ColumnDefinitions.Add(new ColumnDefinition());
+
+            var col = new StackPanel { VerticalAlignment = VerticalAlignment.Bottom };
+            col.Children.Add(new TextBlock
+            {
+                Text = minutes > 0 ? minutes.ToString() : "",
+                Foreground = Frozen(Color.FromArgb(0xAA, 0xFF, 0xFF, 0xFF)), FontSize = 10.5,
+                FontFamily = new FontFamily("Segoe UI"), HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 0, 0, 3)
+            });
+            col.Children.Add(new Border
+            {
+                Width  = 26,
+                Height = minutes > 0 ? Math.Max(4, barArea * minutes / max) : 3,
+                CornerRadius = new CornerRadius(5, 5, 2, 2),
+                Background   = minutes > 0
+                    ? Frozen(today ? Color.FromRgb(0x34, 0xC7, 0x59) : Color.FromRgb(0x24, 0x8A, 0x3E))
+                    : Frozen(Color.FromRgb(0x2A, 0x2A, 0x2C)),
+                ToolTip = $"{Weekdays[(int)day.DayOfWeek]} {day:dd/MM}: {minutes} phút",
+                HorizontalAlignment = HorizontalAlignment.Center
+            });
+            col.Children.Add(new TextBlock
+            {
+                Text = ShortDays[(int)day.DayOfWeek],
+                Foreground = today ? Brushes.White : Frozen(Color.FromArgb(0x88, 0xFF, 0xFF, 0xFF)),
+                FontWeight = today ? FontWeights.SemiBold : FontWeights.Normal,
+                FontSize = 11, FontFamily = new FontFamily("Segoe UI"),
+                HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 5, 0, 0)
+            });
+
+            Grid.SetColumn(col, i);
+            WeekChart.Children.Add(col);
+        }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────
