@@ -1,5 +1,11 @@
 Bản chỉnh sửa từ [sadeeshasathsara/dynamic-island-on-windows](https://github.com/sadeeshasathsara/dynamic-island-on-windows) (MIT).
 
+### Mới trong v1.5.0
+- **Nút nhanh** trên thanh tab của tai thỏ: **tắt/bật micro** (đỏ khi đang tắt), **Không làm phiền** (thông báo không trượt xuống nhưng vẫn vào lịch sử; vạch tai thỏ có viền tím khi đang bật), **chụp màn hình**, **khoá máy**
+- **Pin tai nghe Bluetooth** hiện trên thanh tab; đảo báo khi tai nghe vừa kết nối và khi pin còn ≤ 20%. (Chỉ với tai nghe báo pin cho Windows, ví dụ hiện % trong Settings → Bluetooth; AirPods thường không báo)
+- **Thống kê trồng cây theo tuần**: tab Trồng cây → **Thống kê tuần ›**: biểu đồ số phút tập trung 7 ngày qua, tổng số cây và **chuỗi ngày liên tiếp**
+- Giờ trên thanh tab gọn lại (rê chuột vào để xem thứ, ngày); bảng rộng thêm một chút cho đủ chỗ
+
 ### Sửa trong v1.4.3
 - **Vạch tai thỏ màu đen** hoà vào thanh tiêu đề tối, màu bài hát chỉ còn ở **viền mảnh + quầng sáng** (đỡ chói, không lạc quẻ)
 - **Chạm vạch là mở bảng ngay** (bỏ bước viên trung gian phải chờ ~1 giây)
