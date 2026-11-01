@@ -28,8 +28,8 @@ public partial class NotchWindow : Window
     private readonly FocusService _focus;
     private readonly Func<IReadOnlyList<(DateTime Time, NotificationData Data)>> _recent;
 
-    private readonly DispatcherTimer _openTimer       = new() { Interval = TimeSpan.FromMilliseconds(220) };
-    private readonly DispatcherTimer _closeTimer      = new() { Interval = TimeSpan.FromMilliseconds(450) };
+    private readonly DispatcherTimer _openTimer       = new() { Interval = TimeSpan.FromMilliseconds(120) };
+    private readonly DispatcherTimer _closeTimer      = new() { Interval = TimeSpan.FromMilliseconds(250) };
     private readonly DispatcherTimer _tickTimer       = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly DispatcherTimer _volumeTimer     = new() { Interval = TimeSpan.FromMilliseconds(1600) };
     private readonly DispatcherTimer _peekTimer       = new() { Interval = TimeSpan.FromMilliseconds(3500) };
@@ -68,14 +68,23 @@ public partial class NotchWindow : Window
         _focus  = focus;
         _recent = recent;
 
-        _openTimer.Tick   += (_, _) => { _openTimer.Stop();   if (Pill.IsMouseOver || NativeInterop.IsCursorOver(this)) Expand(); };
-        _closeTimer.Tick  += (_, _) => { _closeTimer.Stop();  if (!_seeking && !NativeInterop.IsCursorOver(this)) Collapse(); };
+        _openTimer.Tick   += (_, _) =>
+        {
+            _openTimer.Stop();
+            if (NativeInterop.IsCursorOver(StripHost) || NativeInterop.IsCursorOver(Pill)) Expand();
+        };
+        _closeTimer.Tick  += (_, _) =>
+        {
+            _closeTimer.Stop();
+            // Only the visible panel counts, not the window's glow margins.
+            if (!_seeking && !NativeInterop.IsCursorOver(Expanded)) Collapse();
+        };
         _volumeTimer.Tick += (_, _) => { _volumeTimer.Stop(); VolumeView.Visibility = Visibility.Collapsed; if (!_expanded) ShowStrip(); };
         _peekTimer.Tick   += (_, _) => { _peekTimer.Stop();   _peeking = false; UpdatePill(); _stripTimer.Start(); };
         _stripTimer.Tick  += (_, _) =>
         {
             _stripTimer.Stop();
-            if (!_expanded && !_peeking && !NativeInterop.IsCursorOver(this)) ShowStrip();
+            if (!_expanded && !_peeking && !NativeInterop.IsCursorOver(Pill)) ShowStrip();
         };
         _giveUpTimer.Tick += (_, _) => { _giveUpTimer.Stop(); ResetGiveUp(); };
         _tickTimer.Tick   += (_, _) => OnTick();
@@ -154,7 +163,7 @@ public partial class NotchWindow : Window
     }
 
     // ── Open / close ──────────────────────────────────────────────────
-    private void Strip_MouseEnter(object sender, MouseEventArgs e) => ShowPill();
+    private void Strip_MouseEnter(object sender, MouseEventArgs e) => _openTimer.Start();
 
     private void Pill_MouseEnter(object sender, MouseEventArgs e)
     {
@@ -241,8 +250,7 @@ public partial class NotchWindow : Window
 
         Expanded.Visibility = Visibility.Collapsed;
         StopMarquee();
-        if (NativeInterop.IsCursorOver(this)) ShowPill();
-        else ShowStrip();
+        ShowStrip();
         ResetGiveUp();
     }
 
@@ -292,7 +300,7 @@ public partial class NotchWindow : Window
             if (_hasMusic && MusicTab.IsVisible) UpdateProgress();
 
             // Safety net in case MouseLeave never came: close once the pointer is gone.
-            if (!_seeking && !_closeTimer.IsEnabled && !NativeInterop.IsCursorOver(this))
+            if (!_seeking && !_closeTimer.IsEnabled && !NativeInterop.IsCursorOver(Expanded))
                 _closeTimer.Start();
         }
     }
@@ -351,9 +359,11 @@ public partial class NotchWindow : Window
                 : Color.FromRgb(0x3A, 0x3A, 0x3C);
         bool lit = _hasMusic || _focus.IsRunning;
 
-        Strip.Fill        = Frozen(c);
+        // Black like the notch, so it blends with dark title bars;
+        // the song's colour shows as a thin rim and a soft glow.
+        Strip.Stroke      = Frozen(lit ? c : Color.FromRgb(0x3A, 0x3A, 0x3C));
         StripGlow.Color   = lit ? c : Neutral;
-        StripGlow.Opacity = lit ? 0.7 : 0.3;
+        StripGlow.Opacity = lit ? 0.55 : 0.25;
     }
 
     // ── Music ─────────────────────────────────────────────────────────
@@ -562,7 +572,7 @@ public partial class NotchWindow : Window
         if (!_seeking) return;
         _seeking = false;
         _media.Seek(TimeSpan.FromSeconds(SeekSlider.Value));
-        if (!NativeInterop.IsCursorOver(this)) _closeTimer.Start();
+        if (!NativeInterop.IsCursorOver(Expanded)) _closeTimer.Start();
     }
 
     private void SeekSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)

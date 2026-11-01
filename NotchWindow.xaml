@@ -214,7 +214,8 @@
                 Cursor="Hand"
                 MouseEnter="Strip_MouseEnter">
             <!-- Trapezoid  \_______/ : wide along the screen edge, narrower below, soft corners -->
-            <Path x:Name="Strip" VerticalAlignment="Top" HorizontalAlignment="Center" Fill="#3A3A3C"
+            <Path x:Name="Strip" VerticalAlignment="Top" HorizontalAlignment="Center" Fill="#000000"
+                  Stroke="#3A3A3C" StrokeThickness="1.5" StrokeLineJoin="Round"
                   Data="M 0,0 L 200,0 L 190,4.6 Q 187,6 183,6 L 17,6 Q 13,6 10,4.6 Z">
                 <Path.Effect>
                     <DropShadowEffect x:Name="StripGlow" Color="#5A5A5E" BlurRadius="10" ShadowDepth="0" Opacity="0.6"/>

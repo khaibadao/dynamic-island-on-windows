@@ -56,6 +56,27 @@ public static class NativeInterop
     /// Windows directly (WPF's IsMouseOver can lag when content appears or
     /// disappears under a pointer that isn't moving).
     /// </summary>
+    /// <summary>
+    /// Whether the pointer is over this element's own rectangle on screen,
+    /// not the whole window (whose transparent margins hold the glow).
+    /// </summary>
+    public static bool IsCursorOver(FrameworkElement element)
+    {
+        try
+        {
+            if (!element.IsVisible || PresentationSource.FromVisual(element) == null) return false;
+            if (!GetCursorPos(out var p)) return false;
+            var a = element.PointToScreen(new Point(0, 0));
+            var b = element.PointToScreen(new Point(element.ActualWidth, element.ActualHeight));
+            return p.X >= Math.Min(a.X, b.X) && p.X < Math.Max(a.X, b.X)
+                && p.Y >= Math.Min(a.Y, b.Y) && p.Y < Math.Max(a.Y, b.Y);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public static bool IsCursorOver(Window window)
     {
         try

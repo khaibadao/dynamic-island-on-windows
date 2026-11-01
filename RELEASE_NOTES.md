@@ -1,5 +1,10 @@
 Bản chỉnh sửa từ [sadeeshasathsara/dynamic-island-on-windows](https://github.com/sadeeshasathsara/dynamic-island-on-windows) (MIT).
 
+### Sửa trong v1.4.3
+- **Vạch tai thỏ màu đen** hoà vào thanh tiêu đề tối, màu bài hát chỉ còn ở **viền mảnh + quầng sáng** (đỡ chói, không lạc quẻ)
+- **Chạm vạch là mở bảng ngay** (bỏ bước viên trung gian phải chờ ~1 giây)
+- **Thu lại nhanh hơn nhiều** khi rời chuột: chỉ tính đúng phần bảng nhìn thấy, chờ 0,25 giây thay vì có khi gần 2 giây
+
 ### Sửa trong v1.4.2
 - Vạch tai thỏ dày hơn (6px) và có dạng hình thang **\\\_\_\_\_\_\_/** ôm sát mép trên màn hình, góc dưới bo mềm
 
