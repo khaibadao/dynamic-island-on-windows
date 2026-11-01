@@ -17,6 +17,7 @@ public partial class App : Application
     private FocusService? _focus;
     private VolumeWatcher? _volume;
     private BluetoothBatteryWatcher? _headsets;
+    private TodoService? _todos;
     private bool _enabled = true;
     private static System.Threading.Mutex? _singleInstance;
     private BatteryWatcher? _battery;
@@ -61,8 +62,10 @@ public partial class App : Application
         // The notch: music, tree planting, volume, recent notifications
         _media  = new MediaWatcher { Enabled = AppSettings.Current.MusicEnabled };
         _focus  = new FocusService();
-        _notch  = new NotchWindow(_media, _focus,
-            () => _history.Items.Select(entry => (entry.Time, entry.Data)).ToList());
+        _todos  = new TodoService();
+        _notch  = new NotchWindow(_media, _focus, _history, _todos);
+        _todos.OpenTodo = () => _notch.Dispatcher.BeginInvoke(new Action(() => _notch.OpenTab("todo")));
+        _todos.Remind  += data => _island.Dispatcher.Invoke(() => ShowOnIsland(data, keepInHistory: false, bypassDnd: true));
         _ = _history.RestoreIconsAsync();   // site logos for notifications kept from last time
         _media.Changed += (state, newTrack) => _notch.Dispatcher.Invoke(() => _notch.UpdateMedia(state, newTrack));
         _focus.Finished += session => _island.Dispatcher.Invoke(() => ShowOnIsland(MakeFocusNotification(session), keepInHistory: false));
@@ -91,7 +94,7 @@ public partial class App : Application
     }
 
     // ── Notifications: mute + history ─────────────────────────────────
-    private void ShowOnIsland(NotificationData data, bool keepInHistory)
+    private void ShowOnIsland(NotificationData data, bool keepInHistory, bool bypassDnd = false)
     {
         if (!_enabled || _island == null) return;
         if (data.SourceKey != null && AppSettings.Current.MutedSources.ContainsKey(data.SourceKey)) return;
@@ -102,7 +105,7 @@ public partial class App : Application
         }
 
         // Do Not Disturb (quick button in the notch): keep it in the history, don't drop down.
-        if (QuickActions.DoNotDisturb) return;
+        if (QuickActions.DoNotDisturb && !bypassDnd) return;
 
         _island.ShowNotification(data);
     }

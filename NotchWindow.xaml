@@ -415,6 +415,17 @@
                                 <TextBlock Text="Trồng cây" Margin="6,0,0,0" VerticalAlignment="Center"/>
                             </StackPanel>
                         </RadioButton>
+                        <RadioButton x:Name="TabTodo" Style="{StaticResource TabButton}" GroupName="notchTabs" Checked="Tab_Checked">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE73A;" FontFamily="{StaticResource IconFont}" FontSize="13" VerticalAlignment="Center"/>
+                                <TextBlock Text="Việc cần làm" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                                <Border x:Name="TodoBadge" Background="#FF9F0A" CornerRadius="8" MinWidth="16" Height="16"
+                                        Padding="4,0" Margin="6,0,0,0" VerticalAlignment="Center" Visibility="Collapsed">
+                                    <TextBlock x:Name="TodoBadgeText" Foreground="Black" FontSize="10.5" FontWeight="Bold"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                            </StackPanel>
+                        </RadioButton>
                         <RadioButton x:Name="TabNotifications" Style="{StaticResource TabButton}" GroupName="notchTabs" Checked="Tab_Checked">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="&#xEA8F;" FontFamily="{StaticResource IconFont}" FontSize="13" VerticalAlignment="Center"/>
@@ -424,14 +435,6 @@
                     </StackPanel>
 
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                        <StackPanel Orientation="Horizontal" Margin="0,0,10,0" VerticalAlignment="Center">
-                            <Button x:Name="MicBtn" Style="{StaticResource QuickButton}" Content="&#xE720;" Click="Mic_Click"/>
-                            <Button x:Name="DndBtn" Style="{StaticResource QuickButton}" Content="&#xE708;" Click="Dnd_Click"/>
-                            <Button Style="{StaticResource QuickButton}" Content="&#xE722;" Click="Screenshot_Click"
-                                    ToolTip="Chụp màn hình (Win + Shift + S)"/>
-                            <Button Style="{StaticResource QuickButton}" Content="&#xE72E;" Click="Lock_Click"
-                                    ToolTip="Khoá máy"/>
-                        </StackPanel>
                         <TextBlock x:Name="ClockText" Foreground="#DDFFFFFF" FontSize="12.5" FontWeight="SemiBold"
                                    FontFamily="Segoe UI" VerticalAlignment="Center"/>
                         <StackPanel x:Name="BatteryPanel" Orientation="Horizontal" Margin="12,0,0,0">
@@ -449,7 +452,25 @@
                     </StackPanel>
                 </Grid>
 
-                <Grid MinHeight="118">
+                <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Quick buttons: a column on the right, like Control Center -->
+                <Border Grid.Column="1" BorderBrush="#26FFFFFF" BorderThickness="1,0,0,0" Margin="10,2,0,2" Padding="8,0,0,0">
+                    <StackPanel VerticalAlignment="Center">
+                        <Button x:Name="MicBtn" Style="{StaticResource QuickButton}" Content="&#xE720;" Click="Mic_Click" Margin="0,0,0,4"/>
+                        <Button x:Name="DndBtn" Style="{StaticResource QuickButton}" Content="&#xE708;" Click="Dnd_Click" Margin="0,0,0,4"/>
+                        <Button Style="{StaticResource QuickButton}" Content="&#xE722;" Click="Screenshot_Click" Margin="0,0,0,4"
+                                ToolTip="Chụp màn hình (Win + Shift + S)"/>
+                        <Button Style="{StaticResource QuickButton}" Content="&#xE72E;" Click="Lock_Click"
+                                ToolTip="Khoá máy"/>
+                    </StackPanel>
+                </Border>
+
+                <Grid x:Name="TabContent" MinHeight="132">
 
                     <!-- ── Music ── -->
                     <Grid x:Name="MusicTab">
@@ -636,13 +657,64 @@
 
                     <!-- ── Recent notifications ── -->
                     <Grid x:Name="NotificationsTab" Visibility="Collapsed">
-                        <ScrollViewer MaxHeight="168" VerticalScrollBarVisibility="Hidden" Focusable="False">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <Grid Margin="8,0,4,4">
+                            <TextBlock x:Name="NotificationsCount" Foreground="#80FFFFFF" FontSize="11.5"
+                                       FontFamily="Segoe UI" VerticalAlignment="Center"/>
+                            <Button x:Name="ClearAllBtn" Content="Xoá tất cả" Style="{StaticResource ActionButton}"
+                                    Background="#2C2C2E" Foreground="#DDFFFFFF" Padding="10,2" FontSize="11.5"
+                                    HorizontalAlignment="Right" Click="ClearAll_Click"/>
+                        </Grid>
+                        <ScrollViewer Grid.Row="1" MaxHeight="150" VerticalScrollBarVisibility="Hidden" Focusable="False">
                             <StackPanel x:Name="RecentList"/>
                         </ScrollViewer>
-                        <TextBlock x:Name="NoNotificationsText" Text="Chưa có thông báo nào" Foreground="#80FFFFFF"
+                        <TextBlock x:Name="NoNotificationsText" Grid.Row="1" Text="Chưa có thông báo nào" Foreground="#80FFFFFF"
                                    FontSize="13" FontFamily="Segoe UI" HorizontalAlignment="Center"
                                    VerticalAlignment="Center" Visibility="Collapsed"/>
                     </Grid>
+
+                    <!-- ── To-do ── -->
+                    <Grid x:Name="TodoTab" Visibility="Collapsed" Margin="4,0,0,0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- New to-do: type, Enter. A time in the text ("17:00", "9h30") sets a due time. -->
+                        <Grid Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Background="#1C1C1E" CornerRadius="12" Padding="10,0" Height="32">
+                                <Grid>
+                                    <TextBlock x:Name="TodoPlaceholder" Text="Hôm nay bạn sẽ làm gì?  (vd: Nộp lab OSG 17:00)"
+                                               Foreground="#66FFFFFF" FontSize="12.5" FontFamily="Segoe UI"
+                                               VerticalAlignment="Center" IsHitTestVisible="False"/>
+                                    <TextBox x:Name="TodoInput" Background="Transparent" BorderThickness="0"
+                                             Foreground="White" CaretBrush="White" FontSize="12.5" FontFamily="Segoe UI"
+                                             VerticalAlignment="Center" VerticalContentAlignment="Center"
+                                             PreviewMouseLeftButtonDown="TodoInput_PreviewMouseLeftButtonDown"
+                                             KeyDown="TodoInput_KeyDown" TextChanged="TodoInput_TextChanged"/>
+                                </Grid>
+                            </Border>
+                            <Button Grid.Column="1" Content="Thêm" Style="{StaticResource ActionButton}"
+                                    Margin="8,0,0,0" Padding="14,6" Click="AddTodo_Click"/>
+                        </Grid>
+
+                        <Grid Grid.Row="1">
+                            <ScrollViewer MaxHeight="128" VerticalScrollBarVisibility="Hidden" Focusable="False">
+                                <StackPanel x:Name="TodoList"/>
+                            </ScrollViewer>
+                            <TextBlock x:Name="TodoEmpty" Text="Chưa có việc nào cho hôm nay. Thêm việc đầu tiên nhé!"
+                                       Foreground="#80FFFFFF" FontSize="12.5" FontFamily="Segoe UI"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed"/>
+                        </Grid>
+                    </Grid>
+                </Grid>
                 </Grid>
             </StackPanel>
         </Border>

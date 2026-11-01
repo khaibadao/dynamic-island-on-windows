@@ -82,17 +82,39 @@ public sealed class BluetoothBatteryWatcher
         }
     }
 
+    private const string ContainerKey = "System.Devices.ContainerId";
+    private const string AepContainerKey = "System.Devices.Aep.ContainerId";
+
     private static async Task<List<Device>> FindAsync()
     {
-        // Device nodes that are present right now and report a battery level.
+        // 1) Bluetooth devices that are connected right now (paired-but-off ones are not),
+        //    by their container: one container = one physical device.
+        var endpoints = await DeviceInformation.FindAllAsync(
+            "System.Devices.Aep.IsConnected:=System.StructuredQueryType.Boolean#True AND " +
+            "(System.Devices.Aep.ProtocolId:=\"{e0cbf06c-cd8b-4647-bb8a-263b43f0f974}\" OR " +   // Bluetooth
+            " System.Devices.Aep.ProtocolId:=\"{bb7bb05e-5972-42b5-94fc-76eaa7084d49}\")",       // Bluetooth LE
+            new[] { AepContainerKey },
+            DeviceInformationKind.AssociationEndpoint);
+
+        var connected = new Dictionary<Guid, string>();
+        foreach (var ep in endpoints)
+        {
+            if (ep.Properties.TryGetValue(AepContainerKey, out var c) && c is Guid id && !connected.ContainsKey(id))
+                connected[id] = string.IsNullOrWhiteSpace(ep.Name) ? "Tai nghe" : ep.Name.Trim();
+        }
+        if (connected.Count == 0) return new List<Device>();
+
+        // 2) Their device nodes that report a battery level.
         var nodes = await DeviceInformation.FindAllAsync(
             "System.Devices.Present:=System.StructuredQueryType.Boolean#True",
-            new[] { BatteryKey },
+            new[] { BatteryKey, ContainerKey },
             DeviceInformationKind.Device);
 
-        var result = new Dictionary<string, Device>();
+        var result = new Dictionary<Guid, Device>();
         foreach (var node in nodes)
         {
+            if (!node.Properties.TryGetValue(ContainerKey, out var c) || c is not Guid id) continue;
+            if (!connected.TryGetValue(id, out var name) || result.ContainsKey(id)) continue;
             if (!node.Properties.TryGetValue(BatteryKey, out var value) || value == null) continue;
 
             int percent;
@@ -100,9 +122,7 @@ public sealed class BluetoothBatteryWatcher
             catch { continue; }
             if (percent < 0 || percent > 100) continue;
 
-            // One headset shows up as several nodes (hands-free, audio…): keep one per name.
-            var name = string.IsNullOrWhiteSpace(node.Name) ? "Tai nghe" : node.Name.Trim();
-            result[name] = new Device(name, percent);
+            result[id] = new Device(name, percent);
         }
         return result.Values.OrderBy(d => d.Name).ToList();
     }

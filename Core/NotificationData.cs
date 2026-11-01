@@ -35,4 +35,7 @@ public sealed class NotificationData
 
     /// <summary>Fallback: the site to open if the browser can't be handed the click.</summary>
     public string? SiteUrl { get; init; }
+
+    /// <summary>For the app's own notifications: what a click does (e.g. open the to-do tab).</summary>
+    public System.Action? OnClick { get; init; }
 }

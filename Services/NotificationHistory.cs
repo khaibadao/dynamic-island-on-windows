@@ -40,6 +40,12 @@ public sealed class NotificationHistory
         Save();
     }
 
+    /// <summary>Removes one notification (matched by the object shown in the list).</summary>
+    public void Remove(NotificationData data)
+    {
+        if (_items.RemoveAll(e => ReferenceEquals(e.Data, data)) > 0) Save();
+    }
+
     public void Clear()
     {
         _items.Clear();

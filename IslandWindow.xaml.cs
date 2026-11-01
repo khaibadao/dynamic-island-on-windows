@@ -236,6 +236,11 @@ public partial class IslandWindow : Window
     {
         Services.DebugLog.Note($"click: exe=\"{data?.BrowserExe}\" launch=\"{data?.BrowserLaunchId}\" url=\"{data?.SiteUrl}\" app=\"{appId}\"");
         NativeInterop.AllowAnyToTakeForeground();
+        if (data?.OnClick != null)
+        {
+            data.OnClick();
+            return;
+        }
         try
         {
             if (data?.BrowserExe != null && data.BrowserLaunchId != null)

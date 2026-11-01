@@ -152,6 +152,18 @@ public static class NativeInterop
     }
 
     /// <summary>
+    /// Lets a non-activating overlay take keyboard focus for typing (true),
+    /// or makes it non-activating again (false).
+    /// </summary>
+    public static void SetActivatable(Window window, bool activatable)
+    {
+        var hwnd = new WindowInteropHelper(window).Handle;
+        int style = GetWindowLong(hwnd, GWL_EXSTYLE);
+        style = activatable ? style & ~WS_EX_NOACTIVATE : style | WS_EX_NOACTIVATE;
+        SetWindowLong(hwnd, GWL_EXSTYLE, style);
+    }
+
+    /// <summary>
     /// Forces the window to stay above all other windows including fullscreen apps.
     /// </summary>
     public static void ForceTopMost(Window window)
