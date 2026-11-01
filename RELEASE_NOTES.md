@@ -1,5 +1,13 @@
 Bản chỉnh sửa từ [sadeeshasathsara/dynamic-island-on-windows](https://github.com/sadeeshasathsara/dynamic-island-on-windows) (MIT).
 
+### Mới trong v1.6.0
+- **Việc cần làm** (tab mới trên tai thỏ): gõ việc rồi Enter; ghi giờ trong câu để đặt hạn (vd. "Nộp lab OSG **17:00**", "họp nhóm **9h30**"). Tick để hoàn thành, rê chuột để xoá. Huy hiệu cam trên tab cho biết còn bao nhiêu việc
+- **Nhắc nhở liên tục**: chưa có việc nào → hỏi "Hôm nay bạn sẽ làm những gì?" **mỗi 30 phút**; còn việc chưa xong → nhắc **mỗi 60 phút**, thêm nhắc **trước hạn 15 phút** và **khi quá hạn**. Nhắc vẫn hiện khi bật Không làm phiền. Bấm vào nhắc → mở thẳng tab Việc cần làm. Việc chưa xong tự chuyển sang hôm sau
+- **Nút nhanh** chuyển thành **cột dọc bên phải** bảng, thanh tab gọn hơn
+- **Hiệu ứng mở/đóng mềm mại**: bảng phóng ra từ tai thỏ với độ nảy nhẹ, thu lại mượt; chuyển tab có hiệu ứng mờ dần
+- **Xoá thông báo**: nút **Xoá tất cả**, hoặc rê chuột vào từng thông báo → **×**
+- Sửa **pin tai nghe hiện "+18"**: nay chỉ tính tai nghe đang kết nối, mỗi thiết bị đếm một lần
+
 ### Mới trong v1.5.0
 - **Nút nhanh** trên thanh tab của tai thỏ: **tắt/bật micro** (đỏ khi đang tắt), **Không làm phiền** (thông báo không trượt xuống nhưng vẫn vào lịch sử; vạch tai thỏ có viền tím khi đang bật), **chụp màn hình**, **khoá máy**
 - **Pin tai nghe Bluetooth** hiện trên thanh tab; đảo báo khi tai nghe vừa kết nối và khi pin còn ≤ 20%. (Chỉ với tai nghe báo pin cho Windows, ví dụ hiện % trong Settings → Bluetooth; AirPods thường không báo)
