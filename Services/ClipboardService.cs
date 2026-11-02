@@ -90,15 +90,16 @@ public sealed class ClipboardService
                 data.GetDataPresent("CanIncludeInClipboardHistory") && IsZero(data.GetData("CanIncludeInClipboardHistory")))
                 return;
 
-            if (data.GetDataPresent(DataFormats.Bitmap) || data.GetDataPresent(DataFormats.Dib))
-            {
-                var image = Retry(() => Clipboard.GetImage());
-                if (image != null) AddImage(image);
-            }
-            else if (data.GetDataPresent(DataFormats.UnicodeText))
+            // Text first: Excel and Word put a picture of the cells next to the text.
+            if (data.GetDataPresent(DataFormats.UnicodeText))
             {
                 var text = data.GetData(DataFormats.UnicodeText) as string;
                 if (!string.IsNullOrWhiteSpace(text)) AddText(text);
+            }
+            else if (data.GetDataPresent(DataFormats.Bitmap) || data.GetDataPresent(DataFormats.Dib))
+            {
+                var image = Retry(() => Clipboard.GetImage());
+                if (image != null) AddImage(image);
             }
         }
         catch (Exception ex)

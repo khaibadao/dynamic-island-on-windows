@@ -1,5 +1,14 @@
 Bản chỉnh sửa từ [sadeeshasathsara/dynamic-island-on-windows](https://github.com/sadeeshasathsara/dynamic-island-on-windows) (MIT).
 
+### Mới trong v1.7.0
+- **Viên "đang phát" mảnh** (cao 22px) khi nghe nhạc: ảnh bìa · tên bài · sóng nhạc, kèm **vạch tiến độ** mảnh ở mép dưới. **Bấm xuyên qua được** xuống tab trình duyệt bên dưới; rê chuột lại gần thì viên **mờ đi**, để chuột nằm yên trên viên **~0,4 giây** thì bảng mới mở. Không có gì đang chạy thì vẫn là vạch \\\_\_\_\_\_/ như cũ
+- **Thanh tua dạng sóng**: phần đã phát là làn sóng chạy theo màu bài hát, phần còn lại là vạch thẳng; tạm dừng thì sóng phẳng lại. Kéo để tua
+- **Lời bài hát** (nút mới cạnh ⏮ ⏯ ⏭): bảng tách đôi như Spotify, trình phát bên trái, lời chạy theo nhạc bên phải; dòng đang hát sáng lên và tự cuộn; **bấm vào một dòng để tua tới đó**. Lời lấy từ LRCLIB (chỉ gửi tên bài, ca sĩ, độ dài)
+- **Mèo Mây** 🐱 ngồi cạnh tai thỏ (và trong bảng): nhảy theo nhạc, ngồi canh cây khi tập trung, nhảy cẫng lên khi xong hết việc cần làm hoặc trồng xong cây, buồn khi bỏ cuộc, ngủ khi máy để yên 10 phút. Mỗi cây trồng xong là một phần ăn, Mây lớn dần. Bấm vào Mây trong bảng để vuốt ve
+- **Lịch sử Clipboard** (tab mới): **30 mục gần nhất, cả chữ và ảnh**. Chữ xếp ở trên, **ảnh nằm thành hàng ngang ở dưới** (lăn chuột để cuộn). Bấm một mục để chép lại rồi Ctrl + V. **Ghim** mục quan trọng để không bị xoá. Chỉ lưu trên máy (`%LOCALAPPDATA%\DynamicIslandNotifier\clipboard`); bỏ qua những gì trình quản lý mật khẩu đánh dấu riêng tư
+- **Tab chỉ còn biểu tượng**, tab đang chọn mới hiện tên (rê chuột để xem tên)
+- **Mở / đóng mượt hơn**: cửa sổ không còn đổi kích thước khi mở, viên biến hình thành bảng; quầng sáng tạm tắt trong lúc chuyển động
+
 ### Mới trong v1.6.0
 - **Việc cần làm** (tab mới trên tai thỏ): gõ việc rồi Enter; ghi giờ trong câu để đặt hạn (vd. "Nộp lab OSG **17:00**", "họp nhóm **9h30**"). Tick để hoàn thành, rê chuột để xoá. Huy hiệu cam trên tab cho biết còn bao nhiêu việc
 - **Nhắc nhở liên tục**: chưa có việc nào → hỏi "Hôm nay bạn sẽ làm những gì?" **mỗi 30 phút**; còn việc chưa xong → nhắc **mỗi 60 phút**, thêm nhắc **trước hạn 15 phút** và **khi quá hạn**. Nhắc vẫn hiện khi bật Không làm phiền. Bấm vào nhắc → mở thẳng tab Việc cần làm. Việc chưa xong tự chuyển sang hôm sau
