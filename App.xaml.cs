@@ -14,6 +14,7 @@ public partial class App : Application
     private IslandWindow? _island;
     private MediaWatcher? _media;
     private NotchWindow? _notch;
+    private ClipboardService? _clips;
     private FocusService? _focus;
     private VolumeWatcher? _volume;
     private BluetoothBatteryWatcher? _headsets;
@@ -63,7 +64,8 @@ public partial class App : Application
         _media  = new MediaWatcher { Enabled = AppSettings.Current.MusicEnabled };
         _focus  = new FocusService();
         _todos  = new TodoService();
-        _notch  = new NotchWindow(_media, _focus, _history, _todos);
+        _clips  = new ClipboardService();
+        _notch  = new NotchWindow(_media, _focus, _history, _todos, _clips);
         _todos.OpenTodo = () => _notch.Dispatcher.BeginInvoke(new Action(() => _notch.OpenTab("todo")));
         _todos.Remind  += data => _island.Dispatcher.Invoke(() => ShowOnIsland(data, keepInHistory: false, bypassDnd: true));
         _ = _history.RestoreIconsAsync();   // site logos for notifications kept from last time
@@ -261,6 +263,7 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         _listener?.Stop();
+        _clips?.Stop();
         var tray = (Hardcodet.Wpf.TaskbarNotification.TaskbarIcon?)Current.Resources["TrayIcon"];
         tray?.Dispose();
         base.OnExit(e);

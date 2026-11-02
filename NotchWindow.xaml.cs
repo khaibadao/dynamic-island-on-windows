@@ -7,6 +7,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using DynamicIslandNotifier.Core;
 using DynamicIslandNotifier.Services;
@@ -16,11 +17,13 @@ using Windows.System.Power;
 namespace DynamicIslandNotifier;
 
 /// <summary>
-/// The notch: a small black bar at the top centre of the screen, like the
-/// iPhone's. In miniature it shows the album art with sound bars and the
-/// growing tree; hovering it opens a wide panel with three tabs: music,
-/// tree planting and recent notifications. It hides during fullscreen
-/// apps and while a notification drops down from the same spot.
+/// The notch at the top centre of the screen, like the iPhone's. Resting, it
+/// is a thin strip, or a slim "now playing" pill while music plays; the mouse
+/// passes straight through it to the browser tabs underneath. Resting the
+/// pointer on it opens a wide panel with tabs: music (with lyrics), tree
+/// planting, to-dos, recent notifications and clipboard history. Mây the cat
+/// sits beside it. It hides during fullscreen apps and while a notification
+/// drops down from the same spot.
 /// </summary>
 public partial class NotchWindow : Window
 {
@@ -28,18 +31,23 @@ public partial class NotchWindow : Window
     private readonly FocusService _focus;
     private readonly NotificationHistory _history;
     private readonly TodoService _todos;
+    private readonly ClipboardService _clips;
     private int _animation;          // bumped by every open / close, so an old animation can't finish a new one
     private string? _pendingTab;     // a tab to open as soon as the notch is visible again
     private bool _typing;            // the to-do box has the keyboard
+    private string _tab = "music";
 
-    private readonly DispatcherTimer _openTimer       = new() { Interval = TimeSpan.FromMilliseconds(120) };
+    private const double PanelWidth       = 620;
+    private const double PanelWidthLyrics = 960;
+    private const double LyricsWidth      = 340;
+
+    private readonly DispatcherTimer _hoverTimer      = new() { Interval = TimeSpan.FromMilliseconds(50) };
     private readonly DispatcherTimer _closeTimer      = new() { Interval = TimeSpan.FromMilliseconds(250) };
     private readonly DispatcherTimer _tickTimer       = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly DispatcherTimer _volumeTimer     = new() { Interval = TimeSpan.FromMilliseconds(1600) };
-    private readonly DispatcherTimer _peekTimer       = new() { Interval = TimeSpan.FromMilliseconds(3500) };
     private readonly DispatcherTimer _giveUpTimer     = new() { Interval = TimeSpan.FromSeconds(3) };
     private readonly DispatcherTimer _fullscreenTimer = new() { Interval = TimeSpan.FromSeconds(1) };
-    private readonly DispatcherTimer _stripTimer      = new() { Interval = TimeSpan.FromMilliseconds(600) };
+    private readonly DispatcherTimer _lyricsTimer     = new() { Interval = TimeSpan.FromMilliseconds(150) };
 
     private static readonly Color Neutral = Color.FromRgb(0x5A, 0x5A, 0x5E);
 
@@ -53,14 +61,29 @@ public partial class NotchWindow : Window
     private bool _hasMusic;
     private bool _playing;
     private bool _confirmGiveUp;
-    private bool _peeking;
+    private bool _faded;
+    private DateTime? _dwellStart;
     private string? _appId;
     private string _title = "";
+    private string _artist = "";
     private int _selectedMinutes;
     private TreeKind _selectedKind;
     private Color _accent = Colors.White;
     private bool _hasColour;
     private bool _showWeek;
+
+    // Lyrics
+    private bool _lyricsOpen;
+    private string? _lyricsKey;
+    private IReadOnlyList<LyricLine> _lyrics = Array.Empty<LyricLine>();
+    private int _lyricIndex = -1;
+    private double _scrollTarget;
+    private bool _scrolling;
+
+    // Mây
+    private CatMood? _catOverride;
+    private DateTime _catOverrideUntil;
+    private bool _allDone;
 
     private static readonly Color DndColour = Color.FromRgb(0x8E, 0x7C, 0xFF);
     private static readonly string[] ShortDays = { "CN", "T2", "T3", "T4", "T5", "T6", "T7" };
@@ -68,63 +91,85 @@ public partial class NotchWindow : Window
     private static readonly string[] Weekdays =
         { "Chủ Nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy" };
 
-    public NotchWindow(MediaWatcher media, FocusService focus, NotificationHistory history, TodoService todos)
+    public NotchWindow(MediaWatcher media, FocusService focus, NotificationHistory history, TodoService todos,
+                       ClipboardService clips)
     {
         InitializeComponent();
-        _media  = media;
-        _focus  = focus;
+        _media   = media;
+        _focus   = focus;
         _history = history;
         _todos   = todos;
+        _clips   = clips;
         _todos.Changed += () => Dispatcher.BeginInvoke(new Action(UpdateTodoUi));
+        _clips.Changed += () => Dispatcher.BeginInvoke(new Action(RebuildClipboard));
         Deactivated += (_, _) => { if (_typing) EndTyping(collapse: !NativeInterop.IsCursorOver(Expanded)); };
 
-        _openTimer.Tick   += (_, _) =>
-        {
-            _openTimer.Stop();
-            if (NativeInterop.IsCursorOver(StripHost) || NativeInterop.IsCursorOver(Pill)) Expand();
-        };
+        _hoverTimer.Tick  += (_, _) => WatchPointer();
         _closeTimer.Tick  += (_, _) =>
         {
             _closeTimer.Stop();
-            // Only the visible panel counts, not the window's glow margins.
+            // Only the visible panel counts, not the window's transparent area.
             if (!_seeking && !_typing && !NativeInterop.IsCursorOver(Expanded)) Collapse();
         };
-        _volumeTimer.Tick += (_, _) => { _volumeTimer.Stop(); VolumeView.Visibility = Visibility.Collapsed; if (!_expanded) ShowStrip(); };
-        _peekTimer.Tick   += (_, _) => { _peekTimer.Stop();   _peeking = false; UpdatePill(); _stripTimer.Start(); };
-        _stripTimer.Tick  += (_, _) =>
-        {
-            _stripTimer.Stop();
-            if (!_expanded && !_peeking && !NativeInterop.IsCursorOver(Pill)) ShowStrip();
-        };
+        _volumeTimer.Tick += (_, _) => { _volumeTimer.Stop(); VolumeView.Visibility = Visibility.Collapsed; ShowRest(); };
         _giveUpTimer.Tick += (_, _) => { _giveUpTimer.Stop(); ResetGiveUp(); };
         _tickTimer.Tick   += (_, _) => OnTick();
         _fullscreenTimer.Tick += (_, _) => CheckFullscreen();
+        _lyricsTimer.Tick += (_, _) => UpdateLyrics();
+
+        // Wavy seek bar
+        SeekBar.SeekStarted   += () => { _seeking = true; _closeTimer.Stop(); };
+        SeekBar.SeekPreview   += s => PositionText.Text = Format(TimeSpan.FromSeconds(s));
+        SeekBar.SeekCommitted += s =>
+        {
+            _seeking = false;
+            _media.Seek(TimeSpan.FromSeconds(s));
+            _lyricIndex = -1;
+            if (!NativeInterop.IsCursorOver(Expanded)) _closeTimer.Start();
+        };
+
+        // Mây
+        _focus.Finished += session => Dispatcher.BeginInvoke(new Action(() =>
+            CatReact(session.Success ? CatMood.Happy : CatMood.Sad, session.Success ? 8 : 10)));
+        var (done, total) = _todos.Progress();
+        _allDone = total > 0 && done == total;
+        CatPanel.MouseLeftButtonUp += (_, _) => CatReact(CatMood.Happy, 2.5);   // a pat on the head
+        CatRest.SizeChanged  += (_, _) => PlaceCat();
+        RestArea.SizeChanged += (_, _) => PlaceCat();
 
         var s = AppSettings.Current;
         _selectedMinutes = FocusService.Presets.Contains(s.LastFocusMinutes) ? s.LastFocusMinutes : 25;
         _selectedKind    = TreeCatalog.Parse(s.LastTreeKind);
         if (!_focus.IsUnlocked(_selectedKind)) _selectedKind = TreeKind.Oak;
+        _lyricsOpen      = s.LyricsOpen;
         BuildPresets();
 
         _focus.Changed += () => Dispatcher.BeginInvoke(new Action(UpdateFocusUi));
 
         _ready = true;
-        SizeChanged += (_, _) => Recenter();
+        _clips.Start(this);   // creates the window handle too
         Loaded += (_, _) =>
         {
             Recenter();
             UpdateFocusUi();
             ApplyAccent(null);
             OnTick();
+            ShowRest();
             _tickTimer.Start();
             _fullscreenTimer.Start();
+            _hoverTimer.Start();
+        };
+        SystemParameters.StaticPropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(SystemParameters.PrimaryScreenWidth)) Recenter();
         };
     }
 
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
-        NativeInterop.MakeOverlay(this);   // never steals focus, no taskbar/Alt-Tab entry
+        NativeInterop.MakeOverlay(this);              // never steals focus, no taskbar/Alt-Tab entry
+        NativeInterop.SetClickThrough(this, true);    // resting: clicks go to the tabs underneath
     }
 
     // ── Visibility ────────────────────────────────────────────────────
@@ -171,47 +216,63 @@ public partial class NotchWindow : Window
         }
     }
 
+    /// <summary>The window has a fixed size (no jumps while opening), centred at the top.</summary>
     private void Recenter()
     {
-        Left = (SystemParameters.PrimaryScreenWidth - ActualWidth) / 2;
+        Left = (SystemParameters.PrimaryScreenWidth - Width) / 2;
         Top  = 0;
     }
 
-    // ── Open / close ──────────────────────────────────────────────────
-    private void Strip_MouseEnter(object sender, MouseEventArgs e) => _openTimer.Start();
-
-    private void Pill_MouseEnter(object sender, MouseEventArgs e)
+    // ── Resting: watch the pointer (the window lets clicks through) ──
+    private void WatchPointer()
     {
-        _stripTimer.Stop();
-        _openTimer.Start();
+        if (!IsVisible || _expanded) { _dwellStart = null; return; }
+
+        FrameworkElement? target = Pill.IsVisible ? Pill : StripHost.IsVisible ? StripHost : null;
+        if (target == null) { _dwellStart = null; SetFaded(false); return; }
+
+        // Pointer close by: fade, so whatever is underneath shows through.
+        SetFaded(target == Pill && NativeInterop.IsCursorNear(Pill, 26));
+
+        bool over = NativeInterop.IsCursorOver(target);
+        if (!over) { _dwellStart = null; return; }
+
+        _dwellStart ??= DateTime.UtcNow;
+        double need = target == Pill ? 400 : 150;   // the strip is so thin that touching it is enough
+        if ((DateTime.UtcNow - _dwellStart.Value).TotalMilliseconds >= need)
+        {
+            _dwellStart = null;
+            Expand();
+        }
     }
 
-    private void Pill_MouseLeave(object sender, MouseEventArgs e)
+    private void SetFaded(bool faded)
     {
-        _openTimer.Stop();
-        _stripTimer.Start();
+        if (faded == _faded) return;
+        _faded = faded;
+        var anim = new DoubleAnimation(faded ? 0.3 : 1, TimeSpan.FromMilliseconds(160));
+        RestArea.BeginAnimation(OpacityProperty, anim);
+        CatRest.BeginAnimation(OpacityProperty, anim);
     }
 
-    /// <summary>The thin strip grows into the full notch.</summary>
-    private void ShowPill()
+    /// <summary>Resting look: the slim pill while music plays or a tree grows, else the strip.</summary>
+    private void ShowRest()
     {
-        if (_expanded) return;
-        StripHost.Visibility = Visibility.Collapsed;
-        Pill.Visibility      = Visibility.Visible;
-        Pill.BeginAnimation(OpacityProperty, new DoubleAnimation(0.3, 1, TimeSpan.FromMilliseconds(150)));
-        _stripTimer.Stop();
-        _stripTimer.Start();   // back to the strip if the mouse moves away
+        if (_expanded || VolumeView.Visibility == Visibility.Visible) return;
+        bool pill = (_hasMusic && _playing) || _focus.IsRunning;
+        Pill.Visibility      = pill ? Visibility.Visible : Visibility.Collapsed;
+        StripHost.Visibility = pill ? Visibility.Collapsed : Visibility.Visible;
+        RestArea.Visibility  = Visibility.Visible;
+        CatRest.Visibility   = Visibility.Visible;
+        PlaceCat();
     }
 
-    /// <summary>Back to resting: a thin strip that doesn't cover the browser's tabs.</summary>
-    private void ShowStrip()
+    /// <summary>Mây sits just to the right of the strip / pill.</summary>
+    private void PlaceCat()
     {
-        if (_expanded) return;
-        Pill.Visibility       = Visibility.Collapsed;
-        VolumeView.Visibility = Visibility.Collapsed;
-        StripHost.Visibility  = Visibility.Visible;
+        double half = RestArea.ActualWidth > 0 ? RestArea.ActualWidth / 2 : 100;
+        CatRestShift.X = half + CatRest.ActualWidth / 2 + 6;
     }
-    private void Pill_MouseLeftButtonUp(object sender, MouseButtonEventArgs e) => Expand();
 
     private void Expanded_MouseEnter(object sender, MouseEventArgs e) => _closeTimer.Stop();
     private void Expanded_MouseLeave(object sender, MouseEventArgs e)
@@ -219,27 +280,34 @@ public partial class NotchWindow : Window
         if (!_seeking && !_typing) _closeTimer.Start();
     }
 
+    // ── Open / close ──────────────────────────────────────────────────
     private void Expand() => Expand(null);
 
     /// <summary>Opens the panel (on <paramref name="tab"/>, or the tab used last).</summary>
     private void Expand(string? tab)
     {
-        _openTimer.Stop();
         if (!IsVisible) return;
         bool wasOpen = _expanded;
         _expanded = true;
-        _animation++;
+        int gen = ++_animation;
+        NativeInterop.SetClickThrough(this, false);
+
+        // Grow out of whatever is showing now
+        double fromWidth = Pill.IsVisible ? Pill.ActualWidth : StripHost.IsVisible ? StripHost.ActualWidth : 200;
+        double fromHeight = Pill.IsVisible ? Pill.ActualHeight : 9;
 
         _volumeTimer.Stop();
-        _stripTimer.Stop();
+        _dwellStart = null;
+        SetFaded(false);
         VolumeView.Visibility = Visibility.Collapsed;
-        StripHost.Visibility  = Visibility.Collapsed;
-        Pill.Visibility       = Visibility.Collapsed;
+        RestArea.Visibility   = Visibility.Collapsed;
+        CatRest.Visibility    = Visibility.Collapsed;
         Expanded.Visibility   = Visibility.Visible;
 
         UpdateClock();
         UpdateQuickButtons();
         UpdateTodoBadge();
+        UpdateCat();
 
         // Open on the tab asked for, else the one used last; straight to the tree while one grows.
         tab ??= _focus.IsRunning ? "focus" : AppSettings.Current.LastNotchTab;
@@ -249,12 +317,19 @@ public partial class NotchWindow : Window
 
         if (!wasOpen)
         {
-            // Grows out of the notch: quick at first, settling softly with a tiny overshoot.
-            var grow = new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.25 };
-            var fade = new CubicEase { EasingMode = EasingMode.EaseOut };
-            Expanded.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(220)) { EasingFunction = fade });
-            ExpandedScale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(0.55, 1, TimeSpan.FromMilliseconds(380)) { EasingFunction = grow });
-            ExpandedScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(0.25, 1, TimeSpan.FromMilliseconds(420)) { EasingFunction = grow });
+            // The pill morphs into the panel. While it moves, the glow is off and the
+            // panel is drawn once as a picture: much smoother on a big transparent window.
+            Expanded.UpdateLayout();
+            double w = Math.Max(1, Expanded.ActualWidth), h = Math.Max(1, Expanded.ActualHeight);
+            BeginMorph();
+            var grow = new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.18 };
+            var dur  = TimeSpan.FromMilliseconds(360);
+            var sx = new DoubleAnimation(Math.Clamp(fromWidth / w, 0.15, 1), 1, dur) { EasingFunction = grow };
+            var sy = new DoubleAnimation(Math.Clamp(fromHeight / h, 0.04, 1), 1, dur) { EasingFunction = grow };
+            sy.Completed += (_, _) => { if (gen == _animation) EndMorph(); };
+            Expanded.BeginAnimation(OpacityProperty, new DoubleAnimation(0.4, 1, TimeSpan.FromMilliseconds(160)));
+            ExpandedScale.BeginAnimation(ScaleTransform.ScaleXProperty, sx);
+            ExpandedScale.BeginAnimation(ScaleTransform.ScaleYProperty, sy);
         }
 
         if (!_typing) _closeTimer.Start();   // closes again if the mouse just passed by
@@ -262,30 +337,50 @@ public partial class NotchWindow : Window
 
     private void Collapse()
     {
-        _openTimer.Stop();
         _closeTimer.Stop();
         if (!_expanded) return;
         _expanded = false;
         _seeking  = false;
         if (_typing) EndTyping(collapse: false);
         int gen = ++_animation;
+        NativeInterop.SetClickThrough(this, true);   // clicks go through right away
 
         StopMarquee();
         ResetGiveUp();
+        _lyricsTimer.Stop();
 
-        // Shrinks back into the notch, then the strip returns.
+        // Shrinks back into the notch, then the resting notch returns.
+        bool pill = (_hasMusic && _playing) || _focus.IsRunning;
+        double toWidth = pill ? Math.Max(140, Pill.ActualWidth) : 200;
+        double w = Math.Max(1, Expanded.ActualWidth), h = Math.Max(1, Expanded.ActualHeight);
+
+        BeginMorph();
         var ease = new CubicEase { EasingMode = EasingMode.EaseIn };
-        var dur  = TimeSpan.FromMilliseconds(190);
-        var fade = new DoubleAnimation(1, 0, dur) { EasingFunction = ease };
+        var dur  = TimeSpan.FromMilliseconds(200);
+        var fade = new DoubleAnimation(1, 0, dur) { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn } };
         fade.Completed += (_, _) =>
         {
             if (gen != _animation) return;   // reopened meanwhile
             Expanded.Visibility = Visibility.Collapsed;
-            ShowStrip();
+            EndMorph();
+            ShowRest();
+            RestArea.BeginAnimation(OpacityProperty, new DoubleAnimation(0.2, 1, TimeSpan.FromMilliseconds(140)));
         };
         Expanded.BeginAnimation(OpacityProperty, fade);
-        ExpandedScale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(1, 0.7, dur) { EasingFunction = ease });
-        ExpandedScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(1, 0.35, dur) { EasingFunction = ease });
+        ExpandedScale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(1, Math.Clamp(toWidth / w, 0.15, 1), dur) { EasingFunction = ease });
+        ExpandedScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(1, Math.Clamp((pill ? 22 : 9) / h, 0.04, 1), dur) { EasingFunction = ease });
+    }
+
+    private void BeginMorph()
+    {
+        Expanded.Effect    = null;
+        Expanded.CacheMode = new BitmapCache { SnapsToDevicePixels = true };
+    }
+
+    private void EndMorph()
+    {
+        Expanded.CacheMode = null;
+        Expanded.Effect    = ExpandedGlow;
     }
 
     /// <summary>Opens the notch on a tab, e.g. from a to-do reminder. Waits if the notch is hidden.</summary>
@@ -301,6 +396,7 @@ public partial class NotchWindow : Window
         "focus"         => TabFocus,
         "notifications" => TabNotifications,
         "todo"          => TabTodo,
+        "clipboard"     => TabClipboard,
         _               => TabMusic
     };
 
@@ -311,6 +407,7 @@ public partial class NotchWindow : Window
         var tab = sender == TabFocus ? "focus"
                 : sender == TabNotifications ? "notifications"
                 : sender == TabTodo ? "todo"
+                : sender == TabClipboard ? "clipboard"
                 : "music";
         AppSettings.Current.LastNotchTab = tab;
         AppSettings.Current.Save();
@@ -319,10 +416,13 @@ public partial class NotchWindow : Window
 
     private void ShowTab(string tab)
     {
+        bool animateWidth = _tab != tab && Expanded.IsVisible && Expanded.Opacity > 0.9;
+        _tab = tab;
         MusicTab.Visibility         = tab == "music"         ? Visibility.Visible : Visibility.Collapsed;
         FocusTab.Visibility         = tab == "focus"         ? Visibility.Visible : Visibility.Collapsed;
         NotificationsTab.Visibility = tab == "notifications" ? Visibility.Visible : Visibility.Collapsed;
         TodoTab.Visibility          = tab == "todo"          ? Visibility.Visible : Visibility.Collapsed;
+        ClipboardTab.Visibility     = tab == "clipboard"     ? Visibility.Visible : Visibility.Collapsed;
 
         // Soft fade when switching tabs
         TabContent.BeginAnimation(OpacityProperty,
@@ -349,13 +449,19 @@ public partial class NotchWindow : Window
             case "todo":
                 UpdateTodoUi();
                 break;
+            case "clipboard":
+                RebuildClipboard();
+                break;
         }
+        ApplyLyricsLayout(animateWidth);
     }
 
     // ── Every second ──────────────────────────────────────────────────
     private void OnTick()
     {
         if (_focus.IsRunning) UpdateFocusTick();
+        if (Pill.IsVisible) UpdatePillProgress();
+        UpdateCat();
         if (_expanded)
         {
             UpdateClock();
@@ -393,24 +499,44 @@ public partial class NotchWindow : Window
         }
     }
 
-    // ── The collapsed notch ───────────────────────────────────────────
+    // ── The resting pill ──────────────────────────────────────────────
     /// <summary>
-    /// Left: album art (or the tree). Right: sound bars (or the time left).
-    /// Middle: the song name for a moment, or tree + time when both run.
+    /// Left: album art (or the tree). Middle: the song's name. Right: time left
+    /// on the tree, sound bars. A thin progress line runs along the bottom.
     /// </summary>
     private void UpdatePill()
     {
         bool focus = _focus.IsRunning;
 
-        PillArtBox.Visibility   = _hasMusic ? Visibility.Visible : Visibility.Collapsed;
-        PillBars.Visibility     = _hasMusic ? Visibility.Visible : Visibility.Collapsed;
-        PillTreeLeft.Visibility = !_hasMusic && focus ? Visibility.Visible : Visibility.Collapsed;
-        PillFocusText.Visibility = !_hasMusic && focus ? Visibility.Visible : Visibility.Collapsed;
-
-        PillText.Visibility     = _peeking && _hasMusic ? Visibility.Visible : Visibility.Collapsed;
-        PillFocusMid.Visibility = _hasMusic && focus && !_peeking ? Visibility.Visible : Visibility.Collapsed;
-        PillLeft.Visibility     = _hasMusic || focus ? Visibility.Visible : Visibility.Collapsed;
+        PillArtBox.Visibility    = _hasMusic ? Visibility.Visible : Visibility.Collapsed;
+        PillBars.Visibility      = _hasMusic ? Visibility.Visible : Visibility.Collapsed;
+        PillTreeLeft.Visibility  = !_hasMusic && focus ? Visibility.Visible : Visibility.Collapsed;
+        PillFocusText.Visibility = focus ? Visibility.Visible : Visibility.Collapsed;
+        PillText.Text = _hasMusic ? _title
+                      : focus ? $"Đang trồng {TreeCatalog.Get(_focus.CurrentKind).Name.ToLowerInvariant()}"
+                      : "";
+        UpdatePillProgress();
         UpdateStrip();
+        ShowRest();
+    }
+
+    private void UpdatePillProgress()
+    {
+        double frac = 0;
+        if (_hasMusic)
+        {
+            var (pos, dur) = _media.GetTimeline();
+            if (dur > TimeSpan.Zero) frac = pos.TotalSeconds / dur.TotalSeconds;
+        }
+        else if (_focus.IsRunning)
+        {
+            frac = _focus.Progress;
+        }
+        frac = Math.Clamp(frac, 0, 1);
+        // Glide to the new value over the next second, so the line moves smoothly.
+        bool jump = Math.Abs(frac - PillProgressScale.ScaleX) > 0.05;
+        PillProgressScale.BeginAnimation(ScaleTransform.ScaleXProperty,
+            new DoubleAnimation(frac, TimeSpan.FromMilliseconds(jump ? 200 : 1000)));
     }
 
     /// <summary>The strip takes the song's colour, or green while a tree grows.</summary>
@@ -442,19 +568,23 @@ public partial class NotchWindow : Window
         {
             MusicContent.Visibility = Visibility.Collapsed;
             NoMusicText.Visibility  = Visibility.Visible;
-            _peeking = false;
+            _playing = false;
             SetBarsPlaying(false);
+            SeekBar.IsPlaying = false;
             StopMarquee();
             ApplyAccent(null);
             UpdatePill();
+            ApplyLyricsLayout(false);
+            UpdateCat();
             return;
         }
 
         _appId   = state.AppId;
         _playing = state.IsPlaying;
 
-        bool titleChanged = state.Title != _title;
-        _title = state.Title;
+        bool titleChanged = state.Title != _title || state.Artist != _artist;
+        _title  = state.Title;
+        _artist = state.Artist;
 
         SongArtist.Text   = state.Artist;
         MusicAppName.Text = state.AppName;
@@ -463,27 +593,21 @@ public partial class NotchWindow : Window
         PlayPauseGlyph.Text = _playing ? "" : "";   // pause / play icon
         ApplyAccent(ColorExtractor.Dominant(state.Art));
         SetBarsPlaying(_playing);
+        SeekBar.IsPlaying = _playing;
 
         MusicContent.Visibility = Visibility.Visible;
         NoMusicText.Visibility  = Visibility.Collapsed;
-
-        // A new song: show its name in the notch for a moment.
-        if (newTrack && !_expanded)
-        {
-            PillText.Text = string.IsNullOrWhiteSpace(state.Artist) ? state.Title : $"{state.Title} · {state.Artist}";
-            _peeking = true;
-            ShowPill();
-            _peekTimer.Stop();
-            _peekTimer.Start();
-        }
         UpdatePill();
+        UpdateCat();
 
         if (titleChanged || SongTitle.Text.Length == 0)
         {
             StopMarquee();
             if (_expanded && MusicTab.IsVisible) StartMarqueeSoon();
+            if (LyricsPane.IsVisible) LoadLyrics();
         }
         if (_expanded && MusicTab.IsVisible) UpdateProgress();
+        ApplyLyricsLayout(false);
     }
 
     /// <summary>
@@ -501,6 +625,8 @@ public partial class NotchWindow : Window
         accent.Freeze();
         Resources["AccentBrush"] = accent;
         foreach (var bar in Bars) bar.Fill = accent;
+        SeekBar.Accent = accent;
+        if (_lyricsOpen) LyricsBtn.Foreground = accent;
 
         if (cover is { } baseColor)
         {
@@ -609,6 +735,7 @@ public partial class NotchWindow : Window
         _playing = !_playing;
         PlayPauseGlyph.Text = _playing ? "" : "";
         SetBarsPlaying(_playing);
+        SeekBar.IsPlaying = _playing;
     }
 
     private void UpdateProgress()
@@ -624,28 +751,9 @@ public partial class NotchWindow : Window
         DurationText.Text  = Format(dur);
         if (_seeking) return;
 
-        SeekSlider.Maximum = dur.TotalSeconds;
-        SeekSlider.Value   = pos.TotalSeconds;
-        PositionText.Text  = Format(pos);
-    }
-
-    private void SeekSlider_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        _seeking = true;
-        _closeTimer.Stop();
-    }
-
-    private void SeekSlider_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
-    {
-        if (!_seeking) return;
-        _seeking = false;
-        _media.Seek(TimeSpan.FromSeconds(SeekSlider.Value));
-        if (!NativeInterop.IsCursorOver(Expanded)) _closeTimer.Start();
-    }
-
-    private void SeekSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        if (_ready && _seeking) PositionText.Text = Format(TimeSpan.FromSeconds(e.NewValue));
+        SeekBar.Duration  = dur.TotalSeconds;
+        SeekBar.Position  = pos.TotalSeconds;
+        PositionText.Text = Format(pos);
     }
 
     // Volume of the playing app only (its entry in the Volume Mixer)
@@ -675,6 +783,148 @@ public partial class NotchWindow : Window
         AppVolumeGlyph.Text = VolumeGlyph(value / 100.0, muted: false);
     }
 
+    // ── Lyrics ────────────────────────────────────────────────────────
+    private void Lyrics_Click(object sender, RoutedEventArgs e)
+    {
+        _lyricsOpen = !_lyricsOpen;
+        AppSettings.Current.LyricsOpen = _lyricsOpen;
+        AppSettings.Current.Save();
+        ApplyLyricsLayout(animate: true);
+    }
+
+    /// <summary>Lyrics open: the panel widens and splits, player left, lyrics right.</summary>
+    private void ApplyLyricsLayout(bool animate)
+    {
+        bool show = _lyricsOpen && _hasMusic && _tab == "music";
+        LyricsBtn.Foreground = _lyricsOpen ? (Brush)Resources["AccentBrush"] : Frozen(Color.FromArgb(0xDD, 0xFF, 0xFF, 0xFF));
+        LyricsColumn.Width   = new GridLength(show ? LyricsWidth : 0);
+        LyricsPane.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+
+        double target = show ? PanelWidthLyrics : PanelWidth;
+        if (animate && Math.Abs(Expanded.ActualWidth - target) > 1)
+        {
+            var anim = new DoubleAnimation(Expanded.ActualWidth, target, TimeSpan.FromMilliseconds(260))
+            {
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+            anim.Completed += (_, _) =>
+            {
+                Expanded.BeginAnimation(WidthProperty, null);
+                Expanded.Width = _lyricsOpen && _hasMusic && _tab == "music" ? PanelWidthLyrics : PanelWidth;
+                StartMarqueeSoon();
+            };
+            Expanded.BeginAnimation(WidthProperty, anim);
+        }
+        else
+        {
+            Expanded.BeginAnimation(WidthProperty, null);
+            Expanded.Width = target;
+        }
+
+        if (show)
+        {
+            LoadLyrics();
+            if (_expanded) _lyricsTimer.Start();
+        }
+        else
+        {
+            _lyricsTimer.Stop();
+        }
+    }
+
+    private async void LoadLyrics()
+    {
+        var key = $"{_title}|{_artist}";
+        if (key == _lyricsKey) return;
+        _lyricsKey  = key;
+        _lyrics     = Array.Empty<LyricLine>();
+        _lyricIndex = -1;
+        LyricsList.Children.Clear();
+        LyricsScroll.ScrollToVerticalOffset(0);
+        LyricsStatus.Text = "Đang tìm lời bài hát…";
+        LyricsStatus.Visibility = Visibility.Visible;
+
+        var (_, dur) = _media.GetTimeline();
+        var lines = await LyricsService.FindAsync(_title, _artist, dur);
+        if (key != _lyricsKey) return;   // the song changed meanwhile
+
+        _lyrics = lines;
+        if (lines.Count == 0)
+        {
+            LyricsStatus.Text = "Không tìm thấy lời bài hát";
+            // Try again next time (e.g. once the player reports the song's length).
+            _lyricsKey = dur > TimeSpan.Zero ? key : null;
+            return;
+        }
+
+        LyricsStatus.Visibility = Visibility.Collapsed;
+        foreach (var line in lines)
+        {
+            var text = new TextBlock
+            {
+                Text = line.Text, FontSize = 15, FontWeight = FontWeights.SemiBold, FontFamily = new FontFamily("Segoe UI"),
+                TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 5, 0, 5), Cursor = Cursors.Hand,
+                Foreground = Frozen(Color.FromArgb(0x55, 0xFF, 0xFF, 0xFF))
+            };
+            var at = line.Time;
+            text.MouseLeftButtonUp += (_, _) => { _media.Seek(at); _lyricIndex = -1; };
+            LyricsList.Children.Add(text);
+        }
+        UpdateLyrics();
+    }
+
+    /// <summary>Highlights the line being sung and keeps it in the middle.</summary>
+    private void UpdateLyrics()
+    {
+        if (_lyrics.Count == 0 || !LyricsPane.IsVisible) return;
+        var (pos, _) = _media.GetTimeline();
+        pos += TimeSpan.FromMilliseconds(250);   // a little early feels in time
+
+        int idx = -1;
+        for (int i = 0; i < _lyrics.Count; i++)
+        {
+            if (_lyrics[i].Time <= pos) idx = i;
+            else break;
+        }
+        if (idx == _lyricIndex) return;
+
+        var dim = Frozen(Color.FromArgb(0x55, 0xFF, 0xFF, 0xFF));
+        if (_lyricIndex >= 0 && _lyricIndex < LyricsList.Children.Count)
+            ((TextBlock)LyricsList.Children[_lyricIndex]).Foreground = dim;
+        _lyricIndex = idx;
+        if (idx < 0 || idx >= LyricsList.Children.Count) { ScrollLyricsTo(0); return; }
+
+        var current = (TextBlock)LyricsList.Children[idx];
+        current.Foreground = Brushes.White;
+        try
+        {
+            double y = current.TransformToAncestor(LyricsList).Transform(new Point(0, 0)).Y + LyricsList.Margin.Top;
+            ScrollLyricsTo(y + current.ActualHeight / 2 - LyricsScroll.ViewportHeight / 2);
+        }
+        catch { }
+    }
+
+    private void ScrollLyricsTo(double offset)
+    {
+        _scrollTarget = Math.Clamp(offset, 0, LyricsScroll.ScrollableHeight);
+        if (_scrolling) return;
+        _scrolling = true;
+        CompositionTarget.Rendering += ScrollStep;
+    }
+
+    private void ScrollStep(object? sender, EventArgs e)
+    {
+        double now  = LyricsScroll.VerticalOffset;
+        double next = now + (_scrollTarget - now) * 0.18;
+        if (Math.Abs(_scrollTarget - next) < 0.5 || !LyricsPane.IsVisible)
+        {
+            next = _scrollTarget;
+            _scrolling = false;
+            CompositionTarget.Rendering -= ScrollStep;
+        }
+        LyricsScroll.ScrollToVerticalOffset(next);
+    }
+
     // ── System volume bar ─────────────────────────────────────────────
     public void ShowVolume(float level, bool muted)
     {
@@ -684,8 +934,8 @@ public partial class NotchWindow : Window
         VolFillScale.ScaleX = muted ? 0 : Math.Clamp(level, 0f, 1f);
         VolText.Text        = muted ? "Tắt" : Math.Round(level * 100).ToString();
 
-        Pill.Visibility       = Visibility.Collapsed;
-        StripHost.Visibility  = Visibility.Collapsed;
+        RestArea.Visibility   = Visibility.Collapsed;
+        CatRest.Visibility    = Visibility.Collapsed;
         VolumeView.Visibility = Visibility.Visible;
         _volumeTimer.Stop();
         _volumeTimer.Start();
@@ -829,7 +1079,6 @@ public partial class NotchWindow : Window
         {
             BigTree.Kind      = _focus.CurrentKind;
             PillTreeLeft.Kind = _focus.CurrentKind;
-            PillTreeMid.Kind  = _focus.CurrentKind;
             UpdateFocusTick();
         }
         else
@@ -850,12 +1099,10 @@ public partial class NotchWindow : Window
         var left = Format(_focus.Remaining);
         FocusRemaining.Text   = left;
         PillFocusText.Text    = left;
-        PillFocusMidText.Text = left;
         FocusSub.Text         = $"{TreeCatalog.Get(_focus.CurrentKind).Name} · {_focus.Minutes} phút";
         FocusFillScale.ScaleX = _focus.Progress;
         BigTree.Set(_focus.Progress, dead: false);
         PillTreeLeft.Set(_focus.Progress, dead: false);
-        PillTreeMid.Set(_focus.Progress, dead: false);
     }
 
     private void UpdateForest()
@@ -1013,6 +1260,10 @@ public partial class NotchWindow : Window
     private void UpdateTodoUi()
     {
         UpdateTodoBadge();
+        var (doneCount, totalCount) = _todos.Progress();
+        bool allDone = totalCount > 0 && doneCount == totalCount;
+        if (allDone && !_allDone) CatReact(CatMood.Happy, 8);   // Mây celebrates a finished list
+        _allDone = allDone;
         if (!TodoTab.IsVisible && !_expanded) return;
 
         var items = _todos.Today();
@@ -1274,6 +1525,234 @@ public partial class NotchWindow : Window
             Grid.SetColumn(col, i);
             WeekChart.Children.Add(col);
         }
+    }
+
+    // ── Clipboard history ─────────────────────────────────────────────
+    private readonly Dictionary<Guid, BitmapSource?> _thumbs = new();
+    private readonly DispatcherTimer _clipToastTimer = new() { Interval = TimeSpan.FromMilliseconds(650) };
+
+    private void RebuildClipboard()
+    {
+        if (!_expanded || _tab != "clipboard") return;
+
+        var items  = _clips.Items;
+        var texts  = items.Where(i => !i.IsImage).ToList();
+        var images = items.Where(i => i.IsImage).ToList();
+
+        ClipCount.Text = items.Count == 0 ? "" : $"{texts.Count} đoạn chữ · {images.Count} ảnh";
+        ClipEmpty.Visibility       = items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        ClipClearBtn.Visibility    = items.Any(i => !i.Pinned) ? Visibility.Visible : Visibility.Collapsed;
+        ClipImageScroll.Visibility = images.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        ClipTextList.Children.Clear();
+        foreach (var item in texts) ClipTextList.Children.Add(MakeClipTextRow(item));
+
+        ClipImageList.Children.Clear();
+        foreach (var item in images) ClipImageList.Children.Add(MakeClipImageTile(item));
+
+        // Forget thumbnails of deleted images
+        foreach (var id in _thumbs.Keys.Where(id => images.All(i => i.Id != id)).ToList()) _thumbs.Remove(id);
+    }
+
+    private UIElement MakeClipTextRow(ClipItem item)
+    {
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var pinMark = new TextBlock
+        {
+            Text = "", FontFamily = (FontFamily)FindResource("IconFont"), FontSize = 11,
+            Foreground = Frozen(Color.FromRgb(0xFF, 0x9F, 0x0A)), VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 6, 0), Visibility = item.Pinned ? Visibility.Visible : Visibility.Collapsed
+        };
+        grid.Children.Add(pinMark);
+
+        var full = item.Text ?? "";
+        var line = new TextBlock
+        {
+            Text = full.ReplaceLineEndings(" ").Trim(), FontSize = 12.5, FontFamily = new FontFamily("Segoe UI"),
+            Foreground = Brushes.White, TextTrimming = TextTrimming.CharacterEllipsis,
+            VerticalAlignment = VerticalAlignment.Center,
+            ToolTip = full.Length > 600 ? full[..600] + "…" : full
+        };
+        Grid.SetColumn(line, 1);
+        grid.Children.Add(line);
+
+        var when = new TextBlock
+        {
+            Text = item.Time.Date == DateTime.Today ? item.Time.ToString("HH:mm") : item.Time.ToString("dd/MM"),
+            FontSize = 11, FontFamily = new FontFamily("Segoe UI"), VerticalAlignment = VerticalAlignment.Center,
+            Foreground = Frozen(Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF)), Margin = new Thickness(8, 0, 0, 0)
+        };
+        var buttons = MakeClipButtons(item);
+        buttons.Visibility = Visibility.Collapsed;
+        var right = new Grid();
+        right.Children.Add(when);
+        right.Children.Add(buttons);
+        Grid.SetColumn(right, 2);
+        grid.Children.Add(right);
+
+        var row = new Border
+        {
+            Child = grid, CornerRadius = new CornerRadius(10), Padding = new Thickness(8, 4, 6, 4),
+            Background = Brushes.Transparent, Cursor = Cursors.Hand
+        };
+        var hover = Frozen(Color.FromArgb(0x1E, 0xFF, 0xFF, 0xFF));
+        row.MouseEnter += (_, _) => { row.Background = hover; when.Visibility = Visibility.Hidden; buttons.Visibility = Visibility.Visible; };
+        row.MouseLeave += (_, _) => { row.Background = Brushes.Transparent; when.Visibility = Visibility.Visible; buttons.Visibility = Visibility.Collapsed; };
+        row.MouseLeftButtonUp += (_, _) => { if (!buttons.IsMouseOver) CopyClip(item); };
+        return row;
+    }
+
+    private UIElement MakeClipImageTile(ClipItem item)
+    {
+        if (!_thumbs.TryGetValue(item.Id, out var thumb))
+            _thumbs[item.Id] = thumb = ClipboardService.LoadImage(item, 112);
+
+        var box = new Grid { Width = 86, Height = 56 };
+        box.Children.Add(new Border { Background = Frozen(Color.FromRgb(0x1C, 0x1C, 0x1E)) });
+        if (thumb != null)
+            box.Children.Add(new Image { Source = thumb, Stretch = Stretch.UniformToFill, HorizontalAlignment = HorizontalAlignment.Center });
+
+        if (item.Pinned)
+        {
+            box.Children.Add(new Border
+            {
+                Width = 18, Height = 18, CornerRadius = new CornerRadius(9), Margin = new Thickness(4),
+                Background = Frozen(Color.FromArgb(0xCC, 0x00, 0x00, 0x00)),
+                HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+                Child = new TextBlock
+                {
+                    Text = "", FontFamily = (FontFamily)FindResource("IconFont"), FontSize = 10,
+                    Foreground = Frozen(Color.FromRgb(0xFF, 0x9F, 0x0A)),
+                    HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
+                }
+            });
+        }
+
+        var buttons = MakeClipButtons(item);
+        buttons.Background = Frozen(Color.FromArgb(0xCC, 0x00, 0x00, 0x00));
+        buttons.HorizontalAlignment = HorizontalAlignment.Right;
+        buttons.VerticalAlignment   = VerticalAlignment.Top;
+        buttons.Visibility = Visibility.Collapsed;
+        box.Children.Add(buttons);
+
+        var tile = new Border
+        {
+            Child = box, CornerRadius = new CornerRadius(9), Margin = new Thickness(0, 0, 8, 0),
+            BorderThickness = new Thickness(1.5), BorderBrush = Frozen(Color.FromArgb(0x26, 0xFF, 0xFF, 0xFF)),
+            Cursor = Cursors.Hand, ClipToBounds = true,
+            ToolTip = $"Ảnh · {item.Time:HH:mm dd/MM} · bấm để chép lại"
+        };
+        box.Clip = new RectangleGeometry(new Rect(0, 0, 86, 56), 8, 8);
+        var accent = Frozen(_hasColour ? _accent : Colors.White);
+        tile.MouseEnter += (_, _) => { tile.BorderBrush = accent; buttons.Visibility = Visibility.Visible; };
+        tile.MouseLeave += (_, _) => { tile.BorderBrush = Frozen(Color.FromArgb(0x26, 0xFF, 0xFF, 0xFF)); buttons.Visibility = Visibility.Collapsed; };
+        tile.MouseLeftButtonUp += (_, _) => { if (!buttons.IsMouseOver) CopyClip(item); };
+        return tile;
+    }
+
+    /// <summary>Pin / unpin and delete, shown on hover.</summary>
+    private StackPanel MakeClipButtons(ClipItem item)
+    {
+        var panel = new StackPanel { Orientation = Orientation.Horizontal };
+        var pin = new Button
+        {
+            Content = item.Pinned ? "" : "", Style = (Style)FindResource("QuickButton"),
+            Width = 22, Height = 22, FontSize = 10, Margin = new Thickness(0),
+            ToolTip = item.Pinned ? "Bỏ ghim" : "Ghim (không bị xoá)"
+        };
+        pin.Click += (_, e) => { e.Handled = true; _clips.TogglePin(item); };
+        var del = new Button
+        {
+            Content = "", Style = (Style)FindResource("QuickButton"),
+            Width = 22, Height = 22, FontSize = 10, Margin = new Thickness(0), ToolTip = "Xoá"
+        };
+        del.Click += (_, e) => { e.Handled = true; _clips.Delete(item); };
+        panel.Children.Add(pin);
+        panel.Children.Add(del);
+        return panel;
+    }
+
+    /// <summary>Puts the item back on the clipboard, then closes so you can paste.</summary>
+    private void CopyClip(ClipItem item)
+    {
+        bool ok = _clips.CopyBack(item);
+        ClipToast.Text = ok ? "Đã chép · dán bằng Ctrl + V" : "Không chép được, thử lại nhé";
+        ClipToast.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(120)));
+        if (!ok) return;
+        _clipToastTimer.Stop();
+        _clipToastTimer.Tick -= ClipToastDone;
+        _clipToastTimer.Tick += ClipToastDone;
+        _clipToastTimer.Start();
+    }
+
+    private void ClipToastDone(object? sender, EventArgs e)
+    {
+        _clipToastTimer.Stop();
+        ClipToast.BeginAnimation(OpacityProperty, null);
+        ClipToast.Opacity = 0;
+        Collapse();
+    }
+
+    private void ClipClear_Click(object sender, RoutedEventArgs e) => _clips.ClearUnpinned();
+
+    /// <summary>The mouse wheel scrolls the image row sideways.</summary>
+    private void ClipImageScroll_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        ClipImageScroll.ScrollToHorizontalOffset(ClipImageScroll.HorizontalOffset - e.Delta / 2.0);
+        e.Handled = true;
+    }
+
+    // ── Mây the cat ───────────────────────────────────────────────────
+    private IEnumerable<PixelCat> Cats => new[] { CatRest, CatPanel, CatTree };
+
+    /// <summary>A short reaction: happy hops, or sad after giving up.</summary>
+    private void CatReact(CatMood mood, double seconds)
+    {
+        _catOverride      = mood;
+        _catOverrideUntil = DateTime.Now.AddSeconds(seconds);
+        UpdateCat();
+    }
+
+    private void UpdateCat()
+    {
+        CatMood mood;
+        if (_catOverride is { } o && DateTime.Now < _catOverrideUntil)
+        {
+            mood = o;
+        }
+        else
+        {
+            _catOverride = null;
+            mood = _focus.IsRunning ? CatMood.Focus                                  // sits by the tree
+                 : _hasMusic && _playing ? CatMood.Dance                             // dances to the music
+                 : NativeInterop.IdleTime() >= TimeSpan.FromMinutes(10) ? CatMood.Sleep
+                 : CatMood.Idle;
+        }
+
+        // Every tree you grow is a meal; Mây grows a little with each one.
+        int food = _focus.TotalTrees;
+        double growth = 1 + Math.Min(0.3, food * 0.015);
+        foreach (var cat in Cats)
+        {
+            cat.Mood   = mood;
+            cat.Growth = growth;
+        }
+
+        string doing = mood switch
+        {
+            CatMood.Dance => "đang nhảy theo nhạc",
+            CatMood.Focus => "đang ngồi canh cây",
+            CatMood.Happy => "đang vui lắm",
+            CatMood.Sad   => "hơi buồn vì cây chết",
+            CatMood.Sleep => "đang ngủ",
+            _             => "đang ngồi chơi"
+        };
+        CatPanel.ToolTip = $"Mây {doing} · đã được ăn {food} phần (mỗi cây trồng xong là 1 phần)";
+        CatTree.ToolTip  = CatPanel.ToolTip;
     }
 
     // ── Helpers ───────────────────────────────────────────────────────

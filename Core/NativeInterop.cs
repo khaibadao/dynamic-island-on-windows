@@ -163,6 +163,52 @@ public static class NativeInterop
         SetWindowLong(hwnd, GWL_EXSTYLE, style);
     }
 
+    private const int WS_EX_TRANSPARENT = 0x00000020;
+
+    /// <summary>
+    /// Mouse clicks pass straight through the whole window to what's below
+    /// (true), or the window receives them again (false).
+    /// </summary>
+    public static void SetClickThrough(Window window, bool through)
+    {
+        var hwnd = new WindowInteropHelper(window).Handle;
+        if (hwnd == IntPtr.Zero) return;
+        int style = GetWindowLong(hwnd, GWL_EXSTYLE);
+        int next  = through ? style | WS_EX_TRANSPARENT : style & ~WS_EX_TRANSPARENT;
+        if (next != style) SetWindowLong(hwnd, GWL_EXSTYLE, next);
+    }
+
+    /// <summary>Whether the pointer is within <paramref name="margin"/> px (DIPs) of the element.</summary>
+    public static bool IsCursorNear(FrameworkElement element, double margin)
+    {
+        try
+        {
+            if (!element.IsVisible || PresentationSource.FromVisual(element) == null) return false;
+            if (!GetCursorPos(out var p)) return false;
+            var a = element.PointToScreen(new Point(-margin, -margin));
+            var b = element.PointToScreen(new Point(element.ActualWidth + margin, element.ActualHeight + margin));
+            return p.X >= Math.Min(a.X, b.X) && p.X < Math.Max(a.X, b.X)
+                && p.Y >= Math.Min(a.Y, b.Y) && p.Y < Math.Max(a.Y, b.Y);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct LASTINPUTINFO { public uint cbSize; public uint dwTime; }
+    [DllImport("user32.dll")] private static extern bool GetLastInputInfo(ref LASTINPUTINFO info);
+
+    /// <summary>How long since the last key press or mouse move anywhere.</summary>
+    public static TimeSpan IdleTime()
+    {
+        var info = new LASTINPUTINFO { cbSize = (uint)Marshal.SizeOf<LASTINPUTINFO>() };
+        if (!GetLastInputInfo(ref info)) return TimeSpan.Zero;
+        uint ms = unchecked((uint)Environment.TickCount - info.dwTime);
+        return TimeSpan.FromMilliseconds(ms);
+    }
+
     /// <summary>
     /// Forces the window to stay above all other windows including fullscreen apps.
     /// </summary>

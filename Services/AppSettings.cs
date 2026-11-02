@@ -27,6 +27,9 @@ public sealed class AppSettings
     /// <summary>The notch tab shown last: "music", "focus" or "notifications".</summary>
     public string LastNotchTab { get; set; } = "music";
 
+    /// <summary>Lyrics pane open next to the player.</summary>
+    public bool LyricsOpen { get; set; }
+
     /// <summary>Do Not Disturb: notifications don't drop down (they still go to the history).</summary>
     public bool DoNotDisturb { get; set; }
 
