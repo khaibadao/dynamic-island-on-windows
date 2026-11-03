@@ -35,9 +35,9 @@ public sealed class NotchEyes : FrameworkElement
         ["blink"] = new("Chớp mắt", new Key[]
         {
             new(0, N), new(0.7, new(Lx: -2.5)), new(1.3, new(Lx: -2.5)),
-            new(1.38, Closed() with { Lx: -2 }, E: Ease.Linear), new(1.5, new(Lx: -1.5), E: Ease.Out),
+            new(1.38, Closed() with { Lx = -2 }, E: Ease.Linear), new(1.5, new(Lx: -1.5), E: Ease.Out),
             new(2.3, new(Lx: 2.5)), new(3.1, new(Lx: 2.5)),
-            new(3.18, Closed() with { Lx: 2 }, E: Ease.Linear), new(3.3, new(Lx: 2)), new(3.42, Closed() with { Lx: 2 }, E: Ease.Linear),
+            new(3.18, Closed() with { Lx = 2 }, E: Ease.Linear), new(3.3, new(Lx: 2)), new(3.42, Closed() with { Lx = 2 }, E: Ease.Linear),
             new(3.56, new(Lx: 2), E: Ease.Out), new(4.4, N), new(5.5, N)
         }),
         ["look"] = new("Liếc trái, liếc phải", new Key[]
@@ -49,19 +49,19 @@ public sealed class NotchEyes : FrameworkElement
         }),
         ["happy"] = new("Vui", new Key[]
         {
-            new(0, N), new(0.12, new(Sy: 0.8, Sx: 1.1), E: Ease.Out), new(0.45, Arc with { Ly: -1 }, E: Ease.Back),
-            new(2.4, Arc with { Ly: -1 }), new(2.6, Arc with { Bot: 0.7, Ly: -1.5 }), new(2.9, Arc with { Ly: -1 }, E: Ease.Back),
-            new(4.6, Arc with { Ly: -1 }), new(5.1, N), new(5.5, N)
+            new(0, N), new(0.12, new(Sy: 0.8, Sx: 1.1), E: Ease.Out), new(0.45, Arc with { Ly = -1 }, E: Ease.Back),
+            new(2.4, Arc with { Ly = -1 }), new(2.6, Arc with { Bot = 0.7, Ly = -1.5 }), new(2.9, Arc with { Ly = -1 }, E: Ease.Back),
+            new(4.6, Arc with { Ly = -1 }), new(5.1, N), new(5.5, N)
         }, Bob: true),
         ["wink"] = new("Nháy mắt", new Key[]
         {
             new(0, N, N), new(0.5, new(Top: 0.12), new(Top: 0.12), Rot: 0),
             new(0.75, new(Top: 0.18, Sy: 1.05), new(Sy: 0.75, Sx: 1.1), E: Ease.Out, Rot: -7, Ly: -0.5),
-            new(0.95, new(Top: 0.18, Sy: 1.05), Arc with { Bot: 0.62, Sx: 1.08 }, E: Ease.Back, Rot: -8, Ly: -0.5),
-            new(2.1, new(Top: 0.18, Sy: 1.05), Arc with { Bot: 0.62, Sx: 1.08 }, Rot: -8, Ly: -0.5),
+            new(0.95, new(Top: 0.18, Sy: 1.05), Arc with { Bot = 0.62, Sx = 1.08 }, E: Ease.Back, Rot: -8, Ly: -0.5),
+            new(2.1, new(Top: 0.18, Sy: 1.05), Arc with { Bot = 0.62, Sx = 1.08 }, Rot: -8, Ly: -0.5),
             new(2.4, N, N, E: Ease.Back, Rot: 0),
-            new(3.3, N, N), new(3.45, N, Arc with { Bot: 0.62 }, E: Ease.Out, Rot: -4),
-            new(3.9, N, Arc with { Bot: 0.62 }, Rot: -4), new(4.15, N, N, E: Ease.Back, Rot: 0), new(5.5, N, N)
+            new(3.3, N, N), new(3.45, N, Arc with { Bot = 0.62 }, E: Ease.Out, Rot: -4),
+            new(3.9, N, Arc with { Bot = 0.62 }, Rot: -4), new(4.15, N, N, E: Ease.Back, Rot: 0), new(5.5, N, N)
         }),
         ["surprise"] = new("Ngạc nhiên", new Key[]
         {
