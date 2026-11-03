@@ -1,5 +1,10 @@
 Bản chỉnh sửa từ [sadeeshasathsara/dynamic-island-on-windows](https://github.com/sadeeshasathsara/dynamic-island-on-windows) (MIT).
 
+### Mới trong v1.8.6
+- **Viên tai thỏ kiểu LED trắng**: số, sóng nhạc và viền cùng **một màu trắng cố định** (viền dịu hơn số một chút), không đổi theo bài hát nữa. Đang trồng cây: đếm ngược vẫn màu trắng, có **chiếc lá nhỏ** bên trái
+- **Mây đi dạo**: cứ 10–15 giây Mây bước ra từ sau mép phải, đi dọc viên sang trái rồi quay về. Rê chuột lại gần là Mây thôi đi; đang trồng cây hoặc máy để yên thì Mây ngồi im. Tắt / bật ở menu khay → **Mây đi dạo**
+- **Mây nằm ngửa khoe bụng** khi bạn đưa chuột lại gần Mây trong bảng, có trái tim nhỏ bay lên
+
 ### Sửa trong v1.8.5
 - **Viên tai thỏ mới: đồng hồ LED** (số 7 vạch, vạch tắt hiện mờ phía sau) **luôn ở đúng một chỗ, không đổi độ dài**. Nghe nhạc thì số và viền sáng theo màu bài hát, kèm **sóng nhạc** bên phải; không nghe nhạc thì số trắng; đang trồng cây thì **đếm ngược màu xanh lá**. Bỏ ảnh bìa, tên bài và vạch tiến độ trên viên; **viền dày gấp đôi**
 - **Ảnh bìa không còn bị lệch**: ảnh YouTube (ảnh ngang) giờ được cắt quanh phần giữa, cả trong bảng và trong tab Copy
