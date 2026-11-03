@@ -1,5 +1,14 @@
 Bản chỉnh sửa từ [sadeeshasathsara/dynamic-island-on-windows](https://github.com/sadeeshasathsara/dynamic-island-on-windows) (MIT).
 
+### Mới trong v1.8.0
+- **Bố cục bảng mới**: bỏ thanh tab. Hai **nút ‹ ›** to ở hai bên mép để chuyển tab (hoặc **vuốt ngang hai ngón** trên touchpad), **chấm trang + tên tab** ở dưới. Giờ · pin · tai nghe nằm trên **dòng trạng thái**, các **nút nhanh** (micro, Không làm phiền, chụp màn hình, khoá máy) gọn ở góc phải dòng đó
+- **Mây vẽ lại** bằng nét mềm, bo tròn cho hợp với giao diện. Lúc nghỉ, Mây **thò đầu ra sau mép phải tai thỏ**, đuôi buông xuống vẫy theo nhạc; trong bảng Mây ngồi ở góc dưới
+- **Ô đếm giờ trồng cây nổi** ở góc màn hình: cây đang lớn, thời gian còn lại, số phút đã học. Rê chuột vào là **ô biến mất và bấm xuyên qua được**; **chuột phải** ngay chỗ đó để Bỏ cuộc, chuyển góc hoặc ẩn đến khi trồng xong
+- **Thông báo trượt xuống chỉ hiện 2 giây** (rê chuột vào để giữ lại đọc)
+- **Tab Thông báo đẹp hơn**: thẻ có viền màu theo logo app, giờ kiểu "5 phút trước", chia nhóm Hôm nay / Hôm qua, **chip lọc theo app**; rê chuột vào thẻ để xoá hoặc **tắt tiếng app**
+- **Clipboard làm lại**: ô **tìm kiếm** (Enter để chép kết quả đầu tiên), mục mới nhất có nhãn **"Vừa copy"**, mỗi mục ghi **copy từ app nào**, bao lâu trước và bao nhiêu ký tự; mục đã ghim tách riêng lên trên. **Ảnh có khu riêng ở dưới** với **thanh cuộn ngang kéo được** và nút ‹ ›; rê chuột vào ảnh để xem to. Bấm để chép, bảng không tự đóng
+- Bỏ tab **Việc cần làm** và các lời nhắc (sẽ thay bằng Lịch)
+
 ### Mới trong v1.7.0
 - **Viên "đang phát" mảnh** (cao 22px) khi nghe nhạc: ảnh bìa · tên bài · sóng nhạc, kèm **vạch tiến độ** mảnh ở mép dưới. **Bấm xuyên qua được** xuống tab trình duyệt bên dưới; rê chuột lại gần thì viên **mờ đi**, để chuột nằm yên trên viên **~0,4 giây** thì bảng mới mở. Không có gì đang chạy thì vẫn là vạch \\\_\_\_\_\_/ như cũ
 - **Thanh tua dạng sóng**: phần đã phát là làn sóng chạy theo màu bài hát, phần còn lại là vạch thẳng; tạm dừng thì sóng phẳng lại. Kéo để tua
