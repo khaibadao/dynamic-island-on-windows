@@ -38,6 +38,20 @@ public partial class App : Application
             return;
         }
 
+        // Keep running if something goes wrong, and note it in startup.log
+        bool atBoot = e.Args.Contains("--autostart");
+        CrashLog.Write($"Started v{typeof(App).Assembly.GetName().Version} {(atBoot ? "(with Windows)" : "(by hand)")}");
+        DispatcherUnhandledException += (_, ev) => { CrashLog.Error("UI", ev.Exception); ev.Handled = true; };
+        AppDomain.CurrentDomain.UnhandledException += (_, ev) => { if (ev.ExceptionObject is Exception ex) CrashLog.Error("app", ex); };
+        System.Threading.Tasks.TaskScheduler.UnobservedTaskException += (_, ev) => { CrashLog.Error("task", ev.Exception); ev.SetObserved(); };
+
+        // Register "start with Windows" first, so a later problem can't skip it
+        try { AutoStart.EnsureOnStartup(AppSettings.Current); } catch (Exception ex) { CrashLog.Error("autostart", ex); }
+
+        // Right after sign-in Windows is still busy (notifications, media and
+        // Bluetooth services may not answer yet), so give it a few seconds.
+        if (atBoot) await System.Threading.Tasks.Task.Delay(TimeSpan.FromSeconds(6));
+
         // Create the overlay pill window (invisible until a notification arrives)
         _island = new IslandWindow();
         _island.Show();
@@ -54,7 +68,7 @@ public partial class App : Application
         // Battery: charger plugged in / out, low battery
         _battery = new BatteryWatcher();
         _battery.Notify += data => _island.Dispatcher.Invoke(() => ShowOnIsland(data, keepInHistory: false));
-        _battery.Start();
+        Try("battery", () => _battery.Start());
 
         // Rebuild the history / muted lists each time the tray menu opens
         if (Current.Resources["TrayIcon"] is Hardcodet.Wpf.TaskbarNotification.TaskbarIcon { ContextMenu: { } menu })
@@ -75,23 +89,46 @@ public partial class App : Application
 
         _volume = new VolumeWatcher();
         _volume.Changed += (level, muted) => _notch.Dispatcher.BeginInvoke(new Action(() => _notch.ShowVolume(level, muted)));
-        _volume.Start();
+        Try("volume", () => _volume.Start());
 
         // Battery of connected Bluetooth headphones
         _headsets = new BluetoothBatteryWatcher();
         _headsets.Changed += () => _notch.Dispatcher.BeginInvoke(new Action(() => _notch.SetHeadsets(_headsets.Devices)));
         _headsets.Notify  += data => _island.Dispatcher.Invoke(() => ShowOnIsland(data, keepInHistory: false));
-        _headsets.Start();
+        Try("bluetooth", () => _headsets.Start());
 
         UpdateMusicMenuHeader();
         UpdateNotchMenu();
 
-        // Start with Windows: on by default from the first run
-        AutoStart.EnsureOnStartup(AppSettings.Current);
         UpdateAutoStartMenu();
 
-        await _listener.StartAsync();
-        await _media.StartAsync();
+        await StartWithRetry("notifications", _listener.StartAsync);
+        await StartWithRetry("music", _media.StartAsync);
+        CrashLog.Write("Ready");
+    }
+
+    private static void Try(string what, Action action)
+    {
+        try { action(); }
+        catch (Exception ex) { CrashLog.Error(what, ex); }
+    }
+
+    /// <summary>Some Windows services aren't ready right after sign-in: try a few times.</summary>
+    private static async System.Threading.Tasks.Task StartWithRetry(string what, Func<System.Threading.Tasks.Task> start)
+    {
+        for (int attempt = 1; attempt <= 5; attempt++)
+        {
+            try
+            {
+                await start();
+                return;
+            }
+            catch (Exception ex)
+            {
+                CrashLog.Error($"{what} (attempt {attempt})", ex);
+                await System.Threading.Tasks.Task.Delay(TimeSpan.FromSeconds(5));
+            }
+        }
     }
 
     // ── Notifications: mute + history ─────────────────────────────────

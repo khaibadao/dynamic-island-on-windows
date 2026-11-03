@@ -350,93 +350,67 @@
                 </Path>
             </Border>
 
-            <!-- Playing / a tree growing: a slim pill, art · title · sound bars, progress along the bottom -->
+            <!-- Always there: an LED clock (time left while a tree grows) + sound bars while music plays.
+                 Its size never changes. -->
             <Border x:Name="Pill"
                     Visibility="Collapsed"
                     Background="#000000"
-                    BorderThickness="1,0,1,1"
+                    BorderThickness="2,0,2,2"
                     BorderBrush="#3A3A3C"
-                    CornerRadius="0,0,11,11"
-                    Height="22"
+                    CornerRadius="0,0,12,12"
+                    Height="24"
+                    Padding="14,0,14,1"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Top">
                 <Border.Effect>
                     <DropShadowEffect x:Name="PillGlow" Color="#5A5A5E" BlurRadius="12" ShadowDepth="0" Opacity="0.3"/>
                 </Border.Effect>
-                <Grid>
-                    <Grid Margin="4,0,9,1">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <ui:LedClock x:Name="PillClock" DigitHeight="14" VerticalAlignment="Center">
+                        <ui:LedClock.Effect>
+                            <DropShadowEffect x:Name="PillClockGlow" Color="White" BlurRadius="5" ShadowDepth="0" Opacity="0.45"/>
+                        </ui:LedClock.Effect>
+                    </ui:LedClock>
+                    <StackPanel x:Name="PillBars" Orientation="Horizontal" Height="11" Margin="10,0,0,0"
+                                VerticalAlignment="Center" Visibility="Collapsed">
+                        <Rectangle x:Name="Bar1" Width="2.4" Height="11" RadiusX="1.2" RadiusY="1.2" Fill="White" Margin="0.9,0" RenderTransformOrigin="0.5,0.5">
+                            <Rectangle.RenderTransform><ScaleTransform ScaleY="0.3"/></Rectangle.RenderTransform>
+                        </Rectangle>
+                        <Rectangle x:Name="Bar2" Width="2.4" Height="11" RadiusX="1.2" RadiusY="1.2" Fill="White" Margin="0.9,0" RenderTransformOrigin="0.5,0.5">
+                            <Rectangle.RenderTransform><ScaleTransform ScaleY="0.3"/></Rectangle.RenderTransform>
+                        </Rectangle>
+                        <Rectangle x:Name="Bar3" Width="2.4" Height="11" RadiusX="1.2" RadiusY="1.2" Fill="White" Margin="0.9,0" RenderTransformOrigin="0.5,0.5">
+                            <Rectangle.RenderTransform><ScaleTransform ScaleY="0.3"/></Rectangle.RenderTransform>
+                        </Rectangle>
+                        <Rectangle x:Name="Bar4" Width="2.4" Height="11" RadiusX="1.2" RadiusY="1.2" Fill="White" Margin="0.9,0" RenderTransformOrigin="0.5,0.5">
+                            <Rectangle.RenderTransform><ScaleTransform ScaleY="0.3"/></Rectangle.RenderTransform>
+                        </Rectangle>
+                        <Rectangle x:Name="Bar5" Width="2.4" Height="11" RadiusX="1.2" RadiusY="1.2" Fill="White" Margin="0.9,0" RenderTransformOrigin="0.5,0.5">
+                            <Rectangle.RenderTransform><ScaleTransform ScaleY="0.3"/></Rectangle.RenderTransform>
+                        </Rectangle>
+                        <Rectangle x:Name="Bar6" Width="2.4" Height="11" RadiusX="1.2" RadiusY="1.2" Fill="White" Margin="0.9,0" RenderTransformOrigin="0.5,0.5">
+                            <Rectangle.RenderTransform><ScaleTransform ScaleY="0.3"/></Rectangle.RenderTransform>
+                        </Rectangle>
+                        <Rectangle x:Name="Bar7" Width="2.4" Height="11" RadiusX="1.2" RadiusY="1.2" Fill="White" Margin="0.9,0" RenderTransformOrigin="0.5,0.5">
+                            <Rectangle.RenderTransform><ScaleTransform ScaleY="0.3"/></Rectangle.RenderTransform>
+                        </Rectangle>
+                    </StackPanel>
 
-                        <!-- Left: album art, or the growing tree -->
-                        <Grid x:Name="PillLeft" Grid.Column="0" Width="16" Height="16" VerticalAlignment="Center">
-                            <Grid x:Name="PillArtBox" Visibility="Collapsed">
-                                <Grid.Clip>
-                                    <RectangleGeometry Rect="0,0,16,16" RadiusX="4" RadiusY="4"/>
-                                </Grid.Clip>
-                                <Border Background="#333333"/>
-                                <Image x:Name="PillArt" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality"/>
-                            </Grid>
-                            <ui:TreeShape x:Name="PillTreeLeft" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                <ui:TreeShape.LayoutTransform>
-                                    <ScaleTransform ScaleX="0.16" ScaleY="0.16"/>
-                                </ui:TreeShape.LayoutTransform>
-                            </ui:TreeShape>
-                        </Grid>
-
-                        <!-- Middle: the song's name -->
-                        <!-- The name scrolls sideways when it doesn't fit, so the pill stays short -->
-                        <Canvas x:Name="PillTitleClip" Grid.Column="1" Width="120" Height="16" Margin="7,0,8,0"
-                                VerticalAlignment="Center" ClipToBounds="True">
-                            <TextBlock x:Name="PillText" Foreground="#EEFFFFFF" FontSize="11.5" FontFamily="Segoe UI">
-                                <TextBlock.RenderTransform>
-                                    <TranslateTransform x:Name="PillTextShift"/>
-                                </TextBlock.RenderTransform>
-                            </TextBlock>
-                        </Canvas>
-
-                        <!-- Right: time left on the tree, sound bars -->
-                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock x:Name="PillFocusText" Foreground="#34C759" FontSize="11" FontWeight="SemiBold"
-                                       FontFamily="Segoe UI" VerticalAlignment="Center" Margin="0,0,6,0" Visibility="Collapsed"/>
-                            <StackPanel x:Name="PillBars" Orientation="Horizontal" Height="10" VerticalAlignment="Center" Visibility="Collapsed">
-                            <Rectangle x:Name="Bar1" Width="2.5" Height="10" RadiusX="1.25" RadiusY="1.25" Fill="White" Margin="0.9,0" RenderTransformOrigin="0.5,0.5">
-                                <Rectangle.RenderTransform><ScaleTransform ScaleY="0.3"/></Rectangle.RenderTransform>
-                            </Rectangle>
-                            <Rectangle x:Name="Bar2" Width="2.5" Height="10" RadiusX="1.25" RadiusY="1.25" Fill="White" Margin="0.9,0" RenderTransformOrigin="0.5,0.5">
-                                <Rectangle.RenderTransform><ScaleTransform ScaleY="0.3"/></Rectangle.RenderTransform>
-                            </Rectangle>
-                            <Rectangle x:Name="Bar3" Width="2.5" Height="10" RadiusX="1.25" RadiusY="1.25" Fill="White" Margin="0.9,0" RenderTransformOrigin="0.5,0.5">
-                                <Rectangle.RenderTransform><ScaleTransform ScaleY="0.3"/></Rectangle.RenderTransform>
-                            </Rectangle>
-                            <Rectangle x:Name="Bar4" Width="2.5" Height="10" RadiusX="1.25" RadiusY="1.25" Fill="White" Margin="0.9,0" RenderTransformOrigin="0.5,0.5">
-                                <Rectangle.RenderTransform><ScaleTransform ScaleY="0.3"/></Rectangle.RenderTransform>
-                            </Rectangle>
-                            <Rectangle x:Name="Bar5" Width="2.5" Height="10" RadiusX="1.25" RadiusY="1.25" Fill="White" Margin="0.9,0" RenderTransformOrigin="0.5,0.5">
-                                <Rectangle.RenderTransform><ScaleTransform ScaleY="0.3"/></Rectangle.RenderTransform>
-                            </Rectangle>
-                            <Rectangle x:Name="Bar6" Width="2.5" Height="10" RadiusX="1.25" RadiusY="1.25" Fill="White" Margin="0.9,0" RenderTransformOrigin="0.5,0.5">
-                                <Rectangle.RenderTransform><ScaleTransform ScaleY="0.3"/></Rectangle.RenderTransform>
-                            </Rectangle>
-                            <Rectangle x:Name="Bar7" Width="2.5" Height="10" RadiusX="1.25" RadiusY="1.25" Fill="White" Margin="0.9,0" RenderTransformOrigin="0.5,0.5">
-                                <Rectangle.RenderTransform><ScaleTransform ScaleY="0.3"/></Rectangle.RenderTransform>
-                            </Rectangle>
-                            </StackPanel>
-                        </StackPanel>
+                    <!-- (no longer shown) -->
+                    <Grid x:Name="PillLeft" Visibility="Collapsed">
+                        <Grid x:Name="PillArtBox"><Image x:Name="PillArt"/></Grid>
+                        <ui:TreeShape x:Name="PillTreeLeft"/>
                     </Grid>
-
-                    <!-- Thin progress line along the bottom edge -->
-                    <Border VerticalAlignment="Bottom" Height="1.5" Margin="10,0,10,0" Background="#26FFFFFF"/>
-                    <Border x:Name="PillProgress" VerticalAlignment="Bottom" Height="1.5" Margin="10,0,10,0"
-                            Background="{DynamicResource AccentBrush}" RenderTransformOrigin="0,0.5">
-                        <Border.RenderTransform>
-                            <ScaleTransform x:Name="PillProgressScale" ScaleX="0"/>
-                        </Border.RenderTransform>
+                    <Canvas x:Name="PillTitleClip" Visibility="Collapsed">
+                        <TextBlock x:Name="PillText">
+                            <TextBlock.RenderTransform><TranslateTransform x:Name="PillTextShift"/></TextBlock.RenderTransform>
+                        </TextBlock>
+                    </Canvas>
+                    <TextBlock x:Name="PillFocusText" Visibility="Collapsed"/>
+                    <Border Visibility="Collapsed">
+                        <Border.RenderTransform><ScaleTransform x:Name="PillProgressScale"/></Border.RenderTransform>
                     </Border>
-                </Grid>
+                </StackPanel>
             </Border>
         </Grid>
 
@@ -568,7 +542,13 @@
                                     </Grid.Clip>
                                     <TextBlock Text="&#xE8D6;" FontFamily="{StaticResource IconFont}" FontSize="28"
                                                Foreground="#AAFFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                    <Image x:Name="FullArt" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality"/>
+                                    <!-- ImageBrush crops wide YouTube thumbnails around their middle -->
+                                    <Border>
+                                        <Border.Background>
+                                            <ImageBrush x:Name="FullArt" Stretch="UniformToFill" AlignmentX="Center" AlignmentY="Center"
+                                                        RenderOptions.BitmapScalingMode="HighQuality"/>
+                                        </Border.Background>
+                                    </Border>
                                 </Grid>
                             </Border>
 
@@ -763,13 +743,11 @@
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
                         <Grid Margin="0,0,0,6">
-                            <ScrollViewer HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled"
-                                          Focusable="False" Margin="0,0,96,0" PreviewMouseWheel="SidewaysWheel">
-                                <StackPanel x:Name="NotifFilters" Orientation="Horizontal"/>
-                            </ScrollViewer>
+                            <!-- All app filters visible, wrapping to a second line if needed -->
+                            <WrapPanel x:Name="NotifFilters" Margin="0,0,96,0" VerticalAlignment="Center"/>
                             <Button x:Name="ClearAllBtn" Content="Xoá tất cả" Style="{StaticResource ActionButton}"
                                     Background="#22FFFFFF" Foreground="#EEFFFFFF" Padding="10,3" FontSize="11.5"
-                                    HorizontalAlignment="Right" VerticalAlignment="Center" Click="ClearAll_Click"/>
+                                    HorizontalAlignment="Right" VerticalAlignment="Top" Click="ClearAll_Click"/>
                         </Grid>
                         <ScrollViewer Grid.Row="1" MaxHeight="190" VerticalScrollBarVisibility="Hidden" Focusable="False">
                             <StackPanel x:Name="RecentList"/>

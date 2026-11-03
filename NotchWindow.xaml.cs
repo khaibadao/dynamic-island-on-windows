@@ -264,7 +264,7 @@ public partial class NotchWindow : Window
     private void ShowRest()
     {
         if (_expanded || VolumeView.Visibility == Visibility.Visible) return;
-        bool pill = (_hasMusic && _playing) || _focus.IsRunning;
+        bool pill = true;   // the LED clock pill is always there
         Pill.Visibility      = pill ? Visibility.Visible : Visibility.Collapsed;
         StripHost.Visibility = pill ? Visibility.Collapsed : Visibility.Visible;
         RestArea.Visibility  = Visibility.Visible;
@@ -355,7 +355,7 @@ public partial class NotchWindow : Window
         _lyricsTimer.Stop();
 
         // Shrinks back into the notch, then the resting notch returns.
-        bool pill = (_hasMusic && _playing) || _focus.IsRunning;
+        bool pill = true;   // the LED clock pill is always there
         double toWidth = pill ? Math.Max(140, Pill.ActualWidth) : 200;
         double w = Math.Max(1, Expanded.ActualWidth), h = Math.Max(1, Expanded.ActualHeight);
 
@@ -567,7 +567,7 @@ public partial class NotchWindow : Window
     private void OnTick()
     {
         if (_focus.IsRunning) UpdateFocusTick();
-        if (Pill.IsVisible) UpdatePillProgress();
+        UpdatePillClock();
         UpdateCat();
         if (_expanded)
         {
@@ -616,16 +616,47 @@ public partial class NotchWindow : Window
     {
         bool focus = _focus.IsRunning;
 
-        PillArtBox.Visibility    = _hasMusic ? Visibility.Visible : Visibility.Collapsed;
-        PillBars.Visibility      = _hasMusic ? Visibility.Visible : Visibility.Collapsed;
-        PillTreeLeft.Visibility  = !_hasMusic && focus ? Visibility.Visible : Visibility.Collapsed;
-        PillFocusText.Visibility = focus ? Visibility.Visible : Visibility.Collapsed;
-        SetPillText(_hasMusic ? _title
-                    : focus ? $"Đang trồng {TreeCatalog.Get(_focus.CurrentKind).Name.ToLowerInvariant()}"
-                    : "");
-        UpdatePillProgress();
+        // Sound bars only while music actually plays; they're how you know it's on.
+        PillBars.Visibility = _hasMusic && _playing ? Visibility.Visible : Visibility.Collapsed;
+        UpdatePillClock();
         UpdateStrip();
         ShowRest();
+    }
+
+    private static readonly Color FocusGreen = Color.FromRgb(0x34, 0xC7, 0x59);
+
+    /// <summary>
+    /// The LED clock: the time (HH:mm), or the time left on the tree (mm:ss) in green.
+    /// Lit in the song's colour while music plays; the rim matches.
+    /// </summary>
+    private void UpdatePillClock()
+    {
+        bool focus = _focus.IsRunning;
+        if (focus)
+        {
+            var left = _focus.Remaining;
+            PillClock.Text = $"{(int)left.TotalMinutes:00}:{left.Seconds:00}";
+        }
+        else
+        {
+            PillClock.Text = DateTime.Now.ToString("HH:mm");
+        }
+
+        Color on = focus ? FocusGreen
+                 : _hasMusic && _hasColour ? ColorExtractor.EnsureBright(_accent)
+                 : Color.FromRgb(0xEE, 0xEE, 0xEE);
+        PillClock.On  = Frozen(on);
+        PillClock.Off = Frozen(ColorExtractor.Mix(on, Colors.Black, 0.86));   // the faint "88:88" behind
+        PillClockGlow.Color   = on;
+        PillClockGlow.Opacity = focus || (_hasMusic && _hasColour) ? 0.5 : 0.25;
+
+        Color rim = focus ? ColorExtractor.Mix(FocusGreen, Colors.Black, 0.35)
+                  : _hasMusic && _hasColour ? ColorExtractor.Mix(_accent, Colors.Black, 0.35)
+                  : QuickActions.DoNotDisturb ? DndColour
+                  : Color.FromRgb(0x3A, 0x3A, 0x3C);
+        Pill.BorderBrush = Frozen(rim);
+        PillGlow.Color   = focus ? FocusGreen : _hasMusic && _hasColour ? _accent : Neutral;
+        PillGlow.Opacity = focus || (_hasMusic && _hasColour) ? 0.4 : 0.25;
     }
 
     private string _pillTitle = "";
@@ -701,6 +732,7 @@ public partial class NotchWindow : Window
         Strip.Stroke      = Frozen(lit ? c : Color.FromRgb(0x3A, 0x3A, 0x3C));
         StripGlow.Color   = lit ? c : Neutral;
         StripGlow.Opacity = lit ? 0.55 : 0.25;
+        UpdatePillClock();
     }
 
     // ── Music ─────────────────────────────────────────────────────────
@@ -732,8 +764,7 @@ public partial class NotchWindow : Window
         SongArtistRun.Text = state.Artist;
         MusicAppRun.Text   = string.IsNullOrWhiteSpace(state.AppName) ? ""
                            : string.IsNullOrWhiteSpace(state.Artist) ? state.AppName : "  ·  " + state.AppName;
-        PillArt.Source    = state.Art;
-        FullArt.Source    = state.Art;
+        FullArt.ImageSource = state.Art;
         PlayPauseGlyph.Text = _playing ? "" : "";   // pause / play icon
         ApplyAccent(ColorExtractor.Dominant(state.Art));
         SetBarsPlaying(_playing);
@@ -794,7 +825,6 @@ public partial class NotchWindow : Window
         var edge = hasColour ? ColorExtractor.Mix(vivid, Colors.Black, 0.35) : Color.FromRgb(0x3A, 0x3A, 0x3C);
         var border = new SolidColorBrush(edge);
         border.Freeze();
-        Pill.BorderBrush       = border;
         Expanded.BorderBrush   = border;
         VolumeView.BorderBrush = border;
 
@@ -1401,7 +1431,7 @@ public partial class NotchWindow : Window
         var chip = new Border
         {
             Child = row, CornerRadius = new CornerRadius(12), Padding = new Thickness(9, 3, 9, 3),
-            Margin = new Thickness(0, 0, 6, 0), Cursor = Cursors.Hand,
+            Margin = new Thickness(0, 0, 6, 4), Cursor = Cursors.Hand,
             Background = on ? Frozen(Color.FromArgb(0x40, colour.R, colour.G, colour.B)) : Frozen(Color.FromArgb(0x1C, 0xFF, 0xFF, 0xFF)),
             BorderThickness = new Thickness(1),
             BorderBrush = on ? Frozen(Color.FromArgb(0xAA, colour.R, colour.G, colour.B)) : Brushes.Transparent
@@ -1860,7 +1890,8 @@ public partial class NotchWindow : Window
         const double W = 150, H = 94;
         var box = new Grid { Width = W, Height = H, Clip = new RectangleGeometry(new Rect(0, 0, W, H), 10, 10) };
         box.Children.Add(new Border { Background = Frozen(Color.FromRgb(0x1C, 0x1C, 0x1E)) });
-        if (thumb != null) box.Children.Add(new Image { Source = thumb, Stretch = Stretch.UniformToFill });
+        // ImageBrush crops around the middle of the picture (an Image would keep its top-left)
+        if (thumb != null) box.Children.Add(new Border { Background = new ImageBrush(thumb) { Stretch = Stretch.UniformToFill } });
 
         // Time along the bottom on a soft shade
         var shade = new Border

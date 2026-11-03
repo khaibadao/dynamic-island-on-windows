@@ -34,7 +34,7 @@ public static class AutoStart
         try
         {
             using var key = Registry.CurrentUser.CreateSubKey(RunKey);
-            key.SetValue(ValueName, $"\"{ExePath}\"");
+            key.SetValue(ValueName, $"\"{ExePath}\" --autostart");
         }
         catch (Exception ex) { DebugLog.Note($"AutoStart enable failed: {ex.Message}"); }
     }
@@ -65,5 +65,30 @@ public static class AutoStart
         {
             Enable();   // refresh the path
         }
+        EnsureApproved();
+    }
+
+    private const string ApprovedKey = @"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
+
+    /// <summary>
+    /// Windows keeps a separate on/off switch per startup app (Task Manager →
+    /// Startup apps). If ours is switched off while the menu says on, the app
+    /// silently never starts with Windows, so switch it back on.
+    /// </summary>
+    private static void EnsureApproved()
+    {
+        if (!IsEnabled) return;
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(ApprovedKey, writable: true);
+            if (key?.GetValue(ValueName) is byte[] state && state.Length > 0 && (state[0] & 1) == 1)
+            {
+                var on = new byte[12];
+                on[0] = 0x02;
+                key.SetValue(ValueName, on, RegistryValueKind.Binary);
+                CrashLog.Write("Startup switch was off in Windows; turned it back on");
+            }
+        }
+        catch (Exception ex) { CrashLog.Error("startup switch", ex); }
     }
 }
