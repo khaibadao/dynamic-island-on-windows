@@ -145,6 +145,15 @@ public partial class App : Application
         // Do Not Disturb (quick button in the notch): keep it in the history, don't drop down.
         if (QuickActions.DoNotDisturb && !bypassDnd) return;
 
+        // Real notifications: the notch's eyes open wide first, then it drops down.
+        if (keepInHistory && !_island.IsShowing && _notch?.React("surprise") == true)
+        {
+            var island = _island;
+            var wait = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(750) };
+            wait.Tick += (_, _) => { wait.Stop(); island.ShowNotification(data); };
+            wait.Start();
+            return;
+        }
         _island.ShowNotification(data);
     }
 

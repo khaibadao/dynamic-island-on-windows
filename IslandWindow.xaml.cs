@@ -33,6 +33,9 @@ public partial class IslandWindow : Window
     /// <summary>True when a notification starts showing, false once it's fully hidden.</summary>
     public event Action<bool>? ActiveChanged;
 
+    /// <summary>A notification is on screen (or on its way down).</summary>
+    public bool IsShowing => _isExpanded;
+
     /// <summary>The Mute button was pressed for this notification's sender.</summary>
     public event Action<NotificationData>? MuteRequested;
 

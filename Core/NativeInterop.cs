@@ -196,6 +196,21 @@ public static class NativeInterop
         }
     }
 
+    /// <summary>The pointer's position in the element's own coordinates (DIPs), or null.</summary>
+    public static Point? CursorIn(FrameworkElement element)
+    {
+        try
+        {
+            if (!element.IsVisible || PresentationSource.FromVisual(element) == null) return null;
+            if (!GetCursorPos(out var p)) return null;
+            return element.PointFromScreen(new Point(p.X, p.Y));
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     private struct LASTINPUTINFO { public uint cbSize; public uint dwTime; }
     [DllImport("user32.dll")] private static extern bool GetLastInputInfo(ref LASTINPUTINFO info);

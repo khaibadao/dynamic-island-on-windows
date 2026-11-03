@@ -133,7 +133,10 @@ public partial class NotchWindow : Window
 
         // Mây
         _focus.Finished += session => Dispatcher.BeginInvoke(new Action(() =>
-            CatReact(session.Success ? CatMood.Happy : CatMood.Sad, session.Success ? 8 : 10)));
+        {
+            CatReact(session.Success ? CatMood.Happy : CatMood.Sad, session.Success ? 8 : 10);
+            React(session.Success ? "love" : "sad");
+        }));
         CatPanel.MouseLeftButtonUp += (_, _) => CatReact(CatMood.Happy, 2.5);   // a pat on the head
         CatRest.SizeChanged  += (_, _) => PlaceCat();
         RestArea.SizeChanged += (_, _) => PlaceCat();
@@ -164,8 +167,11 @@ public partial class NotchWindow : Window
             _fullscreenTimer.Start();
             _hoverTimer.Start();
             ScheduleWalk();
+            _eyesTimer.Start();
         };
         _walkTimer.Tick += (_, _) => { _walkTimer.Stop(); StartWalk(); ScheduleWalk(); };
+        _eyesTimer.Tick += (_, _) => EyesTick();
+        Eyes.Finished += () => GrowForEyes(false);
         SystemParameters.StaticPropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(SystemParameters.PrimaryScreenWidth)) Recenter();
@@ -240,8 +246,17 @@ public partial class NotchWindow : Window
         FrameworkElement? target = Pill.IsVisible ? Pill : StripHost.IsVisible ? StripHost : null;
         if (target == null) { _dwellStart = null; SetFaded(false); return; }
 
-        // Pointer close by: fade, so whatever is underneath shows through.
-        SetFaded(target == Pill && NativeInterop.IsCursorNear(Pill, 26));
+        // Pointer close by: fade, so whatever is underneath shows through,
+        // and the eyes come out to look at it.
+        bool near = target == Pill && NativeInterop.IsCursorNear(Pill, 26);
+        SetFaded(near);
+        if (near && !Eyes.Playing && NativeInterop.CursorIn(Pill) is { } c)
+        {
+            if (!Eyes.Active) ShowEyes(null);
+            double half = Math.Max(30, Pill.ActualWidth / 2);
+            Eyes.Follow(new Point((c.X - half) / (half + 30), (c.Y - Pill.ActualHeight / 2) / 30));
+        }
+        else if (!near) Eyes.Follow(null);
 
         bool over = NativeInterop.IsCursorOver(target);
         if (!over) { _dwellStart = null; return; }
@@ -293,7 +308,7 @@ public partial class NotchWindow : Window
     /// <summary>Out from behind the right end, along the pill to the left, and back.</summary>
     private void StartWalk()
     {
-        if (_walking || !AppSettings.Current.MayWalks || _expanded || !IsVisible || !Pill.IsVisible || _faded
+        if (_walking || Eyes.Active || !AppSettings.Current.MayWalks || _expanded || !IsVisible || !Pill.IsVisible || _faded
             || _focus.IsRunning || VolumeView.Visibility == Visibility.Visible
             || NativeInterop.IdleTime() >= TimeSpan.FromMinutes(10)) return;   // asleep, or you're away
         double w = WalkLayer.ActualWidth;
@@ -331,6 +346,64 @@ public partial class NotchWindow : Window
         Walker.StopWalking();
         Walker.Visibility = Visibility.Collapsed;
         if (!_expanded && VolumeView.Visibility != Visibility.Visible) CatRest.Visibility = Visibility.Visible;
+
+        // Eyes that were due while Mây was out come right after her
+        if (_eyesPending is { } kind)
+        {
+            _eyesPending = null;
+            Dispatcher.BeginInvoke(new Action(() => ShowEyes(kind)));
+        }
+    }
+
+    // ── Eyes on the notch ─────────────────────────────────────────────
+    private readonly DispatcherTimer _eyesTimer = new() { Interval = TimeSpan.FromSeconds(30) };
+    private string? _eyesPending;
+    private bool _eyesUp;
+
+    private bool CanShowEyes => !_expanded && IsVisible && Pill.IsVisible && VolumeView.Visibility != Visibility.Visible;
+
+    /// <summary>Plays an expression on the notch now (e.g. "surprise" for a notification). False if it can't show.</summary>
+    public bool React(string kind)
+    {
+        if (!CanShowEyes) return false;
+        return ShowEyes(kind);
+    }
+
+    /// <summary>Every 30 s: an expression that suits the moment.</summary>
+    private void EyesTick()
+    {
+        if (!CanShowEyes || Eyes.Active || _faded) return;
+        var now = DateTime.Now;
+        string kind = now.Hour >= 23 || now.Hour < 5 || NativeInterop.IdleTime() >= TimeSpan.FromMinutes(10) ? "sleepy"
+                    : _hasMusic && _playing ? "happy"
+                    : NotchEyes.Idle[_rng.Next(NotchEyes.Idle.Length)];
+        if (_walking) { _eyesPending = kind; return; }   // after Mây's stroll
+        ShowEyes(kind);
+    }
+
+    /// <summary>The pill grows a little and the eyes take the clock's place (kind null = follow the pointer).</summary>
+    private bool ShowEyes(string? kind)
+    {
+        if (!CanShowEyes) return false;
+        if (_walking) EndWalk();
+        GrowForEyes(true);
+        if (kind != null) Eyes.Play(kind);
+        return true;
+    }
+
+    private void GrowForEyes(bool up)
+    {
+        if (up == _eyesUp) return;
+        _eyesUp = up;
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        var dur = TimeSpan.FromMilliseconds(260);
+        if (up) Eyes.Visibility = Visibility.Visible;
+        var width = new DoubleAnimation(up ? 66 : 0, dur) { EasingFunction = ease };
+        if (!up) width.Completed += (_, _) => { if (!_eyesUp) Eyes.Visibility = Visibility.Collapsed; };
+        Eyes.BeginAnimation(WidthProperty, width);
+        Eyes.BeginAnimation(HeightProperty, new DoubleAnimation(up ? 28 : 22, dur) { EasingFunction = ease });
+        Pill.BeginAnimation(HeightProperty, new DoubleAnimation(up ? 31 : 24, dur) { EasingFunction = ease });
+        PillFace.BeginAnimation(OpacityProperty, new DoubleAnimation(up ? 0 : 1, TimeSpan.FromMilliseconds(up ? 160 : 260)));
     }
 
     /// <summary>Mây peeks out from behind the right end of the strip / pill.</summary>
@@ -366,6 +439,8 @@ public partial class NotchWindow : Window
         _volumeTimer.Stop();
         _dwellStart = null;
         EndWalk();
+        Eyes.Stop();
+        GrowForEyes(false);
         SetFaded(false);
         VolumeView.Visibility = Visibility.Collapsed;
         RestArea.Visibility   = Visibility.Collapsed;
@@ -1175,6 +1250,8 @@ public partial class NotchWindow : Window
         VolText.Text        = muted ? "Tắt" : Math.Round(level * 100).ToString();
 
         EndWalk();
+        Eyes.Stop();
+        GrowForEyes(false);
         RestArea.Visibility   = Visibility.Collapsed;
         CatRest.Visibility    = Visibility.Collapsed;
         VolumeView.Visibility = Visibility.Visible;
