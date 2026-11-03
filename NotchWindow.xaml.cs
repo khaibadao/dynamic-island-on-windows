@@ -92,9 +92,10 @@ public partial class NotchWindow : Window
     /// <summary>"Mute this app" from a notification card.</summary>
     public event Action<NotificationData>? MuteRequested;
 
-    private static readonly string[] Tabs     = { "music", "focus", "notifications", "texts", "images" };
-    private static readonly string[] TabNames = { "Nhạc", "Trồng cây", "Thông báo", "Văn bản đã copy", "Hình ảnh đã copy" };
-    private static readonly string[] TabGlyphs = { "\uE8D6", "", "\uEA8F", "\uE8A5", "\uEB9F" };   // tree is drawn
+    private static readonly string[] Tabs     = { "music", "focus", "notifications", "clipboard" };
+    private static readonly string[] TabNames = { "Nhạc", "Trồng cây", "Thông báo", "Copy" };
+    private static readonly string[] TabGlyphs = { "\uE8D6", "", "\uEA8F", "\uE77F" };   // tree is drawn
+    private string _clipMode = "texts";   // the Copy tab's section: "texts" or "images"
 
     public NotchWindow(MediaWatcher media, FocusService focus, NotificationHistory history, ClipboardService clips)
     {
@@ -437,12 +438,12 @@ public partial class NotchWindow : Window
             content.Children.Add(mark);
             var button = new Border
             {
-                Width = 34, Height = 24, CornerRadius = new CornerRadius(8), Margin = new Thickness(0, 0, 0, 1),
+                Width = 32, Height = 26, CornerRadius = new CornerRadius(12), Margin = new Thickness(0, 0, 0, 1),
                 Background = Brushes.Transparent, Cursor = Cursors.Hand, Child = content, ToolTip = TabNames[i]
             };
             var tab = Tabs[i];
             int index = i;
-            button.MouseEnter += (_, _) => { if (_tab != tab) button.Background = Frozen(Color.FromArgb(0x1A, 0xFF, 0xFF, 0xFF)); };
+            button.MouseEnter += (_, _) => { if (_tab != tab) button.Background = Frozen(Color.FromArgb(0x18, 0xFF, 0xFF, 0xFF)); };
             button.MouseLeave += (_, _) => { if (_tab != tab) button.Background = Brushes.Transparent; };
             button.MouseLeftButtonUp += (_, _) => SelectTab(tab, index - Array.IndexOf(Tabs, _tab));
             SideBar.Children.Add(button);
@@ -458,11 +459,11 @@ public partial class NotchWindow : Window
         {
             var (button, icon, mark) = _side[i];
             bool on = i == current;
-            button.Background = on ? Frozen(Color.FromArgb(0x30, accent.R, accent.G, accent.B)) : Brushes.Transparent;
-            if (icon is TextBlock t) t.Foreground = on ? Frozen(accent) : Frozen(Color.FromArgb(0x99, 0xFF, 0xFF, 0xFF));
-            else icon.Opacity = on ? 1 : 0.6;
+            button.Background = on ? Frozen(Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF)) : Brushes.Transparent;
+            if (icon is TextBlock t) t.Foreground = on ? Brushes.White : Frozen(Color.FromArgb(0xAA, 0xFF, 0xFF, 0xFF));
+            else icon.Opacity = on ? 1 : 0.65;
             mark.Background = Frozen(accent);
-            mark.Opacity = on ? 1 : 0;
+            mark.Opacity = 0;
         }
     }
 
@@ -512,8 +513,7 @@ public partial class NotchWindow : Window
         MusicTab.Visibility         = tab == "music"         ? Visibility.Visible : Visibility.Collapsed;
         FocusTab.Visibility         = tab == "focus"         ? Visibility.Visible : Visibility.Collapsed;
         NotificationsTab.Visibility = tab == "notifications" ? Visibility.Visible : Visibility.Collapsed;
-        TextsTab.Visibility         = tab == "texts"         ? Visibility.Visible : Visibility.Collapsed;
-        ImagesTab.Visibility        = tab == "images"        ? Visibility.Visible : Visibility.Collapsed;
+        ClipboardTab.Visibility     = tab == "clipboard"     ? Visibility.Visible : Visibility.Collapsed;
         UpdateSideBar();
 
         // Slide in from the side we're moving to, with a soft fade
@@ -541,8 +541,10 @@ public partial class NotchWindow : Window
             case "notifications":
                 RebuildRecent();
                 break;
-            case "texts":
-            case "images":
+            case "clipboard":
+                // Open on the kind of thing copied last
+                var last = _clips.Items.OrderByDescending(i => i.Time).FirstOrDefault();
+                if (last != null) _clipMode = last.IsImage ? "images" : "texts";
                 RebuildClipboard();
                 break;
         }
@@ -571,7 +573,7 @@ public partial class NotchWindow : Window
         {
             UpdateClock();
             if (_hasMusic && MusicTab.IsVisible) UpdateProgress();
-            if (TextsTab.IsVisible || ImagesTab.IsVisible) RefreshClipTimes();
+            if (ClipboardTab.IsVisible) RefreshClipTimes();
 
             // Safety net in case MouseLeave never came: close once the pointer is gone.
             if (!_seeking && !_typing && !_closeTimer.IsEnabled && !NativeInterop.IsCursorOver(Expanded))
@@ -618,12 +620,47 @@ public partial class NotchWindow : Window
         PillBars.Visibility      = _hasMusic ? Visibility.Visible : Visibility.Collapsed;
         PillTreeLeft.Visibility  = !_hasMusic && focus ? Visibility.Visible : Visibility.Collapsed;
         PillFocusText.Visibility = focus ? Visibility.Visible : Visibility.Collapsed;
-        PillText.Text = _hasMusic ? _title
-                      : focus ? $"Đang trồng {TreeCatalog.Get(_focus.CurrentKind).Name.ToLowerInvariant()}"
-                      : "";
+        SetPillText(_hasMusic ? _title
+                    : focus ? $"Đang trồng {TreeCatalog.Get(_focus.CurrentKind).Name.ToLowerInvariant()}"
+                    : "");
         UpdatePillProgress();
         UpdateStrip();
         ShowRest();
+    }
+
+    private string _pillTitle = "";
+
+    /// <summary>A short pill: names that don't fit in ~120 px scroll sideways instead of making it longer.</summary>
+    private void SetPillText(string text)
+    {
+        if (text == _pillTitle) return;
+        _pillTitle = text;
+        PillTextShift.BeginAnimation(TranslateTransform.XProperty, null);
+        PillTextShift.X = 0;
+
+        double full = Measure(text, PillText);
+        const double box = 120;
+        if (full <= box)
+        {
+            PillText.Text = text;
+            PillTitleClip.Width = Math.Max(1, full);
+            return;
+        }
+        PillTitleClip.Width = box;
+        const string gap = "        ";
+        double cycle = Measure(text + gap, PillText);
+        PillText.Text = text + gap + text;
+        PillTextShift.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(0, -cycle, TimeSpan.FromSeconds(cycle / 28))
+        {
+            BeginTime = TimeSpan.FromSeconds(1.2), RepeatBehavior = RepeatBehavior.Forever
+        });
+    }
+
+    private static double Measure(string text, TextBlock like)
+    {
+        var probe = new TextBlock { Text = text, FontSize = like.FontSize, FontWeight = like.FontWeight, FontFamily = like.FontFamily };
+        probe.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        return Math.Ceiling(probe.DesiredSize.Width);
     }
 
     private void UpdatePillProgress()
@@ -692,8 +729,9 @@ public partial class NotchWindow : Window
         _title  = state.Title;
         _artist = state.Artist;
 
-        SongArtist.Text   = state.Artist;
-        MusicAppName.Text = state.AppName;
+        SongArtistRun.Text = state.Artist;
+        MusicAppRun.Text   = string.IsNullOrWhiteSpace(state.AppName) ? ""
+                           : string.IsNullOrWhiteSpace(state.Artist) ? state.AppName : "  ·  " + state.AppName;
         PillArt.Source    = state.Art;
         FullArt.Source    = state.Art;
         PlayPauseGlyph.Text = _playing ? "" : "";   // pause / play icon
@@ -731,20 +769,26 @@ public partial class NotchWindow : Window
         accent.Freeze();
         Resources["AccentBrush"] = accent;
         foreach (var bar in Bars) bar.Fill = accent;
-        SeekBar.Accent = accent;
         if (_ready) UpdateSideBar();
-        if (_lyricsOpen) LyricsBtn.Foreground = accent;
+        SeekBar.Accent = Brushes.White;
 
+        // The whole panel takes the song's colour, fading to near-black (like Apple Music)
         if (cover is { } baseColor)
         {
-            var tint = ColorExtractor.Mix(baseColor, vivid, 0.5);
-            MusicTint.Background = new LinearGradientBrush(
-                Color.FromArgb(0x66, tint.R, tint.G, tint.B),
-                Color.FromArgb(0x10, tint.R, tint.G, tint.B), 0);
+            var tint = ColorExtractor.Mix(baseColor, vivid, 0.45);
+            var stops = new GradientStopCollection
+            {
+                new(ColorExtractor.Mix(tint, Colors.Black, 0.50), 0),
+                new(ColorExtractor.Mix(tint, Colors.Black, 0.76), 0.55),
+                new(ColorExtractor.Mix(tint, Colors.Black, 0.93), 1)
+            };
+            var bg = new LinearGradientBrush(stops, new Point(0, 0), new Point(1, 1));
+            bg.Freeze();
+            Expanded.Background = bg;
         }
         else
         {
-            MusicTint.Background = new SolidColorBrush(Color.FromArgb(0x14, 0xFF, 0xFF, 0xFF));
+            Expanded.Background = Brushes.Black;
         }
 
         var edge = hasColour ? ColorExtractor.Mix(vivid, Colors.Black, 0.35) : Color.FromRgb(0x3A, 0x3A, 0x3C);
@@ -903,7 +947,8 @@ public partial class NotchWindow : Window
     private void ApplyLyricsLayout(bool animate)
     {
         bool show = _lyricsOpen && _hasMusic && _tab == "music";
-        LyricsBtn.Foreground = _lyricsOpen ? (Brush)Resources["AccentBrush"] : Frozen(Color.FromArgb(0xDD, 0xFF, 0xFF, 0xFF));
+        LyricsBtn.Foreground = _lyricsOpen ? Brushes.White : Frozen(Color.FromArgb(0xBB, 0xFF, 0xFF, 0xFF));
+        LyricsBtn.Background = _lyricsOpen ? Frozen(Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF)) : Brushes.Transparent;
         LyricsColumn.Width   = new GridLength(show ? LyricsWidth : 0);
         LyricsPane.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
 
@@ -1110,7 +1155,7 @@ public partial class NotchWindow : Window
             {
                 Width = 38, Height = 38, Margin = new Thickness(0, 0, 6, 0),
                 CornerRadius = new CornerRadius(10), Child = content,
-                Background = Frozen(Color.FromRgb(0x1E, 0x1E, 0x20)),
+                Background = Frozen(Color.FromArgb(0x1A, 0xFF, 0xFF, 0xFF)),
                 BorderThickness = new Thickness(1.5),
                 BorderBrush = selected ? Frozen(Color.FromRgb(0x34, 0xC7, 0x59)) : Brushes.Transparent,
                 Cursor = unlocked ? Cursors.Hand : Cursors.Arrow
@@ -1357,7 +1402,7 @@ public partial class NotchWindow : Window
         {
             Child = row, CornerRadius = new CornerRadius(12), Padding = new Thickness(9, 3, 9, 3),
             Margin = new Thickness(0, 0, 6, 0), Cursor = Cursors.Hand,
-            Background = on ? Frozen(Color.FromArgb(0x40, colour.R, colour.G, colour.B)) : Frozen(Color.FromRgb(0x2A, 0x2A, 0x2E)),
+            Background = on ? Frozen(Color.FromArgb(0x40, colour.R, colour.G, colour.B)) : Frozen(Color.FromArgb(0x1C, 0xFF, 0xFF, 0xFF)),
             BorderThickness = new Thickness(1),
             BorderBrush = on ? Frozen(Color.FromArgb(0xAA, colour.R, colour.G, colour.B)) : Brushes.Transparent
         };
@@ -1431,8 +1476,8 @@ public partial class NotchWindow : Window
         Grid.SetColumn(actions, 2);
         grid.Children.Add(actions);
 
-        var normal = Frozen(Color.FromRgb(0x28, 0x28, 0x2C));
-        var hover  = Frozen(Color.FromRgb(0x33, 0x33, 0x38));
+        var normal = Frozen(Color.FromArgb(0x1C, 0xFF, 0xFF, 0xFF));
+        var hover  = Frozen(Color.FromArgb(0x2E, 0xFF, 0xFF, 0xFF));
         var card = new Border
         {
             Child = grid, CornerRadius = new CornerRadius(12), Padding = new Thickness(10, 6, 6, 6),
@@ -1624,11 +1669,48 @@ public partial class NotchWindow : Window
 
     private void RebuildClipboard()
     {
-        if (!_expanded || (_tab != "texts" && _tab != "images")) return;
+        if (!_expanded || _tab != "clipboard") return;
         _clipTimes.Clear();
         var all = _clips.Items;                      // pinned first, then newest
-        if (_tab == "texts") RebuildTexts(all);
+
+        // The switch: Văn bản 12 | Hình ảnh 18
+        bool texts = _clipMode == "texts";
+        ClipModeTextsLabel.Text  = $"Văn bản  {all.Count(i => !i.IsImage)}";
+        ClipModeImagesLabel.Text = $"Hình ảnh  {all.Count(i => i.IsImage)}";
+        var on  = Frozen(Color.FromArgb(0x38, 0xFF, 0xFF, 0xFF));
+        ClipModeTexts.Background  = texts ? on : Brushes.Transparent;
+        ClipModeImages.Background = texts ? Brushes.Transparent : on;
+        ClipModeTexts.Opacity  = texts ? 1 : 0.65;
+        ClipModeImages.Opacity = texts ? 0.65 : 1;
+        ((Panel)ClipModeTexts.Child).Children.OfType<TextBlock>().ToList().ForEach(t => t.Foreground = Brushes.White);
+        ((Panel)ClipModeImages.Child).Children.OfType<TextBlock>().ToList().ForEach(t => t.Foreground = Brushes.White);
+        TextsTab.Visibility  = texts ? Visibility.Visible : Visibility.Collapsed;
+        ImagesTab.Visibility = texts ? Visibility.Collapsed : Visibility.Visible;
+
+        if (texts) RebuildTexts(all);
         else RebuildImages(all);
+    }
+
+    private void ClipModeTexts_Click(object sender, MouseButtonEventArgs e)  => SetClipMode("texts");
+    private void ClipModeImages_Click(object sender, MouseButtonEventArgs e) => SetClipMode("images");
+
+    private void SetClipMode(string mode)
+    {
+        if (mode == _clipMode) return;
+        if (_typing) EndTyping(collapse: false);
+        ContentCard.BeginAnimation(HeightProperty, null);
+        double from = ContentCard.ActualHeight;
+        _clipMode = mode;
+        RebuildClipboard();
+        var panel = mode == "texts" ? (UIElement)TextsTab : ImagesTab;
+        panel.BeginAnimation(OpacityProperty, new DoubleAnimation(0.2, 1, TimeSpan.FromMilliseconds(200)));
+        ContentCard.UpdateLayout();
+        double to = ContentCard.ActualHeight;
+        if (Math.Abs(to - from) > 1)
+            ContentCard.BeginAnimation(HeightProperty, new DoubleAnimation(from, to, TimeSpan.FromMilliseconds(200))
+            {
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }, FillBehavior = FillBehavior.Stop
+            });
     }
 
     private void RebuildTexts(IReadOnlyList<ClipItem> all)
@@ -1755,8 +1837,8 @@ public partial class NotchWindow : Window
         Grid.SetColumn(buttons, 1);
         grid.Children.Add(buttons);
 
-        var normal = Frozen(Color.FromRgb(0x28, 0x28, 0x2C));
-        var hover  = Frozen(Color.FromRgb(0x33, 0x33, 0x38));
+        var normal = Frozen(Color.FromArgb(0x1C, 0xFF, 0xFF, 0xFF));
+        var hover  = Frozen(Color.FromArgb(0x2E, 0xFF, 0xFF, 0xFF));
         var a = _hasColour ? _accent : Colors.White;
         var row = new Border
         {

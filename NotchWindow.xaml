@@ -146,6 +146,32 @@
             </Setter>
         </Style>
 
+        <!-- White round play / pause button -->
+        <Style x:Key="PlayCircle" TargetType="Button">
+            <Setter Property="Foreground" Value="#14202A"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Width" Value="38"/>
+            <Setter Property="Height" Value="38"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bg" Background="White" CornerRadius="19">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bg" Property="Opacity" Value="0.88"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="bg" Property="Opacity" Value="0.75"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- Round, borderless button (⏮ ⏯ ⏭) -->
         <Style x:Key="PlayerButton" TargetType="Button">
             <Setter Property="Foreground" Value="#DDFFFFFF"/>
@@ -212,12 +238,12 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="RadioButton">
-                        <Border x:Name="bg" Background="#2A2A2A" CornerRadius="11" Padding="10,3">
+                        <Border x:Name="bg" Background="#1FFFFFFF" CornerRadius="11" Padding="10,3">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="bg" Property="Background" Value="#3A3A3A"/>
+                                <Setter TargetName="bg" Property="Background" Value="#33FFFFFF"/>
                             </Trigger>
                             <Trigger Property="IsChecked" Value="True">
                                 <Setter TargetName="bg" Property="Background" Value="#34C759"/>
@@ -237,7 +263,7 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="RepeatButton">
                         <Grid Background="Transparent">
-                            <Border Height="4" CornerRadius="2" Background="{DynamicResource AccentBrush}" VerticalAlignment="Center"/>
+                            <Border Height="4" CornerRadius="2" Background="White" VerticalAlignment="Center"/>
                         </Grid>
                     </ControlTemplate>
                 </Setter.Value>
@@ -332,8 +358,6 @@
                     BorderBrush="#3A3A3C"
                     CornerRadius="0,0,11,11"
                     Height="22"
-                    MinWidth="140"
-                    MaxWidth="300"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Top">
                 <Border.Effect>
@@ -364,8 +388,15 @@
                         </Grid>
 
                         <!-- Middle: the song's name -->
-                        <TextBlock x:Name="PillText" Grid.Column="1" Foreground="#EEFFFFFF" FontSize="11.5" FontFamily="Segoe UI"
-                                   Margin="7,0,8,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                        <!-- The name scrolls sideways when it doesn't fit, so the pill stays short -->
+                        <Canvas x:Name="PillTitleClip" Grid.Column="1" Width="120" Height="16" Margin="7,0,8,0"
+                                VerticalAlignment="Center" ClipToBounds="True">
+                            <TextBlock x:Name="PillText" Foreground="#EEFFFFFF" FontSize="11.5" FontFamily="Segoe UI">
+                                <TextBlock.RenderTransform>
+                                    <TranslateTransform x:Name="PillTextShift"/>
+                                </TextBlock.RenderTransform>
+                            </TextBlock>
+                        </Canvas>
 
                         <!-- Right: time left on the tree, sound bars -->
                         <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
@@ -470,12 +501,12 @@
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="42"/>
+                    <ColumnDefinition Width="44"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
 
                 <!-- Status row: time · battery · headphones | quick buttons -->
-                <Grid Grid.Column="1" Margin="4,0,0,6">
+                <Grid Grid.Column="1" Margin="2,0,0,6">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <TextBlock x:Name="ClockText" Foreground="White" FontSize="13" FontWeight="SemiBold"
                                    FontFamily="Segoe UI" VerticalAlignment="Center"/>
@@ -501,10 +532,13 @@
                 </Grid>
 
                 <!-- Sidebar: one icon per tab (built in code) -->
-                <StackPanel x:Name="SideBar" Grid.Row="1" Grid.Column="0" VerticalAlignment="Top" Margin="0,2,6,0"/>
+                <Border Grid.Row="1" Grid.Column="0" VerticalAlignment="Top" Margin="0,2,6,0" Background="#14FFFFFF"
+                        CornerRadius="14" Padding="2,3">
+                    <StackPanel x:Name="SideBar"/>
+                </Border>
 
                 <!-- The tab's content; its height follows the tab -->
-                <Border x:Name="ContentCard" Grid.Row="1" Grid.Column="1" Background="#1C1C1F" CornerRadius="16"
+                <Border x:Name="ContentCard" Grid.Row="1" Grid.Column="1" Background="Transparent" CornerRadius="16"
                         ClipToBounds="True" MinHeight="128">
                 <Grid x:Name="TabContent">
                     <Grid.RenderTransform>
@@ -517,111 +551,109 @@
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition x:Name="LyricsColumn" Width="0"/>
                         </Grid.ColumnDefinitions>
-                        <Border x:Name="MusicTint" CornerRadius="16" Grid.ColumnSpan="2"/>
-                        <StackPanel x:Name="MusicContent" Margin="10,10,10,8">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="64"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <Grid Width="64" Height="64">
+                        <Border x:Name="MusicTint" Grid.ColumnSpan="2" Visibility="Collapsed"/>
+                        <!-- Big album art · title, artist · seek bar · controls (like Apple Music) -->
+                        <Grid x:Name="MusicContent" Margin="6,6,8,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="96"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Width="96" Height="96" CornerRadius="18" VerticalAlignment="Center" Background="#22FFFFFF">
+                                <Border.Effect>
+                                    <DropShadowEffect BlurRadius="18" ShadowDepth="5" Direction="270" Opacity="0.45" Color="Black"/>
+                                </Border.Effect>
+                                <Grid>
                                     <Grid.Clip>
-                                        <RectangleGeometry Rect="0,0,64,64" RadiusX="12" RadiusY="12"/>
+                                        <RectangleGeometry Rect="0,0,96,96" RadiusX="18" RadiusY="18"/>
                                     </Grid.Clip>
-                                    <Border Background="#333333">
-                                        <TextBlock Text="&#xE8D6;" FontFamily="{StaticResource IconFont}" FontSize="22"
-                                                   Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                    </Border>
+                                    <TextBlock Text="&#xE8D6;" FontFamily="{StaticResource IconFont}" FontSize="28"
+                                               Foreground="#AAFFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                     <Image x:Name="FullArt" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality"/>
                                 </Grid>
+                            </Border>
 
-                                <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
-                                    <!-- Long titles scroll right → left -->
-                                    <Canvas x:Name="TitleClip" Height="21" ClipToBounds="True">
-                                        <TextBlock x:Name="SongTitle" Foreground="White" FontSize="15" FontWeight="SemiBold"
-                                                   FontFamily="Segoe UI">
-                                            <TextBlock.RenderTransform>
-                                                <TranslateTransform x:Name="TitleShift"/>
-                                            </TextBlock.RenderTransform>
-                                        </TextBlock>
-                                    </Canvas>
-                                    <Grid Margin="0,4,0,0">
+                            <StackPanel Grid.Column="1" Margin="16,0,0,0" VerticalAlignment="Center">
+                                <!-- Long titles scroll right → left -->
+                                <Canvas x:Name="TitleClip" Height="22" ClipToBounds="True">
+                                    <TextBlock x:Name="SongTitle" Foreground="White" FontSize="16" FontWeight="SemiBold"
+                                               FontFamily="Segoe UI">
+                                        <TextBlock.RenderTransform>
+                                            <TranslateTransform x:Name="TitleShift"/>
+                                        </TextBlock.RenderTransform>
+                                    </TextBlock>
+                                </Canvas>
+                                <TextBlock Margin="0,1,0,0" FontSize="12.5" FontFamily="Segoe UI" TextTrimming="CharacterEllipsis">
+                                    <Run x:Name="SongArtistRun" Foreground="#CCFFFFFF"/><Run x:Name="MusicAppRun" Foreground="#88FFFFFF"/>
+                                </TextBlock>
+
+                                <Grid x:Name="SeekRow" Margin="0,6,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="34"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="34"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock x:Name="PositionText" Text="0:00" Foreground="#BBFFFFFF" FontSize="11"
+                                               FontFamily="Segoe UI" VerticalAlignment="Center"/>
+                                    <ui:WavySeekBar Grid.Column="1" x:Name="SeekBar" Margin="2,0,6,0" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="2" x:Name="DurationText" Text="0:00" Foreground="#BBFFFFFF"
+                                               FontSize="11" FontFamily="Segoe UI" VerticalAlignment="Center"
+                                               HorizontalAlignment="Right"/>
+                                </Grid>
+
+                                <Grid Margin="0,2,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="-6,0,0,0">
+                                        <Button Style="{StaticResource PlayerButton}" Click="Prev_Click" ToolTip="Bài trước">
+                                            <TextBlock Text="&#xE892;" FontFamily="{StaticResource IconFont}" FontSize="16"/>
+                                        </Button>
+                                        <Button Style="{StaticResource PlayCircle}" Click="PlayPause_Click" Margin="4,0" ToolTip="Phát / Tạm dừng">
+                                            <TextBlock x:Name="PlayPauseGlyph" Text="&#xE769;" FontFamily="{StaticResource IconFont}" FontSize="17"/>
+                                        </Button>
+                                        <Button Style="{StaticResource PlayerButton}" Click="Next_Click" ToolTip="Bài tiếp">
+                                            <TextBlock Text="&#xE893;" FontFamily="{StaticResource IconFont}" FontSize="16"/>
+                                        </Button>
+                                        <Button x:Name="LyricsBtn" Style="{StaticResource PlayerButton}" Click="Lyrics_Click"
+                                                Margin="4,0,0,0" ToolTip="Lời bài hát">
+                                            <TextBlock x:Name="LyricsGlyph" Text="&#xE8FD;" FontFamily="{StaticResource IconFont}" FontSize="15"/>
+                                        </Button>
+                                    </StackPanel>
+
+                                    <Grid x:Name="VolumeRow" Grid.Column="2" Width="118" VerticalAlignment="Center">
                                         <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
                                             <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="24"/>
                                         </Grid.ColumnDefinitions>
-                                        <StackPanel VerticalAlignment="Center">
-                                            <TextBlock x:Name="SongArtist" Foreground="#AAFFFFFF" FontSize="12.5"
-                                                       FontFamily="Segoe UI" TextTrimming="CharacterEllipsis"/>
-                                            <TextBlock x:Name="MusicAppName" Foreground="#88FFFFFF" FontSize="11"
-                                                       FontFamily="Segoe UI"/>
-                                        </StackPanel>
-
-                                        <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="8,0" VerticalAlignment="Center">
-                                            <Button Style="{StaticResource PlayerButton}" Click="Prev_Click" ToolTip="Bài trước">
-                                                <TextBlock Text="&#xE892;" FontFamily="{StaticResource IconFont}" FontSize="16"/>
-                                            </Button>
-                                            <Button Style="{StaticResource PlayerButton}" Click="PlayPause_Click" Margin="4,0"
-                                                    Width="42" Height="38" ToolTip="Phát / Tạm dừng">
-                                                <TextBlock x:Name="PlayPauseGlyph" Text="&#xE769;" FontFamily="{StaticResource IconFont}" FontSize="22"/>
-                                            </Button>
-                                            <Button Style="{StaticResource PlayerButton}" Click="Next_Click" ToolTip="Bài tiếp">
-                                                <TextBlock Text="&#xE893;" FontFamily="{StaticResource IconFont}" FontSize="16"/>
-                                            </Button>
-                                            <Button x:Name="LyricsBtn" Style="{StaticResource PlayerButton}" Click="Lyrics_Click"
-                                                    Margin="2,0,0,0" ToolTip="Lời bài hát">
-                                                <TextBlock x:Name="LyricsGlyph" Text="&#xE8FD;" FontFamily="{StaticResource IconFont}" FontSize="15"/>
-                                            </Button>
-                                        </StackPanel>
-
-                                        <Grid x:Name="VolumeRow" Grid.Column="2" Width="112" VerticalAlignment="Center">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="Auto"/>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="26"/>
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock x:Name="AppVolumeGlyph" Text="&#xE767;" FontFamily="{StaticResource IconFont}"
-                                                       FontSize="13" Foreground="#AAFFFFFF" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                            <Slider Grid.Column="1" x:Name="VolumeSlider" Style="{StaticResource IslandSlider}"
-                                                    Minimum="0" Maximum="100" Value="100" ValueChanged="VolumeSlider_ValueChanged"/>
-                                            <TextBlock Grid.Column="2" x:Name="AppVolumeText" Text="100" Foreground="#99FFFFFF"
-                                                       FontSize="11" FontFamily="Segoe UI" VerticalAlignment="Center"
-                                                       HorizontalAlignment="Right"/>
-                                        </Grid>
+                                        <TextBlock x:Name="AppVolumeGlyph" Text="&#xE767;" FontFamily="{StaticResource IconFont}"
+                                                   FontSize="13" Foreground="#CCFFFFFF" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                        <Slider Grid.Column="1" x:Name="VolumeSlider" Style="{StaticResource IslandSlider}"
+                                                Minimum="0" Maximum="100" Value="100" ValueChanged="VolumeSlider_ValueChanged"/>
+                                        <TextBlock Grid.Column="2" x:Name="AppVolumeText" Text="100" Foreground="#BBFFFFFF"
+                                                   FontSize="11" FontFamily="Segoe UI" VerticalAlignment="Center"
+                                                   HorizontalAlignment="Right"/>
                                     </Grid>
-                                </StackPanel>
-                            </Grid>
-
-                            <Grid x:Name="SeekRow" Margin="0,10,0,0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="40"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="40"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock x:Name="PositionText" Text="0:00" Foreground="#99FFFFFF" FontSize="11"
-                                           FontFamily="Segoe UI" VerticalAlignment="Center"/>
-                                <ui:WavySeekBar Grid.Column="1" x:Name="SeekBar" Margin="4,0" VerticalAlignment="Center"/>
-                                <TextBlock Grid.Column="2" x:Name="DurationText" Text="0:00" Foreground="#99FFFFFF"
-                                           FontSize="11" FontFamily="Segoe UI" VerticalAlignment="Center"
-                                           HorizontalAlignment="Right"/>
-                            </Grid>
-                        </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </Grid>
 
                         <StackPanel x:Name="NoMusicText" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed">
-                            <Border Width="56" Height="56" CornerRadius="16" Background="#1E1E21" HorizontalAlignment="Center">
+                            <Border Width="56" Height="56" CornerRadius="16" Background="#1AFFFFFF" HorizontalAlignment="Center" Margin="0,8,0,0">
                                 <TextBlock Text="&#xE8D6;" FontFamily="{StaticResource IconFont}" FontSize="24"
                                            Foreground="#88FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Border>
                             <TextBlock Text="Chưa có nhạc đang phát" Foreground="#CCFFFFFF" FontSize="13.5" FontWeight="SemiBold"
                                        FontFamily="Segoe UI" HorizontalAlignment="Center" Margin="0,10,0,2"/>
                             <TextBlock Text="Mở Spotify, YouTube hay app nhạc bất kỳ, bài hát sẽ hiện ở đây"
-                                       Foreground="#88FFFFFF" FontSize="11.5" FontFamily="Segoe UI" HorizontalAlignment="Center"/>
+                                       Foreground="#88FFFFFF" FontSize="11.5" FontFamily="Segoe UI" HorizontalAlignment="Center" Margin="0,0,0,8"/>
                         </StackPanel>
 
                         <!-- Synced lyrics (opened with the lyrics button), like Spotify -->
                         <Grid x:Name="LyricsPane" Grid.Column="1" Margin="4,8,8,8" Visibility="Collapsed">
-                            <ScrollViewer x:Name="LyricsScroll" Height="160" VerticalScrollBarVisibility="Hidden"
+                            <ScrollViewer x:Name="LyricsScroll" Height="112" VerticalScrollBarVisibility="Hidden"
                                           Focusable="False" PanningMode="VerticalOnly">
                                 <ScrollViewer.OpacityMask>
                                     <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
@@ -631,7 +663,7 @@
                                         <GradientStop Color="Transparent" Offset="1"/>
                                     </LinearGradientBrush>
                                 </ScrollViewer.OpacityMask>
-                                <StackPanel x:Name="LyricsList" Margin="6,60,6,60"/>
+                                <StackPanel x:Name="LyricsList" Margin="6,44,6,44"/>
                             </ScrollViewer>
                             <TextBlock x:Name="LyricsStatus" Foreground="#99FFFFFF" FontSize="13" FontFamily="Segoe UI"
                                        HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap"
@@ -736,7 +768,7 @@
                                 <StackPanel x:Name="NotifFilters" Orientation="Horizontal"/>
                             </ScrollViewer>
                             <Button x:Name="ClearAllBtn" Content="Xoá tất cả" Style="{StaticResource ActionButton}"
-                                    Background="#2C2C2E" Foreground="#DDFFFFFF" Padding="10,3" FontSize="11.5"
+                                    Background="#22FFFFFF" Foreground="#EEFFFFFF" Padding="10,3" FontSize="11.5"
                                     HorizontalAlignment="Right" VerticalAlignment="Center" Click="ClearAll_Click"/>
                         </Grid>
                         <ScrollViewer Grid.Row="1" MaxHeight="190" VerticalScrollBarVisibility="Hidden" Focusable="False">
@@ -751,87 +783,116 @@
                         </StackPanel>
                     </Grid>
 
-                    <!-- ── Văn bản: copied texts ── -->
-                    <Grid x:Name="TextsTab" Visibility="Collapsed" Margin="10,8,10,8">
+                    <!-- ── Copy: two sections, Văn bản | Hình ảnh ── -->
+                    <Grid x:Name="ClipboardTab" Visibility="Collapsed" Margin="10,8,10,8">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
-                        <Grid Margin="0,0,0,8">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <Border Background="#2A2A2E" CornerRadius="10" Height="30" Padding="10,0">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="&#xE721;" FontFamily="{StaticResource IconFont}" FontSize="12"
-                                               Foreground="#99FFFFFF" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                    <TextBlock x:Name="ClipSearchPlaceholder" Grid.Column="1" Text="Tìm trong lịch sử copy…"
-                                               Foreground="#88FFFFFF" FontSize="12.5" FontFamily="Segoe UI"
-                                               VerticalAlignment="Center" IsHitTestVisible="False"/>
-                                    <TextBox x:Name="ClipSearch" Grid.Column="1" Background="Transparent" BorderThickness="0"
-                                             Foreground="White" CaretBrush="White" FontSize="12.5" FontFamily="Segoe UI"
-                                             VerticalAlignment="Center" VerticalContentAlignment="Center"
-                                             PreviewMouseLeftButtonDown="ClipSearch_PreviewMouseLeftButtonDown"
-                                             KeyDown="ClipSearch_KeyDown" TextChanged="ClipSearch_TextChanged"/>
-                                </Grid>
-                            </Border>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="10,0,0,0" VerticalAlignment="Center">
-                                <TextBlock x:Name="ClipToast" Foreground="#34C759" FontSize="12" FontWeight="SemiBold"
-                                           FontFamily="Segoe UI" VerticalAlignment="Center" Margin="0,0,10,0" Opacity="0"/>
-                                <Button x:Name="ClipClearBtn" Content="Xoá mục chưa ghim" Style="{StaticResource ActionButton}"
-                                        Background="#2E2E33" Foreground="#EEFFFFFF" Padding="10,3" FontSize="11.5"
-                                        Click="ClipClear_Click"/>
+                        <!-- Segmented switch -->
+                        <Border Background="#1AFFFFFF" CornerRadius="10" Padding="3" HorizontalAlignment="Left" Margin="0,0,0,8">
+                            <StackPanel Orientation="Horizontal">
+                                <Border x:Name="ClipModeTexts" CornerRadius="8" Padding="12,4" Cursor="Hand"
+                                        MouseLeftButtonUp="ClipModeTexts_Click">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#xE8A5;" FontFamily="{StaticResource IconFont}" FontSize="12" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="ClipModeTextsLabel" Text="Văn bản" FontSize="12" FontWeight="SemiBold"
+                                                   FontFamily="Segoe UI" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border x:Name="ClipModeImages" CornerRadius="8" Padding="12,4" Cursor="Hand" Margin="2,0,0,0"
+                                        MouseLeftButtonUp="ClipModeImages_Click">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#xEB9F;" FontFamily="{StaticResource IconFont}" FontSize="12" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="ClipModeImagesLabel" Text="Hình ảnh" FontSize="12" FontWeight="SemiBold"
+                                                   FontFamily="Segoe UI" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
                             </StackPanel>
-                        </Grid>
-                        <Grid Grid.Row="1">
-                            <ScrollViewer x:Name="ClipTextScroll" MaxHeight="190" VerticalScrollBarVisibility="Hidden" Focusable="False">
-                                <StackPanel x:Name="ClipTextList"/>
-                            </ScrollViewer>
-                            <TextBlock x:Name="ClipEmpty" Foreground="#99FFFFFF" FontSize="12.5" FontFamily="Segoe UI"
-                                       HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"
-                                       TextWrapping="Wrap" Margin="0,18"/>
-                        </Grid>
-                    </Grid>
+                        </Border>
 
-                    <!-- ── Hình ảnh: copied images in a row you scroll sideways ── -->
-                    <Grid x:Name="ImagesTab" Visibility="Collapsed" Margin="10,8,10,6">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
-                        <Grid Margin="2,0,0,8">
-                            <TextBlock x:Name="ImgCount" Foreground="#99FFFFFF" FontSize="12" FontFamily="Segoe UI"
-                                       VerticalAlignment="Center"/>
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                                <TextBlock x:Name="ImgToast" Foreground="#34C759" FontSize="12" FontWeight="SemiBold"
-                                           FontFamily="Segoe UI" VerticalAlignment="Center" Margin="0,0,10,0" Opacity="0"/>
-                                <Button Style="{StaticResource QuickButton}" Width="26" Height="24" FontSize="10.5"
-                                        Content="&#xE76B;" Click="ClipImagesLeft_Click" ToolTip="Ảnh mới hơn"/>
-                                <Button Style="{StaticResource QuickButton}" Width="26" Height="24" FontSize="10.5" Margin="2,0,8,0"
-                                        Content="&#xE76C;" Click="ClipImagesRight_Click" ToolTip="Ảnh cũ hơn"/>
-                                <Button x:Name="ImgClearBtn" Content="Xoá ảnh chưa ghim" Style="{StaticResource ActionButton}"
-                                        Background="#2E2E33" Foreground="#EEFFFFFF" Padding="10,3" FontSize="11.5"
-                                        Click="ImgClear_Click"/>
-                            </StackPanel>
+                        <!-- ── Văn bản: copied texts ── -->
+                        <Grid x:Name="TextsTab" Grid.Row="1">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Border Background="#1AFFFFFF" CornerRadius="10" Height="30" Padding="10,0">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="&#xE721;" FontFamily="{StaticResource IconFont}" FontSize="12"
+                                                   Foreground="#99FFFFFF" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <TextBlock x:Name="ClipSearchPlaceholder" Grid.Column="1" Text="Tìm trong lịch sử copy…"
+                                                   Foreground="#88FFFFFF" FontSize="12.5" FontFamily="Segoe UI"
+                                                   VerticalAlignment="Center" IsHitTestVisible="False"/>
+                                        <TextBox x:Name="ClipSearch" Grid.Column="1" Background="Transparent" BorderThickness="0"
+                                                 Foreground="White" CaretBrush="White" FontSize="12.5" FontFamily="Segoe UI"
+                                                 VerticalAlignment="Center" VerticalContentAlignment="Center"
+                                                 PreviewMouseLeftButtonDown="ClipSearch_PreviewMouseLeftButtonDown"
+                                                 KeyDown="ClipSearch_KeyDown" TextChanged="ClipSearch_TextChanged"/>
+                                    </Grid>
+                                </Border>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="10,0,0,0" VerticalAlignment="Center">
+                                    <TextBlock x:Name="ClipToast" Foreground="#34C759" FontSize="12" FontWeight="SemiBold"
+                                               FontFamily="Segoe UI" VerticalAlignment="Center" Margin="0,0,10,0" Opacity="0"/>
+                                    <Button x:Name="ClipClearBtn" Content="Xoá mục chưa ghim" Style="{StaticResource ActionButton}"
+                                            Background="#22FFFFFF" Foreground="#EEFFFFFF" Padding="10,3" FontSize="11.5"
+                                            Click="ClipClear_Click"/>
+                                </StackPanel>
+                            </Grid>
+                            <Grid Grid.Row="1">
+                                <ScrollViewer x:Name="ClipTextScroll" MaxHeight="190" VerticalScrollBarVisibility="Hidden" Focusable="False">
+                                    <StackPanel x:Name="ClipTextList"/>
+                                </ScrollViewer>
+                                <TextBlock x:Name="ClipEmpty" Foreground="#99FFFFFF" FontSize="12.5" FontFamily="Segoe UI"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"
+                                           TextWrapping="Wrap" Margin="0,18"/>
+                            </Grid>
                         </Grid>
-                        <Grid Grid.Row="1">
-                            <ScrollViewer x:Name="ClipImageScroll" HorizontalScrollBarVisibility="Visible"
-                                          VerticalScrollBarVisibility="Disabled" Focusable="False"
-                                          PreviewMouseWheel="SidewaysWheel">
-                                <ScrollViewer.Resources>
-                                    <Style TargetType="ScrollBar" BasedOn="{StaticResource ThinHScroll}"/>
-                                </ScrollViewer.Resources>
-                                <StackPanel x:Name="ClipImageList" Orientation="Horizontal" Margin="0,0,0,6"/>
-                            </ScrollViewer>
-                            <TextBlock x:Name="ImgEmpty" Foreground="#99FFFFFF" FontSize="12.5" FontFamily="Segoe UI"
-                                       HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"
-                                       TextWrapping="Wrap" Margin="0,24"
-                                       Text="Chưa có ảnh nào. Chụp màn hình (Win + Shift + S) hoặc copy một ảnh, nó sẽ hiện ở đây."/>
+
+                        <!-- ── Hình ảnh: copied images in a row you scroll sideways ── -->
+                        <Grid x:Name="ImagesTab" Grid.Row="1" Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <Grid Margin="2,0,0,8">
+                                <TextBlock x:Name="ImgCount" Foreground="#99FFFFFF" FontSize="12" FontFamily="Segoe UI"
+                                           VerticalAlignment="Center"/>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                    <TextBlock x:Name="ImgToast" Foreground="#34C759" FontSize="12" FontWeight="SemiBold"
+                                               FontFamily="Segoe UI" VerticalAlignment="Center" Margin="0,0,10,0" Opacity="0"/>
+                                    <Button Style="{StaticResource QuickButton}" Width="26" Height="24" FontSize="10.5"
+                                            Content="&#xE76B;" Click="ClipImagesLeft_Click" ToolTip="Ảnh mới hơn"/>
+                                    <Button Style="{StaticResource QuickButton}" Width="26" Height="24" FontSize="10.5" Margin="2,0,8,0"
+                                            Content="&#xE76C;" Click="ClipImagesRight_Click" ToolTip="Ảnh cũ hơn"/>
+                                    <Button x:Name="ImgClearBtn" Content="Xoá ảnh chưa ghim" Style="{StaticResource ActionButton}"
+                                            Background="#22FFFFFF" Foreground="#EEFFFFFF" Padding="10,3" FontSize="11.5"
+                                            Click="ImgClear_Click"/>
+                                </StackPanel>
+                            </Grid>
+                            <Grid Grid.Row="1">
+                                <ScrollViewer x:Name="ClipImageScroll" HorizontalScrollBarVisibility="Visible"
+                                              VerticalScrollBarVisibility="Disabled" Focusable="False"
+                                              PreviewMouseWheel="SidewaysWheel">
+                                    <ScrollViewer.Resources>
+                                        <Style TargetType="ScrollBar" BasedOn="{StaticResource ThinHScroll}"/>
+                                    </ScrollViewer.Resources>
+                                    <StackPanel x:Name="ClipImageList" Orientation="Horizontal" Margin="0,0,0,6"/>
+                                </ScrollViewer>
+                                <TextBlock x:Name="ImgEmpty" Foreground="#99FFFFFF" FontSize="12.5" FontFamily="Segoe UI"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"
+                                           TextWrapping="Wrap" Margin="0,24"
+                                           Text="Chưa có ảnh nào. Chụp màn hình (Win + Shift + S) hoặc copy một ảnh, nó sẽ hiện ở đây."/>
+                            </Grid>
                         </Grid>
                     </Grid>
                 </Grid>
