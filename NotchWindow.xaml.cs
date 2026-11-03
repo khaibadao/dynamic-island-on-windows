@@ -36,9 +36,9 @@ public partial class NotchWindow : Window
     private bool _typing;            // the to-do box has the keyboard
     private string _tab = "music";
 
-    private const double PanelWidth       = 700;
-    private const double PanelWidthLyrics = 1040;
-    private const double LyricsWidth      = 340;
+    private const double PanelWidth       = 620;   // same frame as v1.7
+    private const double PanelWidthLyrics = 920;
+    private const double LyricsWidth      = 300;
 
     private readonly DispatcherTimer _hoverTimer      = new() { Interval = TimeSpan.FromMilliseconds(50) };
     private readonly DispatcherTimer _closeTimer      = new() { Interval = TimeSpan.FromMilliseconds(250) };
@@ -1244,7 +1244,7 @@ public partial class NotchWindow : Window
                 group = g;
                 RecentList.Children.Add(new TextBlock
                 {
-                    Text = g, Foreground = Frozen(Color.FromArgb(0x70, 0xFF, 0xFF, 0xFF)), FontSize = 10.5,
+                    Text = g, Foreground = Frozen(Color.FromArgb(0x99, 0xFF, 0xFF, 0xFF)), FontSize = 10.5,
                     FontWeight = FontWeights.SemiBold, FontFamily = new FontFamily("Segoe UI"),
                     Margin = new Thickness(4, RecentList.Children.Count == 0 ? 0 : 6, 0, 4)
                 });
@@ -1320,7 +1320,7 @@ public partial class NotchWindow : Window
         {
             Child = row, CornerRadius = new CornerRadius(12), Padding = new Thickness(9, 3, 9, 3),
             Margin = new Thickness(0, 0, 6, 0), Cursor = Cursors.Hand,
-            Background = on ? Frozen(Color.FromArgb(0x40, colour.R, colour.G, colour.B)) : Frozen(Color.FromRgb(0x1E, 0x1E, 0x21)),
+            Background = on ? Frozen(Color.FromArgb(0x40, colour.R, colour.G, colour.B)) : Frozen(Color.FromRgb(0x2A, 0x2A, 0x2E)),
             BorderThickness = new Thickness(1),
             BorderBrush = on ? Frozen(Color.FromArgb(0xAA, colour.R, colour.G, colour.B)) : Brushes.Transparent
         };
@@ -1336,7 +1336,7 @@ public partial class NotchWindow : Window
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        grid.Children.Add(Avatar(data, 32));
+        grid.Children.Add(Avatar(data, 28));
 
         var text = new StackPanel { Margin = new Thickness(10, 0, 8, 0) };
         var top = new TextBlock { FontFamily = new FontFamily("Segoe UI"), TextTrimming = TextTrimming.CharacterEllipsis };
@@ -1346,7 +1346,7 @@ public partial class NotchWindow : Window
         });
         top.Inlines.Add(new System.Windows.Documents.Run("  ·  " + Ago(time))
         {
-            Foreground = Frozen(Color.FromArgb(0x70, 0xFF, 0xFF, 0xFF)), FontSize = 11
+            Foreground = Frozen(Color.FromArgb(0x99, 0xFF, 0xFF, 0xFF)), FontSize = 11
         });
         text.Children.Add(top);
 
@@ -1364,8 +1364,8 @@ public partial class NotchWindow : Window
             text.Children.Add(new TextBlock
             {
                 Text = data.Body.ReplaceLineEndings(" "), Foreground = Frozen(Color.FromArgb(0xAA, 0xFF, 0xFF, 0xFF)),
-                FontSize = 12, FontFamily = new FontFamily("Segoe UI"), TextWrapping = TextWrapping.Wrap,
-                TextTrimming = TextTrimming.CharacterEllipsis, MaxHeight = 34, Margin = new Thickness(0, 1, 0, 0),
+                FontSize = 12, FontFamily = new FontFamily("Segoe UI"),
+                TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 1, 0, 0),
                 ToolTip = data.Body
             });
         }
@@ -1394,12 +1394,12 @@ public partial class NotchWindow : Window
         Grid.SetColumn(actions, 2);
         grid.Children.Add(actions);
 
-        var normal = Frozen(Color.FromRgb(0x1A, 0x1A, 0x1D));
-        var hover  = Frozen(Color.FromRgb(0x24, 0x24, 0x28));
+        var normal = Frozen(Color.FromRgb(0x28, 0x28, 0x2C));
+        var hover  = Frozen(Color.FromRgb(0x33, 0x33, 0x38));
         var card = new Border
         {
-            Child = grid, CornerRadius = new CornerRadius(12), Padding = new Thickness(10, 8, 8, 8),
-            Margin = new Thickness(0, 0, 0, 6), Background = normal, Cursor = Cursors.Hand,
+            Child = grid, CornerRadius = new CornerRadius(12), Padding = new Thickness(10, 6, 6, 6),
+            Margin = new Thickness(0, 0, 0, 5), Background = normal, Cursor = Cursors.Hand,
             BorderThickness = new Thickness(3, 0, 0, 0), BorderBrush = Frozen(Color.FromArgb(0xCC, colour.R, colour.G, colour.B))
         };
         card.MouseEnter += (_, _) => { card.Background = hover;  actions.Visibility = Visibility.Visible; };
@@ -1600,8 +1600,8 @@ public partial class NotchWindow : Window
         var images = all.Where(i => i.IsImage && Match(i)).ToList();
         int pinned = texts.Count(i => i.Pinned);
 
-        ClipTextHeader.Text  = $"VĂN BẢN · {texts.Count}" + (pinned > 0 ? $"  ·  {pinned} đã ghim" : "");
-        ClipImageHeader.Text = $"ẢNH · {images.Count}";
+        ClipSearchPlaceholder.Text = all.Count == 0 ? "Tìm trong lịch sử copy…"
+            : $"Tìm trong {all.Count(i => !i.IsImage)} đoạn chữ · {all.Count(i => i.IsImage)} ảnh" + (pinned > 0 ? $" · {pinned} đã ghim" : "") + "…";
         ClipClearBtn.Visibility = all.Any(i => !i.Pinned) ? Visibility.Visible : Visibility.Collapsed;
         ClipImageSection.Visibility = images.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
@@ -1668,56 +1668,60 @@ public partial class NotchWindow : Window
     private UIElement MakeClipTextRow(ClipItem item, bool newest)
     {
         var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        var full = (item.Text ?? "").Trim();
-        var body = new StackPanel();
-        body.Children.Add(new TextBlock
-        {
-            Text = full.Length > 400 ? full[..400] : full, FontSize = 12.5, FontFamily = new FontFamily("Segoe UI"),
-            Foreground = Brushes.White, TextWrapping = TextWrapping.Wrap, TextTrimming = TextTrimming.CharacterEllipsis,
-            MaxHeight = 36, ToolTip = full.Length > 800 ? full[..800] + "…" : full
-        });
-
-        var meta = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 0) };
-        if (Badge(item, newest) is { } badge) meta.Children.Add(badge);
+        var left = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        if (Badge(item, newest) is { } badge) left.Children.Add(badge);
         if (item.Pinned)
         {
-            meta.Children.Add(new TextBlock
+            left.Children.Add(new TextBlock
             {
-                Text = "", FontFamily = (FontFamily)FindResource("IconFont"), FontSize = 10.5, Margin = new Thickness(0, 0, 6, 0),
+                Text = "\uE718", FontFamily = (FontFamily)FindResource("IconFont"), FontSize = 10.5, Margin = new Thickness(0, 0, 6, 0),
                 Foreground = Frozen(Color.FromRgb(0xFF, 0x9F, 0x0A)), VerticalAlignment = VerticalAlignment.Center
             });
         }
+        grid.Children.Add(left);
+
+        var full = (item.Text ?? "").Trim();
+        var line = new TextBlock
+        {
+            Text = full.Length > 300 ? full[..300].ReplaceLineEndings(" ") : full.ReplaceLineEndings(" "),
+            FontSize = 12.5, FontFamily = new FontFamily("Segoe UI"), Foreground = Brushes.White,
+            TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center,
+            ToolTip = full.Length > 800 ? full[..800] + "…" : full
+        };
+        Grid.SetColumn(line, 1);
+        grid.Children.Add(line);
+
+        // Right: where from and when; pin / delete replace it on hover
         var when = new TextBlock
         {
-            Text = ClipMeta(item), FontSize = 11, FontFamily = new FontFamily("Segoe UI"),
-            Foreground = Frozen(Color.FromArgb(0x70, 0xFF, 0xFF, 0xFF)), VerticalAlignment = VerticalAlignment.Center
+            Text = ClipMeta(item), FontSize = 11, FontFamily = new FontFamily("Segoe UI"), Margin = new Thickness(10, 0, 4, 0),
+            Foreground = Frozen(Color.FromArgb(0x99, 0xFF, 0xFF, 0xFF)), VerticalAlignment = VerticalAlignment.Center
         };
         _clipTimes.Add((when, item));
-        meta.Children.Add(when);
-        body.Children.Add(meta);
-        grid.Children.Add(body);
-
         var buttons = MakeClipButtons(item);
-        buttons.VerticalAlignment = VerticalAlignment.Top;
-        buttons.Visibility = Visibility.Hidden;
-        Grid.SetColumn(buttons, 1);
-        grid.Children.Add(buttons);
+        buttons.HorizontalAlignment = HorizontalAlignment.Right;
+        buttons.Visibility = Visibility.Collapsed;
+        var right = new Grid();
+        right.Children.Add(when);
+        right.Children.Add(buttons);
+        Grid.SetColumn(right, 2);
+        grid.Children.Add(right);
 
-        var normal = Frozen(Color.FromRgb(0x1A, 0x1A, 0x1D));
-        var hover  = Frozen(Color.FromRgb(0x24, 0x24, 0x28));
-        var edge   = newest ? Frozen(Color.FromArgb(0x99, (_hasColour ? _accent : Colors.White).R, (_hasColour ? _accent : Colors.White).G, (_hasColour ? _accent : Colors.White).B))
-                            : Brushes.Transparent;
+        var normal = Frozen(Color.FromRgb(0x28, 0x28, 0x2C));
+        var hover  = Frozen(Color.FromRgb(0x33, 0x33, 0x38));
+        var a = _hasColour ? _accent : Colors.White;
         var row = new Border
         {
-            Child = grid, CornerRadius = new CornerRadius(10), Padding = new Thickness(10, 7, 6, 7),
-            Margin = new Thickness(0, 0, 0, 5), Background = normal, Cursor = Cursors.Hand,
-            BorderThickness = new Thickness(1), BorderBrush = edge
+            Child = grid, CornerRadius = new CornerRadius(8), Padding = new Thickness(9, 3, 4, 3), MinHeight = 28,
+            Margin = new Thickness(0, 0, 0, 4), Background = normal, Cursor = Cursors.Hand,
+            BorderThickness = new Thickness(1), BorderBrush = newest ? Frozen(Color.FromArgb(0x99, a.R, a.G, a.B)) : Brushes.Transparent
         };
-        row.MouseEnter += (_, _) => { row.Background = hover;  buttons.Visibility = Visibility.Visible; };
-        row.MouseLeave += (_, _) => { row.Background = normal; buttons.Visibility = Visibility.Hidden; };
+        row.MouseEnter += (_, _) => { row.Background = hover;  when.Visibility = Visibility.Hidden; buttons.Visibility = Visibility.Visible; };
+        row.MouseLeave += (_, _) => { row.Background = normal; when.Visibility = Visibility.Visible; buttons.Visibility = Visibility.Collapsed; };
         row.MouseLeftButtonUp += (_, _) => { if (!buttons.IsMouseOver) CopyClip(item); };
         return row;
     }
@@ -1727,26 +1731,26 @@ public partial class NotchWindow : Window
         if (!_thumbs.TryGetValue(item.Id, out var thumb))
             _thumbs[item.Id] = thumb = ClipboardService.LoadImage(item, 160);
 
-        const double W = 128, H = 80;
-        var box = new Grid { Width = W, Height = H, Clip = new RectangleGeometry(new Rect(0, 0, W, H), 9, 9) };
+        const double W = 88, H = 54;
+        var box = new Grid { Width = W, Height = H, Clip = new RectangleGeometry(new Rect(0, 0, W, H), 8, 8) };
         box.Children.Add(new Border { Background = Frozen(Color.FromRgb(0x1C, 0x1C, 0x1E)) });
         if (thumb != null) box.Children.Add(new Image { Source = thumb, Stretch = Stretch.UniformToFill });
 
         // Time along the bottom on a soft shade
         var shade = new Border
         {
-            VerticalAlignment = VerticalAlignment.Bottom, Padding = new Thickness(7, 10, 7, 4),
+            VerticalAlignment = VerticalAlignment.Bottom, Padding = new Thickness(5, 6, 5, 2),
             Background = new LinearGradientBrush(Color.FromArgb(0x00, 0, 0, 0), Color.FromArgb(0xCC, 0, 0, 0), 90)
         };
         var when = new TextBlock
         {
-            Text = Ago(item.Time), Foreground = Frozen(Color.FromArgb(0xDD, 0xFF, 0xFF, 0xFF)), FontSize = 10.5,
+            Text = Ago(item.Time), Foreground = Frozen(Color.FromArgb(0xDD, 0xFF, 0xFF, 0xFF)), FontSize = 9.5,
             FontFamily = new FontFamily("Segoe UI"), TextTrimming = TextTrimming.CharacterEllipsis
         };
         shade.Child = when;
         box.Children.Add(shade);
 
-        var top = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(5), VerticalAlignment = VerticalAlignment.Top, HorizontalAlignment = HorizontalAlignment.Left };
+        var top = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(3), VerticalAlignment = VerticalAlignment.Top, HorizontalAlignment = HorizontalAlignment.Left };
         if (Badge(item, newest) is { } badge)
         {
             badge.Background = Frozen(Color.FromArgb(0xDD, 0, 0, 0));
@@ -1771,7 +1775,7 @@ public partial class NotchWindow : Window
         buttons.Background = Frozen(Color.FromArgb(0xDD, 0, 0, 0));
         buttons.HorizontalAlignment = HorizontalAlignment.Right;
         buttons.VerticalAlignment   = VerticalAlignment.Top;
-        buttons.Margin = new Thickness(0, 4, 4, 0);
+        buttons.Margin = new Thickness(0, 2, 2, 0);
         buttons.Visibility = Visibility.Collapsed;
         box.Children.Add(buttons);
 
@@ -1779,7 +1783,7 @@ public partial class NotchWindow : Window
         var accent = Frozen(_hasColour ? _accent : Colors.White);
         var tile = new Border
         {
-            Child = box, CornerRadius = new CornerRadius(10), Margin = new Thickness(0, 0, 8, 0),
+            Child = box, CornerRadius = new CornerRadius(10), Margin = new Thickness(0, 0, 6, 0),
             BorderThickness = new Thickness(1.5), BorderBrush = newest ? accent : rest, Cursor = Cursors.Hand
         };
 
@@ -1903,7 +1907,7 @@ public partial class NotchWindow : Window
     }
 
     // ── Mây the cat ───────────────────────────────────────────────────
-    private IEnumerable<MayCat> Cats => new[] { CatPanel, CatTree };
+    private IEnumerable<MayCat> Cats => new[] { CatPanel };
 
     /// <summary>A short reaction: happy hops, or sad after giving up.</summary>
     private void CatReact(CatMood mood, double seconds)
@@ -1949,7 +1953,6 @@ public partial class NotchWindow : Window
             _             => "đang ngồi chơi"
         };
         CatPanel.ToolTip = $"Mây {doing} · đã được ăn {food} phần (mỗi cây trồng xong là 1 phần)";
-        CatTree.ToolTip  = CatPanel.ToolTip;
     }
 
     // ── Helpers ───────────────────────────────────────────────────────
