@@ -128,8 +128,15 @@ public sealed class NotchEyes : FrameworkElement
     private Expression? _expr;
     private TimeSpan _start, _now;
     private double _duration = 5.5;
-    private bool _following;
+    private bool _following;               // looking at the pointer
+    private bool _followWanted;            // asked to follow while a reaction plays: follow when it ends
+    private bool _interruptible;           // idle faces give way to following; reactions don't
     private Point _target, _look;           // where the eyes look while following (-1..1)
+    private readonly Random _rng = new();
+    private double _nextBlink, _blinkAt = -10, _secondBlinkAt = -10;   // natural blinking (seconds)
+    private double _nextSaccade;
+    private Point _saccade, _saccadeTarget;                            // tiny darting glances
+    private double _lid, _arc;                                         // drowsy lids, happy squint (eased)
     private double _alpha;                  // fades in and out
     private bool _rendering;
 
@@ -148,15 +155,27 @@ public sealed class NotchEyes : FrameworkElement
     /// <summary>True while an expression plays or the eyes follow the pointer.</summary>
     public bool Active => _expr != null || _following;
     public bool Playing => _expr != null;
+    public bool Following => _following;
+
+    /// <summary>A reaction is playing that following must not cut short (dizzy, surprise…).</summary>
+    public bool Locked => _expr != null && !_interruptible;
+
+    /// <summary>While following: heavy lids (the pointer has been still a while).</summary>
+    public bool Drowsy { get; set; }
+
+    /// <summary>While following: happy ^ ^ squint (the pointer is on the notch).</summary>
+    public bool Squint { get; set; }
 
     /// <summary>The expression finished and the eyes have faded out.</summary>
     public event Action? Finished;
 
     /// <summary>Plays an expression (see <see cref="Idle"/>, or "love", "sad", "sleepy").</summary>
-    public void Play(string name)
+    public void Play(string name, bool interruptible = false)
     {
         if (!All.TryGetValue(name, out var e)) return;
+        _followWanted = _following;
         _following = false;
+        _interruptible = interruptible;
         _expr = e;
         _duration = e.Keys[^1].T;
         _start = TimeSpan.Zero;   // set on the next frame
@@ -168,12 +187,14 @@ public sealed class NotchEyes : FrameworkElement
     {
         if (where is { } p)
         {
-            if (_expr != null) return;   // an expression is playing: let it finish
             _target = new Point(Math.Clamp(p.X, -1, 1), Math.Clamp(p.Y, -1, 1));
+            if (_expr != null && !_interruptible) { _followWanted = true; return; }   // let the reaction finish
+            _expr = null;                                                            // idle faces give way
             if (!_following) { _following = true; StartRendering(); }
         }
-        else if (_following)
+        else
         {
+            _followWanted = false;
             _following = false;   // fades out, then Finished
         }
     }
@@ -181,7 +202,7 @@ public sealed class NotchEyes : FrameworkElement
     public void Stop()
     {
         _expr = null;
-        _following = false;
+        _following = _followWanted = false;
         _alpha = 0;
         StopRendering();
         InvalidateVisual();
@@ -213,10 +234,35 @@ public sealed class NotchEyes : FrameworkElement
         if (_expr != null)
         {
             double el = (t - _start).TotalSeconds;
-            wantVisible = el < _duration - 0.35;
-            if (el >= _duration) _expr = null;
+            wantVisible = el < _duration - 0.35 || _followWanted;
+            if (el >= _duration)
+            {
+                _expr = null;
+                if (_followWanted) { _following = true; _followWanted = false; }   // straight back to watching you
+            }
         }
         else wantVisible = _following;
+
+        // While following: blink like a person (every 2–6 s, sometimes twice), dart a little, ease lids
+        double now = t.TotalSeconds;
+        if (_following)
+        {
+            if (now >= _nextBlink)
+            {
+                _blinkAt = now;
+                _secondBlinkAt = _rng.NextDouble() < 0.25 ? now + 0.3 : -10;
+                _nextBlink = now + 2 + _rng.NextDouble() * 4;
+            }
+            if (now >= _nextSaccade)
+            {
+                _saccadeTarget = new Point((_rng.NextDouble() - 0.5) * 1.6, (_rng.NextDouble() - 0.5) * 1.0);
+                _nextSaccade = now + 1 + _rng.NextDouble() * 1.5;
+            }
+        }
+        _saccade = new Point(_saccade.X + (_saccadeTarget.X - _saccade.X) * Math.Min(1, dt * 18),
+                             _saccade.Y + (_saccadeTarget.Y - _saccade.Y) * Math.Min(1, dt * 18));
+        _lid += ((Drowsy ? 0.58 : 0) - _lid) * Math.Min(1, dt * 2.5);
+        _arc += ((Squint ? 1 : 0) - _arc) * Math.Min(1, dt * 9);
 
         _alpha = Math.Clamp(_alpha + (wantVisible ? dt : -dt) / 0.3, 0, 1);
         _look = new Point(_look.X + (_target.X - _look.X) * Math.Min(1, dt * 10),
@@ -248,8 +294,12 @@ public sealed class NotchEyes : FrameworkElement
         }
         else
         {
-            // Following the pointer: shift and squeeze a little towards it
-            var f = new Eye(Lx: _look.X * 4.5, Ly: _look.Y * 2, Sx: 1 - Math.Abs(_look.X) * 0.1);
+            // Following the pointer: shift and squeeze a little towards it, blink now and then
+            double now = _now.TotalSeconds;
+            double blink = Math.Max(BlinkAmount(now - _blinkAt), BlinkAmount(now - _secondBlinkAt));
+            var f = new Eye(Lx: _look.X * 4.5 + _saccade.X, Ly: _look.Y * 2 + _saccade.Y,
+                            Sx: (1 - Math.Abs(_look.X) * 0.1) * (1 + blink * 0.1), Sy: 1 - blink * 0.12,
+                            Top: Math.Max(_lid, blink), Bot: _arc * 0.58, Happy: _arc > 0.02);
             l = r = f;
         }
 
@@ -330,6 +380,13 @@ public sealed class NotchEyes : FrameworkElement
                 dc.DrawRectangle(Brushes.Black, null, new Rect(box.X - w, box.Bottom - h * e.Bot, w * 3, h * 2));
         }
         dc.Pop();
+    }
+
+    /// <summary>Lid closure for a blink that started <paramref name="since"/> seconds ago (closes fast, opens a bit slower).</summary>
+    private static double BlinkAmount(double since)
+    {
+        if (since < 0 || since > 0.2) return 0;
+        return since < 0.07 ? since / 0.07 : 1 - (since - 0.07) / 0.13;
     }
 
     // ── Keyframes ─────────────────────────────────────────────────────

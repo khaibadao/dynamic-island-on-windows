@@ -171,7 +171,7 @@ public partial class NotchWindow : Window
         };
         _walkTimer.Tick += (_, _) => { _walkTimer.Stop(); StartWalk(); ScheduleWalk(); };
         _eyesTimer.Tick += (_, _) => EyesTick();
-        Eyes.Finished += () => GrowForEyes(false);
+        Eyes.Finished += () => { if (_zoneSince == null || !CanShowEyes) GrowForEyes(false); };
         SystemParameters.StaticPropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(SystemParameters.PrimaryScreenWidth)) Recenter();
@@ -246,19 +246,13 @@ public partial class NotchWindow : Window
         FrameworkElement? target = Pill.IsVisible ? Pill : StripHost.IsVisible ? StripHost : null;
         if (target == null) { _dwellStart = null; SetFaded(false); return; }
 
-        // Pointer close by: fade, so whatever is underneath shows through,
-        // and the eyes come out to look at it.
-        bool near = target == Pill && NativeInterop.IsCursorNear(Pill, 26);
-        SetFaded(near);
-        if (near && !Eyes.Playing && NativeInterop.CursorIn(Pill) is { } c)
-        {
-            if (!Eyes.Active) ShowEyes(null);
-            double half = Math.Max(30, Pill.ActualWidth / 2);
-            Eyes.Follow(new Point((c.X - half) / (half + 30), (c.Y - Pill.ActualHeight / 2) / 30));
-        }
-        else if (!near) Eyes.Follow(null);
-
+        // Pointer right on the notch: fade, so the tab underneath shows through.
         bool over = NativeInterop.IsCursorOver(target);
+        SetFaded(over && target == Pill);
+
+        // Pointer in the area around it (≈ the tab bar): the eyes come out and watch it.
+        if (target == Pill) WatchWithEyes(over);
+
         if (!over) { _dwellStart = null; return; }
 
         _dwellStart ??= DateTime.UtcNow;
@@ -355,6 +349,66 @@ public partial class NotchWindow : Window
         }
     }
 
+    // ── Eyes watching the pointer ─────────────────────────────────────
+    private const double ZoneHalfWidth = 240, ZoneHeight = 100;   // ≈ the browser's tab + bookmark bars
+    private DateTime? _zoneSince, _leftZoneAt;
+    private DateTime _lastMove = DateTime.UtcNow, _lastDizzy;
+    private Point _lastCursor, _lastDir;
+    private int _lastSign;
+    private readonly Queue<DateTime> _reversals = new();
+
+    private void WatchWithEyes(bool overPill)
+    {
+        var now = DateTime.UtcNow;
+        var c = NativeInterop.CursorIn(Pill);
+        double w = Pill.ActualWidth, h = Pill.ActualHeight;
+        bool inZone = c is { } p0 && Math.Abs(p0.X - w / 2) <= ZoneHalfWidth && p0.Y >= -4 && p0.Y <= ZoneHeight;
+
+        if (!inZone || c is not { } p || !CanShowEyes)
+        {
+            _zoneSince = null;
+            _reversals.Clear();
+            if (Eyes.Following)
+            {
+                // Keep looking where the pointer went for a moment, then back to the clock
+                _leftZoneAt ??= now;
+                if ((now - _leftZoneAt.Value).TotalSeconds < 1) Eyes.Follow(_lastDir);
+                else { Eyes.Follow(null); _leftZoneAt = null; }
+            }
+            return;
+        }
+        _leftZoneAt = null;
+        _zoneSince ??= now;
+
+        // How the pointer moves: still for a while → drowsy; shaken back and forth → dizzy
+        double dx = p.X - _lastCursor.X, dy = p.Y - _lastCursor.Y;
+        if (Math.Abs(dx) > 1 || Math.Abs(dy) > 1) _lastMove = now;
+        if (Math.Abs(dx) > 12)
+        {
+            int sign = Math.Sign(dx);
+            if (_lastSign != 0 && sign != _lastSign) _reversals.Enqueue(now);
+            _lastSign = sign;
+        }
+        _lastCursor = p;
+        while (_reversals.Count > 0 && (now - _reversals.Peek()).TotalSeconds > 1.2) _reversals.Dequeue();
+        if (_reversals.Count >= 4 && (now - _lastDizzy).TotalSeconds > 8)
+        {
+            _lastDizzy = now;
+            _reversals.Clear();
+            ShowEyes("dizzy");
+            return;
+        }
+
+        // Only once the pointer stays around for 0.3 s (not when it just passes by to another tab)
+        if ((now - _zoneSince.Value).TotalSeconds < 0.3) return;
+
+        _lastDir = new Point((p.X - w / 2) / (w / 2 + 80), (p.Y - h / 2) / 60);
+        if (!Eyes.Active) ShowEyes(null);
+        Eyes.Drowsy = (now - _lastMove).TotalSeconds > 4;
+        Eyes.Squint = overPill;
+        Eyes.Follow(_lastDir);
+    }
+
     // ── Eyes on the notch ─────────────────────────────────────────────
     private readonly DispatcherTimer _eyesTimer = new() { Interval = TimeSpan.FromSeconds(20) };
     private string? _eyesPending;
@@ -378,10 +432,12 @@ public partial class NotchWindow : Window
                     : _hasMusic && _playing && _rng.Next(3) == 0 ? "happy"   // music: now and then a happy bob
                     : RandomFace();
         if (_walking) { _eyesPending = kind; return; }   // after Mây's stroll
+        _idleFace = true;
         ShowEyes(kind);
     }
 
     private string? _lastFace;
+    private bool _idleFace;   // the next ShowEyes is a random idle face (watching you may cut it short)
 
     /// <summary>A random idle face, never the same one twice in a row.</summary>
     private string RandomFace()
@@ -399,7 +455,8 @@ public partial class NotchWindow : Window
         if (!CanShowEyes) return false;
         if (_walking) EndWalk();
         GrowForEyes(true);
-        if (kind != null) Eyes.Play(kind);
+        if (kind != null) Eyes.Play(kind, interruptible: _idleFace);
+        _idleFace = false;
         return true;
     }
 
