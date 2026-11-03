@@ -1,5 +1,9 @@
 Bản chỉnh sửa từ [sadeeshasathsara/dynamic-island-on-windows](https://github.com/sadeeshasathsara/dynamic-island-on-windows) (MIT).
 
+### Sửa trong v1.8.8
+- Đôi mắt **không còn lúc nào cũng buồn ngủ** vào ban đêm: giờ chỉ lim dim khi bạn **thật sự không làm gì** (3 phút không chạm phím / chuột); còn lại là **biểu cảm ngẫu nhiên**, không lặp lại cùng một kiểu hai lần liền (đang nghe nhạc thì thỉnh thoảng mới là mắt vui)
+- Mắt xuất hiện **mỗi 20 giây** (trước là 30 giây)
+
 ### Mới trong v1.8.7
 - **Đôi mắt trên tai thỏ**: cứ **30 giây** đồng hồ nhường chỗ cho một đôi mắt khoảng **5–6 giây** (viên nhô to hơn một chút cho dễ nhìn) rồi quay lại giờ. 11 biểu cảm: chớp mắt, liếc trái phải, vui, nháy mắt, ngạc nhiên, mắt trái tim, buồn ngủ, hờn dỗi, buồn, nghi ngờ, chóng mặt; chuyển động có nhịp lấy đà, nảy nhẹ và "thở" nên trông tự nhiên hơn
 - **Mắt phản ứng theo tình huống**: có thông báo mới → mở to ngạc nhiên rồi thông báo mới trượt xuống; trồng xong cây → mắt trái tim, bỏ cuộc → mắt buồn; đang nghe nhạc → mắt vui nhún theo nhạc; sau 23 giờ hoặc máy để yên lâu → lim dim buồn ngủ; đưa chuột lại gần → mắt **nhìn theo con trỏ**

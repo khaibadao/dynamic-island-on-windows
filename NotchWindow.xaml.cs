@@ -356,7 +356,7 @@ public partial class NotchWindow : Window
     }
 
     // ── Eyes on the notch ─────────────────────────────────────────────
-    private readonly DispatcherTimer _eyesTimer = new() { Interval = TimeSpan.FromSeconds(30) };
+    private readonly DispatcherTimer _eyesTimer = new() { Interval = TimeSpan.FromSeconds(20) };
     private string? _eyesPending;
     private bool _eyesUp;
 
@@ -369,16 +369,28 @@ public partial class NotchWindow : Window
         return ShowEyes(kind);
     }
 
-    /// <summary>Every 30 s: an expression that suits the moment.</summary>
+    /// <summary>Every 20 s: an expression that suits the moment.</summary>
     private void EyesTick()
     {
         if (!CanShowEyes || Eyes.Active || _faded) return;
-        var now = DateTime.Now;
-        string kind = now.Hour >= 23 || now.Hour < 5 || NativeInterop.IdleTime() >= TimeSpan.FromMinutes(10) ? "sleepy"
-                    : _hasMusic && _playing ? "happy"
-                    : NotchEyes.Idle[_rng.Next(NotchEyes.Idle.Length)];
+        // Sleepy only when you've really stopped (no key or mouse for 3 minutes); otherwise a random face
+        string kind = NativeInterop.IdleTime() >= TimeSpan.FromMinutes(3) ? "sleepy"
+                    : _hasMusic && _playing && _rng.Next(3) == 0 ? "happy"   // music: now and then a happy bob
+                    : RandomFace();
         if (_walking) { _eyesPending = kind; return; }   // after Mây's stroll
         ShowEyes(kind);
+    }
+
+    private string? _lastFace;
+
+    /// <summary>A random idle face, never the same one twice in a row.</summary>
+    private string RandomFace()
+    {
+        string face;
+        do face = NotchEyes.Idle[_rng.Next(NotchEyes.Idle.Length)];
+        while (face == _lastFace && NotchEyes.Idle.Length > 1);
+        _lastFace = face;
+        return face;
     }
 
     /// <summary>The pill grows a little and the eyes take the clock's place (kind null = follow the pointer).</summary>
