@@ -1,5 +1,10 @@
 Bản chỉnh sửa từ [sadeeshasathsara/dynamic-island-on-windows](https://github.com/sadeeshasathsara/dynamic-island-on-windows) (MIT).
 
+### Mới trong v1.8.9
+- **Đôi mắt nhìn theo chuột** khi chuột nằm trong vùng khoảng **480 × 100px** quanh tai thỏ (cỡ thanh tab + thanh bookmark), sau 0,3 giây (lướt qua để đổi tab thì không hiện). Mắt **chớp tự nhiên** mỗi 2–6 giây (thỉnh thoảng chớp đôi) và đảo nhẹ; chuột rời vùng thì mắt nhìn theo thêm 1 giây rồi trả lại đồng hồ
+- **Lắc chuột qua lại thật nhanh** → mắt chóng mặt; **để chuột đứng yên ~4 giây** → mắt lim dim; **chạm vào viên** → mắt híp vui ^ ^ trước khi bảng mở
+- Viên chỉ mờ đi khi chuột **nằm ngay trên viên** (trước là khi còn cách 26px), nên mắt vẫn rõ khi chuột ở gần
+
 ### Sửa trong v1.8.8
 - Đôi mắt **không còn lúc nào cũng buồn ngủ** vào ban đêm: giờ chỉ lim dim khi bạn **thật sự không làm gì** (3 phút không chạm phím / chuột); còn lại là **biểu cảm ngẫu nhiên**, không lặp lại cùng một kiểu hai lần liền (đang nghe nhạc thì thỉnh thoảng mới là mắt vui)
 - Mắt xuất hiện **mỗi 20 giây** (trước là 30 giây)
