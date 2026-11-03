@@ -299,7 +299,7 @@ public partial class NotchWindow : Window
         _walkTimer.Start();
     }
 
-    /// <summary>Out from behind the right end, along the pill to the left, and back.</summary>
+    /// <summary>Out from behind one end of the pill, along it to the other end, where she stays.</summary>
     private void StartWalk()
     {
         if (_walking || Eyes.Active || !AppSettings.Current.MayWalks || _expanded || !IsVisible || !Pill.IsVisible || _faded
@@ -311,21 +311,21 @@ public partial class NotchWindow : Window
         _walking = true;
         int gen = ++_walkGen;
         double right = w - 10, left = -8;
-        var dur = TimeSpan.FromSeconds(2.4);
+        bool toLeft = !_catOnLeft;   // walk over to the other end, and stay there until next time
+        var dur = TimeSpan.FromSeconds(2.6);
 
         CatRest.Visibility = Visibility.Hidden;   // the peeking head becomes the walking cat
         Walker.Visibility  = Visibility.Visible;
-        Walker.FacingRight = false;
+        Walker.FacingRight = !toLeft;
         Walker.StartWalking();
 
-        var go = new DoubleAnimation(right, left, dur);
+        var go = new DoubleAnimation(toLeft ? right : left, toLeft ? left : right, dur);
         go.Completed += (_, _) =>
         {
             if (gen != _walkGen) return;
-            Walker.FacingRight = true;
-            var back = new DoubleAnimation(left, right, dur);
-            back.Completed += (_, _) => { if (gen == _walkGen) EndWalk(); };
-            WalkerShift.BeginAnimation(TranslateTransform.XProperty, back);
+            _catOnLeft = toLeft;
+            PlaceCat();
+            EndWalk();
         };
         WalkerShift.BeginAnimation(TranslateTransform.XProperty, go);
     }
@@ -410,7 +410,7 @@ public partial class NotchWindow : Window
     }
 
     // ── Eyes on the notch ─────────────────────────────────────────────
-    private readonly DispatcherTimer _eyesTimer = new() { Interval = TimeSpan.FromSeconds(20) };
+    private readonly DispatcherTimer _eyesTimer = new() { Interval = TimeSpan.FromSeconds(30) };
     private string? _eyesPending;
     private bool _eyesUp;
 
@@ -423,7 +423,7 @@ public partial class NotchWindow : Window
         return ShowEyes(kind);
     }
 
-    /// <summary>Every 20 s: an expression that suits the moment.</summary>
+    /// <summary>Every 30 s: an expression that suits the moment.</summary>
     private void EyesTick()
     {
         if (!CanShowEyes || Eyes.Active || _faded) return;
@@ -476,12 +476,25 @@ public partial class NotchWindow : Window
     }
 
     /// <summary>Mây peeks out from behind the right end of the strip / pill.</summary>
+    private bool _catOnLeft;                                  // which end of the notch Mây peeks from
+    private readonly ScaleTransform _catFlip = new(1, 1, 13, 0);
+
     private void PlaceCat()
     {
+        if (CatRest.RenderTransform != _catGroup)
+        {
+            _catGroup.Children.Clear();
+            _catGroup.Children.Add(_catFlip);
+            _catGroup.Children.Add(CatRestShift);
+            CatRest.RenderTransform = _catGroup;
+        }
         double half = RestArea.ActualWidth > 0 ? RestArea.ActualWidth / 2 : 100;
-        // Her head is half tucked behind the notch's right end.
-        CatRestShift.X = half - MayPeek.HiddenPart + CatRest.Width / 2;
+        // Her head is half tucked behind the notch's end; on the left she's mirrored.
+        double x = half - MayPeek.HiddenPart + CatRest.Width / 2;
+        _catFlip.ScaleX = _catOnLeft ? -1 : 1;
+        CatRestShift.X  = _catOnLeft ? -x : x;
     }
+    private readonly TransformGroup _catGroup = new();
 
     private void Expanded_MouseEnter(object sender, MouseEventArgs e) => _closeTimer.Stop();
     private void Expanded_MouseLeave(object sender, MouseEventArgs e)

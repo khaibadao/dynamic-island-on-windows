@@ -1,5 +1,10 @@
 Bản chỉnh sửa từ [sadeeshasathsara/dynamic-island-on-windows](https://github.com/sadeeshasathsara/dynamic-island-on-windows) (MIT).
 
+### Sửa trong v1.9.0
+- Đôi mắt quay về **mỗi 30 giây** cho đỡ rối mắt
+- **Mây đổi bên**: đi sang trái rồi **ở lại ló đầu sau mép trái** (như bên phải), lần đi dạo sau mới đi ngược về bên phải
+- Bỏ **mắt chóng mặt** khỏi các biểu cảm ngẫu nhiên (chỉ còn hiện khi bạn lắc chuột thật nhanh)
+
 ### Mới trong v1.8.9
 - **Đôi mắt nhìn theo chuột** khi chuột nằm trong vùng khoảng **480 × 100px** quanh tai thỏ (cỡ thanh tab + thanh bookmark), sau 0,3 giây (lướt qua để đổi tab thì không hiện). Mắt **chớp tự nhiên** mỗi 2–6 giây (thỉnh thoảng chớp đôi) và đảo nhẹ; chuột rời vùng thì mắt nhìn theo thêm 1 giây rồi trả lại đồng hồ
 - **Lắc chuột qua lại thật nhanh** → mắt chóng mặt; **để chuột đứng yên ~4 giây** → mắt lim dim; **chạm vào viên** → mắt híp vui ^ ^ trước khi bảng mở

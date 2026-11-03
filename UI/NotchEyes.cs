@@ -122,7 +122,7 @@ public sealed class NotchEyes : FrameworkElement
     };
 
     /// <summary>Random expressions for idle moments (sad and love are kept for real events).</summary>
-    public static readonly string[] Idle = { "blink", "look", "happy", "wink", "surprise", "suspicious", "angry", "dizzy" };
+    public static readonly string[] Idle = { "blink", "look", "happy", "wink", "surprise", "suspicious", "angry" };   // dizzy only when you shake the mouse
 
     // ── State ─────────────────────────────────────────────────────────
     private Expression? _expr;
