@@ -1,5 +1,12 @@
 Bản chỉnh sửa từ [sadeeshasathsara/dynamic-island-on-windows](https://github.com/sadeeshasathsara/dynamic-island-on-windows) (MIT).
 
+### Sửa trong v1.8.1
+- **Bảng gọn lại đúng khung của v1.7** (rộng 620px) và **cao bằng nhau ở mọi tab**, không còn tab cao tab thấp. Chấm trang + tên tab chuyển lên giữa dòng trạng thái để bảng thấp hơn
+- **Màu sáng hơn**: nền thẻ nội dung, các dòng thông báo / clipboard và chữ phụ đều sáng lên, dễ đọc hơn
+- **Clipboard gọn hơn**: mỗi đoạn chữ một dòng (rê chuột để xem đầy đủ), hàng ảnh nhỏ lại, số chữ / ảnh hiện ngay trong ô tìm kiếm
+- **Ô đếm giờ trồng cây**: **kéo đi đâu cũng được** (nhớ luôn vị trí), rê chuột vào thì **chỉ mờ đi** chứ không biến mất. Chuột phải: Về góc dưới bên phải · Ẩn đến khi trồng xong · Bỏ cuộc
+- Chỉ còn **một Mây** trong bảng (ngồi ở góc dưới thẻ nội dung)
+
 ### Mới trong v1.8.0
 - **Bố cục bảng mới**: bỏ thanh tab. Hai **nút ‹ ›** to ở hai bên mép để chuyển tab (hoặc **vuốt ngang hai ngón** trên touchpad), **chấm trang + tên tab** ở dưới. Giờ · pin · tai nghe nằm trên **dòng trạng thái**, các **nút nhanh** (micro, Không làm phiền, chụp màn hình, khoá máy) gọn ở góc phải dòng đó
 - **Mây vẽ lại** bằng nét mềm, bo tròn cho hợp với giao diện. Lúc nghỉ, Mây **thò đầu ra sau mép phải tai thỏ**, đuôi buông xuống vẫy theo nhạc; trong bảng Mây ngồi ở góc dưới
