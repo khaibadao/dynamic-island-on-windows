@@ -10,7 +10,7 @@
         ShowInTaskbar="False"
         ShowActivated="False"
         ResizeMode="NoResize"
-        Width="1000" Height="340"
+        Width="1000" Height="380"
         Left="0" Top="0">
 
     <Window.Resources>
@@ -443,15 +443,15 @@
         </Border>
 
         <!-- ══════════ EXPANDED ══════════ -->
-        <!-- status row · ‹ tab content › · page dots -->
+        <!-- status row on top · icon sidebar on the left · the tab's content -->
         <Border x:Name="Expanded"
                 Visibility="Collapsed"
                 Background="#000000"
                 BorderThickness="1,0,1,1"
                 BorderBrush="#3A3A3C"
-                CornerRadius="0,0,26,26"
+                CornerRadius="0,0,24,24"
                 Width="620"
-                Padding="4,6,4,8"
+                Padding="6,6,10,10"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Top"
                 RenderTransformOrigin="0.5,0"
@@ -468,21 +468,14 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="36"/>
+                    <ColumnDefinition Width="42"/>
                     <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="36"/>
                 </Grid.ColumnDefinitions>
 
-                <!-- Status row: time · battery · headphones | page dots + tab name | quick buttons -->
-                <Grid Grid.Column="1" Margin="6,0,2,6">
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
-                        <StackPanel x:Name="PageDots" Orientation="Horizontal" VerticalAlignment="Center"/>
-                        <TextBlock x:Name="TabName" Foreground="#DDFFFFFF" FontSize="12" FontWeight="SemiBold"
-                                   FontFamily="Segoe UI" Margin="8,0,0,0" VerticalAlignment="Center"/>
-                    </StackPanel>
+                <!-- Status row: time · battery · headphones | quick buttons -->
+                <Grid Grid.Column="1" Margin="4,0,0,6">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <TextBlock x:Name="ClockText" Foreground="White" FontSize="13" FontWeight="SemiBold"
                                    FontFamily="Segoe UI" VerticalAlignment="Center"/>
@@ -507,13 +500,12 @@
                     </StackPanel>
                 </Grid>
 
-                <!-- ‹ previous tab -->
-                <Button x:Name="PrevTabBtn" Grid.Row="1" Grid.Column="0" Style="{StaticResource SideArrow}"
-                        Content="&#xE76B;" Click="PrevTab_Click" HorizontalAlignment="Left"/>
+                <!-- Sidebar: one icon per tab (built in code) -->
+                <StackPanel x:Name="SideBar" Grid.Row="1" Grid.Column="0" VerticalAlignment="Top" Margin="0,2,6,0"/>
 
-                <!-- The tab's content, on a slightly lighter card -->
-                <Border x:Name="ContentCard" Grid.Row="1" Grid.Column="1" Background="#1C1C1F" CornerRadius="18"
-                        ClipToBounds="True" Height="176">
+                <!-- The tab's content; its height follows the tab -->
+                <Border x:Name="ContentCard" Grid.Row="1" Grid.Column="1" Background="#1C1C1F" CornerRadius="16"
+                        ClipToBounds="True" MinHeight="128">
                 <Grid x:Name="TabContent">
                     <Grid.RenderTransform>
                         <TranslateTransform x:Name="TabShift"/>
@@ -747,7 +739,7 @@
                                     Background="#2C2C2E" Foreground="#DDFFFFFF" Padding="10,3" FontSize="11.5"
                                     HorizontalAlignment="Right" VerticalAlignment="Center" Click="ClearAll_Click"/>
                         </Grid>
-                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Hidden" Focusable="False">
+                        <ScrollViewer Grid.Row="1" MaxHeight="190" VerticalScrollBarVisibility="Hidden" Focusable="False">
                             <StackPanel x:Name="RecentList"/>
                         </ScrollViewer>
                         <StackPanel x:Name="NoNotificationsText" Grid.Row="1" HorizontalAlignment="Center"
@@ -759,88 +751,95 @@
                         </StackPanel>
                     </Grid>
 
-                    <!-- ── Clipboard: search · texts · a row of images at the bottom ── -->
-                    <Grid x:Name="ClipboardTab" Visibility="Collapsed" Margin="10,8,10,6">
+                    <!-- ── Văn bản: copied texts ── -->
+                    <Grid x:Name="TextsTab" Visibility="Collapsed" Margin="10,8,10,8">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="*"/>
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
-
-                        <!-- Search + clear -->
-                        <Grid Margin="0,0,0,6">
+                        <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <Border Background="#2A2A2E" CornerRadius="9" Height="26" Padding="9,0">
+                            <Border Background="#2A2A2E" CornerRadius="10" Height="30" Padding="10,0">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto"/>
                                         <ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Text="&#xE721;" FontFamily="{StaticResource IconFont}" FontSize="11"
-                                               Foreground="#99FFFFFF" VerticalAlignment="Center" Margin="0,0,7,0"/>
+                                    <TextBlock Text="&#xE721;" FontFamily="{StaticResource IconFont}" FontSize="12"
+                                               Foreground="#99FFFFFF" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                     <TextBlock x:Name="ClipSearchPlaceholder" Grid.Column="1" Text="Tìm trong lịch sử copy…"
-                                               Foreground="#88FFFFFF" FontSize="12" FontFamily="Segoe UI"
+                                               Foreground="#88FFFFFF" FontSize="12.5" FontFamily="Segoe UI"
                                                VerticalAlignment="Center" IsHitTestVisible="False"/>
                                     <TextBox x:Name="ClipSearch" Grid.Column="1" Background="Transparent" BorderThickness="0"
-                                             Foreground="White" CaretBrush="White" FontSize="12" FontFamily="Segoe UI"
+                                             Foreground="White" CaretBrush="White" FontSize="12.5" FontFamily="Segoe UI"
                                              VerticalAlignment="Center" VerticalContentAlignment="Center"
                                              PreviewMouseLeftButtonDown="ClipSearch_PreviewMouseLeftButtonDown"
                                              KeyDown="ClipSearch_KeyDown" TextChanged="ClipSearch_TextChanged"/>
                                 </Grid>
                             </Border>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="8,0,0,0" VerticalAlignment="Center">
-                                <TextBlock x:Name="ClipToast" Foreground="#34C759" FontSize="11.5" FontWeight="SemiBold"
-                                           FontFamily="Segoe UI" VerticalAlignment="Center" Margin="0,0,8,0" Opacity="0"/>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="10,0,0,0" VerticalAlignment="Center">
+                                <TextBlock x:Name="ClipToast" Foreground="#34C759" FontSize="12" FontWeight="SemiBold"
+                                           FontFamily="Segoe UI" VerticalAlignment="Center" Margin="0,0,10,0" Opacity="0"/>
                                 <Button x:Name="ClipClearBtn" Content="Xoá mục chưa ghim" Style="{StaticResource ActionButton}"
-                                        Background="#2E2E33" Foreground="#EEFFFFFF" Padding="9,2" FontSize="11"
+                                        Background="#2E2E33" Foreground="#EEFFFFFF" Padding="10,3" FontSize="11.5"
                                         Click="ClipClear_Click"/>
                             </StackPanel>
                         </Grid>
-
-                        <!-- Texts: one compact line each -->
                         <Grid Grid.Row="1">
-                            <ScrollViewer x:Name="ClipTextScroll" VerticalScrollBarVisibility="Hidden" Focusable="False">
+                            <ScrollViewer x:Name="ClipTextScroll" MaxHeight="190" VerticalScrollBarVisibility="Hidden" Focusable="False">
                                 <StackPanel x:Name="ClipTextList"/>
                             </ScrollViewer>
-                            <TextBlock x:Name="ClipEmpty" Foreground="#99FFFFFF" FontSize="12" FontFamily="Segoe UI"
+                            <TextBlock x:Name="ClipEmpty" Foreground="#99FFFFFF" FontSize="12.5" FontFamily="Segoe UI"
                                        HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"
-                                       TextWrapping="Wrap"/>
+                                       TextWrapping="Wrap" Margin="0,18"/>
                         </Grid>
+                    </Grid>
 
-                        <!-- Images: a row you can scroll sideways (wheel, the bar or ‹ ›) -->
-                        <Grid x:Name="ClipImageSection" Grid.Row="2" Margin="0,4,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <Button Style="{StaticResource QuickButton}" Width="20" Height="40" FontSize="10" Margin="0,0,4,8"
-                                    Content="&#xE76B;" Click="ClipImagesLeft_Click" ToolTip="Ảnh mới hơn"/>
-                            <ScrollViewer x:Name="ClipImageScroll" Grid.Column="1" HorizontalScrollBarVisibility="Visible"
+                    <!-- ── Hình ảnh: copied images in a row you scroll sideways ── -->
+                    <Grid x:Name="ImagesTab" Visibility="Collapsed" Margin="10,8,10,6">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Grid Margin="2,0,0,8">
+                            <TextBlock x:Name="ImgCount" Foreground="#99FFFFFF" FontSize="12" FontFamily="Segoe UI"
+                                       VerticalAlignment="Center"/>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                <TextBlock x:Name="ImgToast" Foreground="#34C759" FontSize="12" FontWeight="SemiBold"
+                                           FontFamily="Segoe UI" VerticalAlignment="Center" Margin="0,0,10,0" Opacity="0"/>
+                                <Button Style="{StaticResource QuickButton}" Width="26" Height="24" FontSize="10.5"
+                                        Content="&#xE76B;" Click="ClipImagesLeft_Click" ToolTip="Ảnh mới hơn"/>
+                                <Button Style="{StaticResource QuickButton}" Width="26" Height="24" FontSize="10.5" Margin="2,0,8,0"
+                                        Content="&#xE76C;" Click="ClipImagesRight_Click" ToolTip="Ảnh cũ hơn"/>
+                                <Button x:Name="ImgClearBtn" Content="Xoá ảnh chưa ghim" Style="{StaticResource ActionButton}"
+                                        Background="#2E2E33" Foreground="#EEFFFFFF" Padding="10,3" FontSize="11.5"
+                                        Click="ImgClear_Click"/>
+                            </StackPanel>
+                        </Grid>
+                        <Grid Grid.Row="1">
+                            <ScrollViewer x:Name="ClipImageScroll" HorizontalScrollBarVisibility="Visible"
                                           VerticalScrollBarVisibility="Disabled" Focusable="False"
                                           PreviewMouseWheel="SidewaysWheel">
                                 <ScrollViewer.Resources>
                                     <Style TargetType="ScrollBar" BasedOn="{StaticResource ThinHScroll}"/>
                                 </ScrollViewer.Resources>
-                                <StackPanel x:Name="ClipImageList" Orientation="Horizontal" Margin="0,0,0,2"/>
+                                <StackPanel x:Name="ClipImageList" Orientation="Horizontal" Margin="0,0,0,6"/>
                             </ScrollViewer>
-                            <Button Grid.Column="2" Style="{StaticResource QuickButton}" Width="20" Height="40" FontSize="10" Margin="4,0,0,8"
-                                    Content="&#xE76C;" Click="ClipImagesRight_Click" ToolTip="Ảnh cũ hơn"/>
+                            <TextBlock x:Name="ImgEmpty" Foreground="#99FFFFFF" FontSize="12.5" FontFamily="Segoe UI"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"
+                                       TextWrapping="Wrap" Margin="0,24"
+                                       Text="Chưa có ảnh nào. Chụp màn hình (Win + Shift + S) hoặc copy một ảnh, nó sẽ hiện ở đây."/>
                         </Grid>
                     </Grid>
                 </Grid>
                 </Border>
 
-                <!-- next tab › -->
-                <Button x:Name="NextTabBtn" Grid.Row="1" Grid.Column="2" Style="{StaticResource SideArrow}"
-                        Content="&#xE76C;" Click="NextTab_Click" HorizontalAlignment="Right"/>
-
                 <!-- Mây sits on the card's bottom-right corner -->
                 <ui:MayCat x:Name="CatPanel" Grid.Row="1" Grid.Column="1" Size="26" HorizontalAlignment="Right"
-                           VerticalAlignment="Bottom" Margin="0,0,14,-8" Cursor="Hand"/>
+                           VerticalAlignment="Bottom" Margin="0,0,14,-10" Cursor="Hand"/>
             </Grid>
         </Border>
     </Grid>

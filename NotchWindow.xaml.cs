@@ -92,8 +92,9 @@ public partial class NotchWindow : Window
     /// <summary>"Mute this app" from a notification card.</summary>
     public event Action<NotificationData>? MuteRequested;
 
-    private static readonly string[] Tabs     = { "music", "focus", "notifications", "clipboard" };
-    private static readonly string[] TabNames = { "Nhạc", "Trồng cây", "Thông báo", "Clipboard" };
+    private static readonly string[] Tabs     = { "music", "focus", "notifications", "texts", "images" };
+    private static readonly string[] TabNames = { "Nhạc", "Trồng cây", "Thông báo", "Văn bản đã copy", "Hình ảnh đã copy" };
+    private static readonly string[] TabGlyphs = { "\uE8D6", "", "\uEA8F", "\uE8A5", "\uEB9F" };   // tree is drawn
 
     public NotchWindow(MediaWatcher media, FocusService focus, NotificationHistory history, ClipboardService clips)
     {
@@ -145,7 +146,7 @@ public partial class NotchWindow : Window
 
         _focus.Changed += () => Dispatcher.BeginInvoke(new Action(UpdateFocusUi));
 
-        BuildDots();
+        BuildSideBar();
 
         _ready = true;
         _clips.Start(this);   // creates the window handle too
@@ -393,10 +394,7 @@ public partial class NotchWindow : Window
         Expand(tab);
     }
 
-    // ── Tabs: ‹ › arrows, page dots, sideways swipe ───────────────────
-    private void PrevTab_Click(object sender, RoutedEventArgs e) => StepTab(-1);
-    private void NextTab_Click(object sender, RoutedEventArgs e) => StepTab(+1);
-
+    // ── Tabs: icon sidebar on the left, sideways swipe ────────────────
     private void StepTab(int step)
     {
         int i = Array.IndexOf(Tabs, _tab);
@@ -413,38 +411,59 @@ public partial class NotchWindow : Window
         ShowTab(tab, direction);
     }
 
-    private void BuildDots()
+    private readonly List<(Border Button, FrameworkElement Icon, Border Mark)> _side = new();
+
+    private void BuildSideBar()
     {
-        PageDots.Children.Clear();
+        SideBar.Children.Clear();
+        _side.Clear();
         for (int i = 0; i < Tabs.Length; i++)
         {
-            var dot = new Border
+            FrameworkElement icon = Tabs[i] == "focus"
+                ? new TreeShape { LayoutTransform = new ScaleTransform(0.15, 0.15), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center }
+                : new TextBlock
+                {
+                    Text = TabGlyphs[i], FontFamily = (FontFamily)FindResource("IconFont"), FontSize = 14,
+                    HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
+                };
+            // A small bar on the left edge marks the open tab
+            var mark = new Border
             {
-                Height = 7, Width = 7, CornerRadius = new CornerRadius(3.5), Margin = new Thickness(3, 0, 3, 0),
-                Background = Frozen(Color.FromArgb(0x50, 0xFF, 0xFF, 0xFF)), Cursor = Cursors.Hand,
-                ToolTip = TabNames[i], VerticalAlignment = VerticalAlignment.Center
+                Width = 3, Height = 12, CornerRadius = new CornerRadius(1.5), HorizontalAlignment = HorizontalAlignment.Left,
+                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(-1, 0, 0, 0), Opacity = 0
+            };
+            var content = new Grid();
+            content.Children.Add(icon);
+            content.Children.Add(mark);
+            var button = new Border
+            {
+                Width = 34, Height = 26, CornerRadius = new CornerRadius(9), Margin = new Thickness(0, 0, 0, 2),
+                Background = Brushes.Transparent, Cursor = Cursors.Hand, Child = content, ToolTip = TabNames[i]
             };
             var tab = Tabs[i];
             int index = i;
-            dot.MouseLeftButtonUp += (_, _) => SelectTab(tab, index - Array.IndexOf(Tabs, _tab));
-            PageDots.Children.Add(dot);
+            button.MouseEnter += (_, _) => { if (_tab != tab) button.Background = Frozen(Color.FromArgb(0x1A, 0xFF, 0xFF, 0xFF)); };
+            button.MouseLeave += (_, _) => { if (_tab != tab) button.Background = Brushes.Transparent; };
+            button.MouseLeftButtonUp += (_, _) => SelectTab(tab, index - Array.IndexOf(Tabs, _tab));
+            SideBar.Children.Add(button);
+            _side.Add((button, icon, mark));
         }
     }
 
-    private void UpdateDots()
+    private void UpdateSideBar()
     {
+        var accent = _hasColour ? _accent : Colors.White;
         int current = Array.IndexOf(Tabs, _tab);
-        for (int i = 0; i < PageDots.Children.Count; i++)
+        for (int i = 0; i < _side.Count; i++)
         {
-            var dot = (Border)PageDots.Children[i];
+            var (button, icon, mark) = _side[i];
             bool on = i == current;
-            dot.BeginAnimation(WidthProperty, new DoubleAnimation(on ? 20 : 7, TimeSpan.FromMilliseconds(200))
-            {
-                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
-            });
-            dot.Background = on ? (Brush)Resources["AccentBrush"] : Frozen(Color.FromArgb(0x50, 0xFF, 0xFF, 0xFF));
+            button.Background = on ? Frozen(Color.FromArgb(0x30, accent.R, accent.G, accent.B)) : Brushes.Transparent;
+            if (icon is TextBlock t) t.Foreground = on ? Frozen(accent) : Frozen(Color.FromArgb(0x99, 0xFF, 0xFF, 0xFF));
+            else icon.Opacity = on ? 1 : 0.6;
+            mark.Background = Frozen(accent);
+            mark.Opacity = on ? 1 : 0;
         }
-        TabName.Text = current >= 0 ? TabNames[current] : "";
     }
 
     private const int WM_MOUSEHWHEEL = 0x020E;
@@ -457,7 +476,7 @@ public partial class NotchWindow : Window
         if (msg != WM_MOUSEHWHEEL || !_expanded) return IntPtr.Zero;
         int delta = (short)((wParam.ToInt64() >> 16) & 0xFFFF);
         // The image row scrolls sideways itself.
-        if (ClipImageSection.IsVisible && NativeInterop.IsCursorOver(ClipImageScroll))
+        if (ImagesTab.IsVisible && NativeInterop.IsCursorOver(ClipImageScroll))
         {
             ClipImageScroll.ScrollToHorizontalOffset(ClipImageScroll.HorizontalOffset + delta / 2.0);
             handled = true;
@@ -485,13 +504,17 @@ public partial class NotchWindow : Window
 
     private void ShowTab(string tab, int direction)
     {
-        bool animateWidth = _tab != tab && Expanded.IsVisible && Expanded.Opacity > 0.9;
+        bool animate = _tab != tab && Expanded.IsVisible && Expanded.Opacity > 0.9;
+        bool animateWidth = animate;
         _tab = tab;
+        ContentCard.BeginAnimation(HeightProperty, null);
+        double fromHeight = ContentCard.ActualHeight;
         MusicTab.Visibility         = tab == "music"         ? Visibility.Visible : Visibility.Collapsed;
         FocusTab.Visibility         = tab == "focus"         ? Visibility.Visible : Visibility.Collapsed;
         NotificationsTab.Visibility = tab == "notifications" ? Visibility.Visible : Visibility.Collapsed;
-        ClipboardTab.Visibility     = tab == "clipboard"     ? Visibility.Visible : Visibility.Collapsed;
-        UpdateDots();
+        TextsTab.Visibility         = tab == "texts"         ? Visibility.Visible : Visibility.Collapsed;
+        ImagesTab.Visibility        = tab == "images"        ? Visibility.Visible : Visibility.Collapsed;
+        UpdateSideBar();
 
         // Slide in from the side we're moving to, with a soft fade
         var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
@@ -518,11 +541,24 @@ public partial class NotchWindow : Window
             case "notifications":
                 RebuildRecent();
                 break;
-            case "clipboard":
+            case "texts":
+            case "images":
                 RebuildClipboard();
                 break;
         }
         ApplyLyricsLayout(animateWidth);
+
+        // The panel's height follows the tab: glide from the old height to the new one.
+        if (animate && fromHeight > 0)
+        {
+            ContentCard.UpdateLayout();
+            double to = ContentCard.ActualHeight;
+            if (Math.Abs(to - fromHeight) > 1)
+                ContentCard.BeginAnimation(HeightProperty, new DoubleAnimation(fromHeight, to, TimeSpan.FromMilliseconds(220))
+                {
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }, FillBehavior = FillBehavior.Stop
+                });
+        }
     }
 
     // ── Every second ──────────────────────────────────────────────────
@@ -535,7 +571,7 @@ public partial class NotchWindow : Window
         {
             UpdateClock();
             if (_hasMusic && MusicTab.IsVisible) UpdateProgress();
-            if (ClipboardTab.IsVisible) RefreshClipTimes();
+            if (TextsTab.IsVisible || ImagesTab.IsVisible) RefreshClipTimes();
 
             // Safety net in case MouseLeave never came: close once the pointer is gone.
             if (!_seeking && !_typing && !_closeTimer.IsEnabled && !NativeInterop.IsCursorOver(Expanded))
@@ -696,6 +732,7 @@ public partial class NotchWindow : Window
         Resources["AccentBrush"] = accent;
         foreach (var bar in Bars) bar.Fill = accent;
         SeekBar.Accent = accent;
+        if (_ready) UpdateSideBar();
         if (_lyricsOpen) LyricsBtn.Foreground = accent;
 
         if (cover is { } baseColor)
@@ -1587,30 +1624,30 @@ public partial class NotchWindow : Window
 
     private void RebuildClipboard()
     {
-        if (!_expanded || _tab != "clipboard") return;
+        if (!_expanded || (_tab != "texts" && _tab != "images")) return;
+        _clipTimes.Clear();
+        var all = _clips.Items;                      // pinned first, then newest
+        if (_tab == "texts") RebuildTexts(all);
+        else RebuildImages(all);
+    }
 
-        var all    = _clips.Items;                      // pinned first, then newest
-        var newest = all.OrderByDescending(i => i.Time).FirstOrDefault();
+    private void RebuildTexts(IReadOnlyList<ClipItem> all)
+    {
+        var mine   = all.Where(i => !i.IsImage).ToList();
+        var newest = mine.OrderByDescending(i => i.Time).FirstOrDefault();
         var q      = ClipSearch.Text.Trim();
-        bool Match(ClipItem i) => q.Length == 0
+        var texts  = mine.Where(i => q.Length == 0
             || (i.Text ?? "").Contains(q, StringComparison.CurrentCultureIgnoreCase)
-            || (i.Source ?? "").Contains(q, StringComparison.CurrentCultureIgnoreCase);
+            || (i.Source ?? "").Contains(q, StringComparison.CurrentCultureIgnoreCase)).ToList();
+        int pinned = mine.Count(i => i.Pinned);
 
-        var texts  = all.Where(i => !i.IsImage && Match(i)).ToList();
-        var images = all.Where(i => i.IsImage && Match(i)).ToList();
-        int pinned = texts.Count(i => i.Pinned);
-
-        ClipSearchPlaceholder.Text = all.Count == 0 ? "Tìm trong lịch sử copy…"
-            : $"Tìm trong {all.Count(i => !i.IsImage)} đoạn chữ · {all.Count(i => i.IsImage)} ảnh" + (pinned > 0 ? $" · {pinned} đã ghim" : "") + "…";
-        ClipClearBtn.Visibility = all.Any(i => !i.Pinned) ? Visibility.Visible : Visibility.Collapsed;
-        ClipImageSection.Visibility = images.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-
-        ClipEmpty.Text = all.Count == 0 ? "Chưa có gì. Copy (Ctrl + C) chữ hoặc ảnh, chúng sẽ hiện ở đây."
-                       : q.Length > 0 ? $"Không tìm thấy “{q}”"
-                       : "Chưa có đoạn chữ nào";
+        ClipSearchPlaceholder.Text = mine.Count == 0 ? "Tìm trong lịch sử copy…"
+            : $"Tìm trong {mine.Count} đoạn chữ" + (pinned > 0 ? $" · {pinned} đã ghim" : "") + "…";
+        ClipClearBtn.Visibility = mine.Any(i => !i.Pinned) ? Visibility.Visible : Visibility.Collapsed;
+        ClipEmpty.Text = mine.Count == 0 ? "Chưa có gì. Copy (Ctrl + C) một đoạn chữ, nó sẽ hiện ở đây."
+                       : $"Không tìm thấy \u201C{q}\u201D";
         ClipEmpty.Visibility = texts.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
-        _clipTimes.Clear();
         ClipTextList.Children.Clear();
         bool hadPinned = false;
         foreach (var item in texts)
@@ -1618,18 +1655,30 @@ public partial class NotchWindow : Window
             if (item.Pinned) hadPinned = true;
             else if (hadPinned)   // a thin line between pinned and recent
             {
-                ClipTextList.Children.Add(new Border { Height = 1, Margin = new Thickness(6, 2, 6, 6), Background = Frozen(Color.FromArgb(0x22, 0xFF, 0xFF, 0xFF)) });
+                ClipTextList.Children.Add(new Border { Height = 1, Margin = new Thickness(6, 2, 6, 6), Background = Frozen(Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF)) });
                 hadPinned = false;
             }
             ClipTextList.Children.Add(MakeClipTextRow(item, item == newest));
         }
+    }
+
+    private void RebuildImages(IReadOnlyList<ClipItem> all)
+    {
+        var images = all.Where(i => i.IsImage).ToList();
+        var newest = images.OrderByDescending(i => i.Time).FirstOrDefault();
+        int pinned = images.Count(i => i.Pinned);
+
+        ImgCount.Text = images.Count == 0 ? "" : $"{images.Count} ảnh" + (pinned > 0 ? $" · {pinned} đã ghim" : "") + " · lăn chuột hoặc kéo thanh bên dưới để xem hết";
+        ImgClearBtn.Visibility = images.Any(i => !i.Pinned) ? Visibility.Visible : Visibility.Collapsed;
+        ImgEmpty.Visibility = images.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        ClipImageScroll.Visibility = images.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
 
         ClipImageList.Children.Clear();
         foreach (var item in images) ClipImageList.Children.Add(MakeClipImageTile(item, item == newest));
 
         // Forget thumbnails of deleted images
         var ids = images.Select(i => i.Id).ToHashSet();
-        foreach (var id in _thumbs.Keys.Where(id => !ids.Contains(id) && all.All(i => i.Id != id)).ToList()) _thumbs.Remove(id);
+        foreach (var id in _thumbs.Keys.Where(id => !ids.Contains(id)).ToList()) _thumbs.Remove(id);
     }
 
     /// <summary>"Edge · 2 phút trước · 120 ký tự"</summary>
@@ -1668,60 +1717,55 @@ public partial class NotchWindow : Window
     private UIElement MakeClipTextRow(ClipItem item, bool newest)
     {
         var grid = new Grid();
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        var left = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        if (Badge(item, newest) is { } badge) left.Children.Add(badge);
+        var full = (item.Text ?? "").Trim();
+        var body = new StackPanel();
+        body.Children.Add(new TextBlock
+        {
+            Text = full.Length > 400 ? full[..400] : full, FontSize = 12.5, FontFamily = new FontFamily("Segoe UI"),
+            Foreground = Brushes.White, TextWrapping = TextWrapping.Wrap, TextTrimming = TextTrimming.CharacterEllipsis,
+            MaxHeight = 36, ToolTip = full.Length > 800 ? full[..800] + "…" : full
+        });
+
+        var meta = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 0) };
+        if (Badge(item, newest) is { } badge) meta.Children.Add(badge);
         if (item.Pinned)
         {
-            left.Children.Add(new TextBlock
+            meta.Children.Add(new TextBlock
             {
                 Text = "\uE718", FontFamily = (FontFamily)FindResource("IconFont"), FontSize = 10.5, Margin = new Thickness(0, 0, 6, 0),
                 Foreground = Frozen(Color.FromRgb(0xFF, 0x9F, 0x0A)), VerticalAlignment = VerticalAlignment.Center
             });
         }
-        grid.Children.Add(left);
-
-        var full = (item.Text ?? "").Trim();
-        var line = new TextBlock
-        {
-            Text = full.Length > 300 ? full[..300].ReplaceLineEndings(" ") : full.ReplaceLineEndings(" "),
-            FontSize = 12.5, FontFamily = new FontFamily("Segoe UI"), Foreground = Brushes.White,
-            TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center,
-            ToolTip = full.Length > 800 ? full[..800] + "…" : full
-        };
-        Grid.SetColumn(line, 1);
-        grid.Children.Add(line);
-
-        // Right: where from and when; pin / delete replace it on hover
         var when = new TextBlock
         {
-            Text = ClipMeta(item), FontSize = 11, FontFamily = new FontFamily("Segoe UI"), Margin = new Thickness(10, 0, 4, 0),
+            Text = ClipMeta(item), FontSize = 11, FontFamily = new FontFamily("Segoe UI"),
             Foreground = Frozen(Color.FromArgb(0x99, 0xFF, 0xFF, 0xFF)), VerticalAlignment = VerticalAlignment.Center
         };
         _clipTimes.Add((when, item));
+        meta.Children.Add(when);
+        body.Children.Add(meta);
+        grid.Children.Add(body);
+
         var buttons = MakeClipButtons(item);
-        buttons.HorizontalAlignment = HorizontalAlignment.Right;
-        buttons.Visibility = Visibility.Collapsed;
-        var right = new Grid();
-        right.Children.Add(when);
-        right.Children.Add(buttons);
-        Grid.SetColumn(right, 2);
-        grid.Children.Add(right);
+        buttons.VerticalAlignment = VerticalAlignment.Top;
+        buttons.Visibility = Visibility.Hidden;
+        Grid.SetColumn(buttons, 1);
+        grid.Children.Add(buttons);
 
         var normal = Frozen(Color.FromRgb(0x28, 0x28, 0x2C));
         var hover  = Frozen(Color.FromRgb(0x33, 0x33, 0x38));
         var a = _hasColour ? _accent : Colors.White;
         var row = new Border
         {
-            Child = grid, CornerRadius = new CornerRadius(8), Padding = new Thickness(9, 3, 4, 3), MinHeight = 28,
-            Margin = new Thickness(0, 0, 0, 4), Background = normal, Cursor = Cursors.Hand,
+            Child = grid, CornerRadius = new CornerRadius(10), Padding = new Thickness(10, 7, 6, 7),
+            Margin = new Thickness(0, 0, 0, 5), Background = normal, Cursor = Cursors.Hand,
             BorderThickness = new Thickness(1), BorderBrush = newest ? Frozen(Color.FromArgb(0x99, a.R, a.G, a.B)) : Brushes.Transparent
         };
-        row.MouseEnter += (_, _) => { row.Background = hover;  when.Visibility = Visibility.Hidden; buttons.Visibility = Visibility.Visible; };
-        row.MouseLeave += (_, _) => { row.Background = normal; when.Visibility = Visibility.Visible; buttons.Visibility = Visibility.Collapsed; };
+        row.MouseEnter += (_, _) => { row.Background = hover;  buttons.Visibility = Visibility.Visible; };
+        row.MouseLeave += (_, _) => { row.Background = normal; buttons.Visibility = Visibility.Hidden; };
         row.MouseLeftButtonUp += (_, _) => { if (!buttons.IsMouseOver) CopyClip(item); };
         return row;
     }
@@ -1729,28 +1773,28 @@ public partial class NotchWindow : Window
     private UIElement MakeClipImageTile(ClipItem item, bool newest)
     {
         if (!_thumbs.TryGetValue(item.Id, out var thumb))
-            _thumbs[item.Id] = thumb = ClipboardService.LoadImage(item, 160);
+            _thumbs[item.Id] = thumb = ClipboardService.LoadImage(item, 190);
 
-        const double W = 88, H = 54;
-        var box = new Grid { Width = W, Height = H, Clip = new RectangleGeometry(new Rect(0, 0, W, H), 8, 8) };
+        const double W = 150, H = 94;
+        var box = new Grid { Width = W, Height = H, Clip = new RectangleGeometry(new Rect(0, 0, W, H), 10, 10) };
         box.Children.Add(new Border { Background = Frozen(Color.FromRgb(0x1C, 0x1C, 0x1E)) });
         if (thumb != null) box.Children.Add(new Image { Source = thumb, Stretch = Stretch.UniformToFill });
 
         // Time along the bottom on a soft shade
         var shade = new Border
         {
-            VerticalAlignment = VerticalAlignment.Bottom, Padding = new Thickness(5, 6, 5, 2),
+            VerticalAlignment = VerticalAlignment.Bottom, Padding = new Thickness(7, 12, 7, 4),
             Background = new LinearGradientBrush(Color.FromArgb(0x00, 0, 0, 0), Color.FromArgb(0xCC, 0, 0, 0), 90)
         };
         var when = new TextBlock
         {
-            Text = Ago(item.Time), Foreground = Frozen(Color.FromArgb(0xDD, 0xFF, 0xFF, 0xFF)), FontSize = 9.5,
+            Text = string.IsNullOrWhiteSpace(item.Source) ? Ago(item.Time) : $"{item.Source} · {Ago(item.Time)}", Foreground = Frozen(Color.FromArgb(0xDD, 0xFF, 0xFF, 0xFF)), FontSize = 11,
             FontFamily = new FontFamily("Segoe UI"), TextTrimming = TextTrimming.CharacterEllipsis
         };
         shade.Child = when;
         box.Children.Add(shade);
 
-        var top = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(3), VerticalAlignment = VerticalAlignment.Top, HorizontalAlignment = HorizontalAlignment.Left };
+        var top = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(5), VerticalAlignment = VerticalAlignment.Top, HorizontalAlignment = HorizontalAlignment.Left };
         if (Badge(item, newest) is { } badge)
         {
             badge.Background = Frozen(Color.FromArgb(0xDD, 0, 0, 0));
@@ -1775,7 +1819,7 @@ public partial class NotchWindow : Window
         buttons.Background = Frozen(Color.FromArgb(0xDD, 0, 0, 0));
         buttons.HorizontalAlignment = HorizontalAlignment.Right;
         buttons.VerticalAlignment   = VerticalAlignment.Top;
-        buttons.Margin = new Thickness(0, 2, 2, 0);
+        buttons.Margin = new Thickness(0, 4, 4, 0);
         buttons.Visibility = Visibility.Collapsed;
         box.Children.Add(buttons);
 
@@ -1783,7 +1827,7 @@ public partial class NotchWindow : Window
         var accent = Frozen(_hasColour ? _accent : Colors.White);
         var tile = new Border
         {
-            Child = box, CornerRadius = new CornerRadius(10), Margin = new Thickness(0, 0, 6, 0),
+            Child = box, CornerRadius = new CornerRadius(11), Margin = new Thickness(0, 0, 8, 0),
             BorderThickness = new Thickness(1.5), BorderBrush = newest ? accent : rest, Cursor = Cursors.Hand
         };
 
@@ -1842,9 +1886,10 @@ public partial class NotchWindow : Window
     {
         bool ok = _clips.CopyBack(item);     // → Changed → rebuilt, this item now on top
         _justCopied = ok ? item.Id : null;
-        ClipToast.Text = ok ? "✓ Đã chép · Ctrl + V để dán" : "Không chép được, thử lại nhé";
-        ClipToast.Foreground = ok ? Frozen(Color.FromRgb(0x34, 0xC7, 0x59)) : Frozen(Color.FromRgb(0xFF, 0x45, 0x3A));
-        ClipToast.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(120)));
+        var toast = item.IsImage ? ImgToast : ClipToast;
+        toast.Text = ok ? "✓ Đã chép · Ctrl + V để dán" : "Không chép được, thử lại nhé";
+        toast.Foreground = ok ? Frozen(Color.FromRgb(0x34, 0xC7, 0x59)) : Frozen(Color.FromRgb(0xFF, 0x45, 0x3A));
+        toast.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(120)));
         RebuildClipboard();
         ClipTextScroll.ScrollToTop();
         ClipImageScroll.ScrollToLeftEnd();
@@ -1859,17 +1904,19 @@ public partial class NotchWindow : Window
         _clipToastTimer.Stop();
         _justCopied = null;
         ClipToast.BeginAnimation(OpacityProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(300)));
+        ImgToast.BeginAnimation(OpacityProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(300)));
         RebuildClipboard();
     }
 
-    private void ClipClear_Click(object sender, RoutedEventArgs e) => _clips.ClearUnpinned();
+    private void ClipClear_Click(object sender, RoutedEventArgs e) => _clips.ClearUnpinned(images: false);
+    private void ImgClear_Click(object sender, RoutedEventArgs e)  => _clips.ClearUnpinned(images: true);
 
     private void ClipImagesLeft_Click(object sender, RoutedEventArgs e)  => ScrollImages(-1);
     private void ClipImagesRight_Click(object sender, RoutedEventArgs e) => ScrollImages(+1);
 
     private void ScrollImages(int dir)
     {
-        double target = Math.Clamp(ClipImageScroll.HorizontalOffset + dir * 272, 0, ClipImageScroll.ScrollableWidth);
+        double target = Math.Clamp(ClipImageScroll.HorizontalOffset + dir * 316, 0, ClipImageScroll.ScrollableWidth);
         ClipImageScroll.ScrollToHorizontalOffset(target);
     }
 

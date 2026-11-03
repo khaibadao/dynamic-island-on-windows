@@ -218,10 +218,10 @@ public sealed class ClipboardService
         Changed?.Invoke();
     }
 
-    /// <summary>Clears everything except pinned items.</summary>
-    public void ClearUnpinned()
+    /// <summary>Clears the texts (or the images), except pinned ones.</summary>
+    public void ClearUnpinned(bool images)
     {
-        foreach (var item in _items.Where(i => !i.Pinned).ToList()) Remove(item, save: false);
+        foreach (var item in _items.Where(i => !i.Pinned && i.IsImage == images).ToList()) Remove(item, save: false);
         Save();
         Changed?.Invoke();
     }
