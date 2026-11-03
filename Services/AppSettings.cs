@@ -30,6 +30,9 @@ public sealed class AppSettings
     /// <summary>Lyrics pane open next to the player.</summary>
     public bool LyricsOpen { get; set; }
 
+    /// <summary>Corner of the floating tree timer: TopLeft, TopRight, BottomLeft, BottomRight.</summary>
+    public string? FocusWidgetCorner { get; set; }
+
     /// <summary>Do Not Disturb: notifications don't drop down (they still go to the history).</summary>
     public bool DoNotDisturb { get; set; }
 

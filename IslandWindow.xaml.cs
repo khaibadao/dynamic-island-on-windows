@@ -158,10 +158,11 @@ public partial class IslandWindow : Window
         });
     }
 
-    private void StartHideTimer()
+    /// <summary>A notification stays 2 s (hovering keeps it); after the pointer leaves, it goes quickly.</summary>
+    private void StartHideTimer(double seconds = 2)
     {
         _hideTimer?.Stop();
-        _hideTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+        _hideTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(seconds) };
         _hideTimer.Tick += (_, _) => { _hideTimer.Stop(); Collapse(); };
         _hideTimer.Start();
     }
@@ -185,7 +186,7 @@ public partial class IslandWindow : Window
         if (!_isFullyOpen) return;
         SetFullTextLayout(false);
         _animator.CollapseFromHover(BodyText.Visibility == Visibility.Visible);
-        StartHideTimer();
+        StartHideTimer(0.6);
     }
 
     /// <summary>

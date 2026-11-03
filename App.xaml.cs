@@ -18,7 +18,7 @@ public partial class App : Application
     private FocusService? _focus;
     private VolumeWatcher? _volume;
     private BluetoothBatteryWatcher? _headsets;
-    private TodoService? _todos;
+    private FocusWidget? _focusWidget;
     private bool _enabled = true;
     private static System.Threading.Mutex? _singleInstance;
     private BatteryWatcher? _battery;
@@ -63,11 +63,10 @@ public partial class App : Application
         // The notch: music, tree planting, volume, recent notifications
         _media  = new MediaWatcher { Enabled = AppSettings.Current.MusicEnabled };
         _focus  = new FocusService();
-        _todos  = new TodoService();
         _clips  = new ClipboardService();
-        _notch  = new NotchWindow(_media, _focus, _history, _todos, _clips);
-        _todos.OpenTodo = () => _notch.Dispatcher.BeginInvoke(new Action(() => _notch.OpenTab("todo")));
-        _todos.Remind  += data => _island.Dispatcher.Invoke(() => ShowOnIsland(data, keepInHistory: false, bypassDnd: true));
+        _notch  = new NotchWindow(_media, _focus, _history, _clips);
+        _notch.MuteRequested += Mute;
+        _focusWidget = new FocusWidget(_focus);   // the small floating timer while a tree grows
         _ = _history.RestoreIconsAsync();   // site logos for notifications kept from last time
         _media.Changed += (state, newTrack) => _notch.Dispatcher.Invoke(() => _notch.UpdateMedia(state, newTrack));
         _focus.Finished += session => _island.Dispatcher.Invoke(() => ShowOnIsland(MakeFocusNotification(session), keepInHistory: false));
@@ -264,6 +263,7 @@ public partial class App : Application
     {
         _listener?.Stop();
         _clips?.Stop();
+        _focusWidget?.Shutdown();
         var tray = (Hardcodet.Wpf.TaskbarNotification.TaskbarIcon?)Current.Resources["TrayIcon"];
         tray?.Dispose();
         base.OnExit(e);

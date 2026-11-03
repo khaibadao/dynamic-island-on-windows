@@ -19,6 +19,7 @@ public sealed class ClipItem
     public string? Text { get; set; }
     public string? ImageFile { get; set; }    // file name in the clipboard folder
     public bool Pinned { get; set; }
+    public string? Source { get; set; }       // the app it was copied from, e.g. "Microsoft Edge"
 
     public bool IsImage => ImageFile != null;
 }
@@ -36,6 +37,36 @@ public sealed class ClipboardService
     private const int WM_CLIPBOARDUPDATE = 0x031D;
     [DllImport("user32.dll", SetLastError = true)] private static extern bool AddClipboardFormatListener(IntPtr hwnd);
     [DllImport("user32.dll", SetLastError = true)] private static extern bool RemoveClipboardFormatListener(IntPtr hwnd);
+    [DllImport("user32.dll")] private static extern IntPtr GetClipboardOwner();
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+    [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+
+    /// <summary>Friendly name of the app that put this on the clipboard (or the app in front).</summary>
+    private static string? SourceApp()
+    {
+        try
+        {
+            var hwnd = GetClipboardOwner();
+            if (hwnd == IntPtr.Zero) hwnd = GetForegroundWindow();
+            if (hwnd == IntPtr.Zero) return null;
+            GetWindowThreadProcessId(hwnd, out uint pid);
+            if (pid == 0 || pid == (uint)Environment.ProcessId) return null;
+            using var p = System.Diagnostics.Process.GetProcessById((int)pid);
+            string? name = null;
+            try { name = p.MainModule?.FileVersionInfo.FileDescription; } catch { }
+            if (string.IsNullOrWhiteSpace(name)) name = p.ProcessName;
+            return name switch
+            {
+                "Windows Explorer" => "File Explorer",
+                "Snipping Tool" or "ScreenClippingHost" => "Chụp màn hình",
+                _ => name
+            };
+        }
+        catch
+        {
+            return null;
+        }
+    }
 
     private static readonly string Folder = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -112,8 +143,9 @@ public sealed class ClipboardService
     {
         if (text.Length > 20000) text = text[..20000];
         var same = _items.FirstOrDefault(i => i.Text == text);
-        if (same != null) same.Time = DateTime.Now;      // copied again: move to the top
-        else _items.Add(new ClipItem { Text = text });
+        var source = SourceApp();
+        if (same != null) { same.Time = DateTime.Now; same.Source = source ?? same.Source; }   // copied again: move to the top
+        else _items.Add(new ClipItem { Text = text, Source = source });
         Trim();
         Save();
         Changed?.Invoke();
@@ -122,7 +154,7 @@ public sealed class ClipboardService
     private void AddImage(BitmapSource image)
     {
         Directory.CreateDirectory(Folder);
-        var item = new ClipItem { ImageFile = $"{Guid.NewGuid():N}.png" };
+        var item = new ClipItem { ImageFile = $"{Guid.NewGuid():N}.png", Source = SourceApp() };
         using (var fs = File.Create(ImagePath(item)))
         {
             var enc = new PngBitmapEncoder();

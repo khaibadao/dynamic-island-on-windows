@@ -30,15 +30,14 @@ public partial class NotchWindow : Window
     private readonly MediaWatcher _media;
     private readonly FocusService _focus;
     private readonly NotificationHistory _history;
-    private readonly TodoService _todos;
     private readonly ClipboardService _clips;
     private int _animation;          // bumped by every open / close, so an old animation can't finish a new one
     private string? _pendingTab;     // a tab to open as soon as the notch is visible again
     private bool _typing;            // the to-do box has the keyboard
     private string _tab = "music";
 
-    private const double PanelWidth       = 620;
-    private const double PanelWidthLyrics = 960;
+    private const double PanelWidth       = 700;
+    private const double PanelWidthLyrics = 1040;
     private const double LyricsWidth      = 340;
 
     private readonly DispatcherTimer _hoverTimer      = new() { Interval = TimeSpan.FromMilliseconds(50) };
@@ -83,7 +82,6 @@ public partial class NotchWindow : Window
     // Mây
     private CatMood? _catOverride;
     private DateTime _catOverrideUntil;
-    private bool _allDone;
 
     private static readonly Color DndColour = Color.FromRgb(0x8E, 0x7C, 0xFF);
     private static readonly string[] ShortDays = { "CN", "T2", "T3", "T4", "T5", "T6", "T7" };
@@ -91,16 +89,19 @@ public partial class NotchWindow : Window
     private static readonly string[] Weekdays =
         { "Chủ Nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy" };
 
-    public NotchWindow(MediaWatcher media, FocusService focus, NotificationHistory history, TodoService todos,
-                       ClipboardService clips)
+    /// <summary>"Mute this app" from a notification card.</summary>
+    public event Action<NotificationData>? MuteRequested;
+
+    private static readonly string[] Tabs     = { "music", "focus", "notifications", "clipboard" };
+    private static readonly string[] TabNames = { "Nhạc", "Trồng cây", "Thông báo", "Clipboard" };
+
+    public NotchWindow(MediaWatcher media, FocusService focus, NotificationHistory history, ClipboardService clips)
     {
         InitializeComponent();
         _media   = media;
         _focus   = focus;
         _history = history;
-        _todos   = todos;
         _clips   = clips;
-        _todos.Changed += () => Dispatcher.BeginInvoke(new Action(UpdateTodoUi));
         _clips.Changed += () => Dispatcher.BeginInvoke(new Action(RebuildClipboard));
         Deactivated += (_, _) => { if (_typing) EndTyping(collapse: !NativeInterop.IsCursorOver(Expanded)); };
 
@@ -131,8 +132,6 @@ public partial class NotchWindow : Window
         // Mây
         _focus.Finished += session => Dispatcher.BeginInvoke(new Action(() =>
             CatReact(session.Success ? CatMood.Happy : CatMood.Sad, session.Success ? 8 : 10)));
-        var (done, total) = _todos.Progress();
-        _allDone = total > 0 && done == total;
         CatPanel.MouseLeftButtonUp += (_, _) => CatReact(CatMood.Happy, 2.5);   // a pat on the head
         CatRest.SizeChanged  += (_, _) => PlaceCat();
         RestArea.SizeChanged += (_, _) => PlaceCat();
@@ -146,8 +145,12 @@ public partial class NotchWindow : Window
 
         _focus.Changed += () => Dispatcher.BeginInvoke(new Action(UpdateFocusUi));
 
+        BuildDots();
+
         _ready = true;
         _clips.Start(this);   // creates the window handle too
+        // Two-finger sideways swipe / tilt wheel → previous / next tab
+        System.Windows.Interop.HwndSource.FromHwnd(new System.Windows.Interop.WindowInteropHelper(this).Handle)?.AddHook(SidewaysHook);
         Loaded += (_, _) =>
         {
             Recenter();
@@ -267,11 +270,12 @@ public partial class NotchWindow : Window
         PlaceCat();
     }
 
-    /// <summary>Mây sits just to the right of the strip / pill.</summary>
+    /// <summary>Mây peeks out from behind the right end of the strip / pill.</summary>
     private void PlaceCat()
     {
         double half = RestArea.ActualWidth > 0 ? RestArea.ActualWidth / 2 : 100;
-        CatRestShift.X = half + CatRest.ActualWidth / 2 + 6;
+        // Her head is half tucked behind the notch's right end.
+        CatRestShift.X = half - MayPeek.HiddenPart + CatRest.Width / 2;
     }
 
     private void Expanded_MouseEnter(object sender, MouseEventArgs e) => _closeTimer.Stop();
@@ -306,14 +310,12 @@ public partial class NotchWindow : Window
 
         UpdateClock();
         UpdateQuickButtons();
-        UpdateTodoBadge();
         UpdateCat();
 
         // Open on the tab asked for, else the one used last; straight to the tree while one grows.
         tab ??= _focus.IsRunning ? "focus" : AppSettings.Current.LastNotchTab;
-        var button = TabButtonFor(tab);
-        if (button.IsChecked == true) ShowTab(tab);
-        else button.IsChecked = true;   // → Tab_Checked → ShowTab
+        if (Array.IndexOf(Tabs, tab) < 0) tab = "music";
+        ShowTab(tab, direction: 0);
 
         if (!wasOpen)
         {
@@ -343,7 +345,8 @@ public partial class NotchWindow : Window
         _seeking  = false;
         if (_typing) EndTyping(collapse: false);
         int gen = ++_animation;
-        NativeInterop.SetClickThrough(this, true);   // clicks go through right away
+        NativeInterop.SetClickThrough(this, true);
+        if (ClipSearch.Text.Length > 0) ClipSearch.Text = "";   // clicks go through right away
 
         StopMarquee();
         ResetGiveUp();
@@ -388,45 +391,114 @@ public partial class NotchWindow : Window
     {
         if (!IsVisible) { _pendingTab = tab; return; }
         Expand(tab);
-        if (tab == "todo") BeginTyping();
     }
 
-    private RadioButton TabButtonFor(string tab) => tab switch
-    {
-        "focus"         => TabFocus,
-        "notifications" => TabNotifications,
-        "todo"          => TabTodo,
-        "clipboard"     => TabClipboard,
-        _               => TabMusic
-    };
+    // ── Tabs: ‹ › arrows, page dots, sideways swipe ───────────────────
+    private void PrevTab_Click(object sender, RoutedEventArgs e) => StepTab(-1);
+    private void NextTab_Click(object sender, RoutedEventArgs e) => StepTab(+1);
 
-    // ── Tabs ──────────────────────────────────────────────────────────
-    private void Tab_Checked(object sender, RoutedEventArgs e)
+    private void StepTab(int step)
     {
-        if (!_ready) return;
-        var tab = sender == TabFocus ? "focus"
-                : sender == TabNotifications ? "notifications"
-                : sender == TabTodo ? "todo"
-                : sender == TabClipboard ? "clipboard"
-                : "music";
+        int i = Array.IndexOf(Tabs, _tab);
+        int next = ((i < 0 ? 0 : i) + step + Tabs.Length) % Tabs.Length;
+        SelectTab(Tabs[next], step);
+    }
+
+    private void SelectTab(string tab, int direction)
+    {
+        if (tab == _tab && Expanded.IsVisible) return;
+        if (_typing) EndTyping(collapse: false);
         AppSettings.Current.LastNotchTab = tab;
         AppSettings.Current.Save();
-        ShowTab(tab);
+        ShowTab(tab, direction);
     }
 
-    private void ShowTab(string tab)
+    private void BuildDots()
+    {
+        PageDots.Children.Clear();
+        for (int i = 0; i < Tabs.Length; i++)
+        {
+            var dot = new Border
+            {
+                Height = 7, Width = 7, CornerRadius = new CornerRadius(3.5), Margin = new Thickness(3, 0, 3, 0),
+                Background = Frozen(Color.FromArgb(0x50, 0xFF, 0xFF, 0xFF)), Cursor = Cursors.Hand,
+                ToolTip = TabNames[i], VerticalAlignment = VerticalAlignment.Center
+            };
+            var tab = Tabs[i];
+            int index = i;
+            dot.MouseLeftButtonUp += (_, _) => SelectTab(tab, index - Array.IndexOf(Tabs, _tab));
+            PageDots.Children.Add(dot);
+        }
+    }
+
+    private void UpdateDots()
+    {
+        int current = Array.IndexOf(Tabs, _tab);
+        for (int i = 0; i < PageDots.Children.Count; i++)
+        {
+            var dot = (Border)PageDots.Children[i];
+            bool on = i == current;
+            dot.BeginAnimation(WidthProperty, new DoubleAnimation(on ? 20 : 7, TimeSpan.FromMilliseconds(200))
+            {
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            });
+            dot.Background = on ? (Brush)Resources["AccentBrush"] : Frozen(Color.FromArgb(0x50, 0xFF, 0xFF, 0xFF));
+        }
+        TabName.Text = current >= 0 ? TabNames[current] : "";
+    }
+
+    private const int WM_MOUSEHWHEEL = 0x020E;
+    private int _sideways;
+    private DateTime _lastSwipe;
+
+    /// <summary>A sideways swipe on the touchpad (or a tilt wheel) flips tabs, one per gesture.</summary>
+    private IntPtr SidewaysHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (msg != WM_MOUSEHWHEEL || !_expanded) return IntPtr.Zero;
+        int delta = (short)((wParam.ToInt64() >> 16) & 0xFFFF);
+        // The image row scrolls sideways itself.
+        if (ClipImageSection.IsVisible && NativeInterop.IsCursorOver(ClipImageScroll))
+        {
+            ClipImageScroll.ScrollToHorizontalOffset(ClipImageScroll.HorizontalOffset + delta / 2.0);
+            handled = true;
+            return IntPtr.Zero;
+        }
+        if ((DateTime.UtcNow - _lastSwipe).TotalMilliseconds < 450) { handled = true; return IntPtr.Zero; }
+        _sideways += delta;
+        if (Math.Abs(_sideways) >= 120)
+        {
+            StepTab(_sideways > 0 ? 1 : -1);
+            _sideways = 0;
+            _lastSwipe = DateTime.UtcNow;
+        }
+        handled = true;
+        return IntPtr.Zero;
+    }
+
+    /// <summary>The mouse wheel scrolls a sideways row (filters, images).</summary>
+    private void SidewaysWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (sender is not ScrollViewer sv) return;
+        sv.ScrollToHorizontalOffset(sv.HorizontalOffset - e.Delta / 2.0);
+        e.Handled = true;
+    }
+
+    private void ShowTab(string tab, int direction)
     {
         bool animateWidth = _tab != tab && Expanded.IsVisible && Expanded.Opacity > 0.9;
         _tab = tab;
         MusicTab.Visibility         = tab == "music"         ? Visibility.Visible : Visibility.Collapsed;
         FocusTab.Visibility         = tab == "focus"         ? Visibility.Visible : Visibility.Collapsed;
         NotificationsTab.Visibility = tab == "notifications" ? Visibility.Visible : Visibility.Collapsed;
-        TodoTab.Visibility          = tab == "todo"          ? Visibility.Visible : Visibility.Collapsed;
         ClipboardTab.Visibility     = tab == "clipboard"     ? Visibility.Visible : Visibility.Collapsed;
+        UpdateDots();
 
-        // Soft fade when switching tabs
-        TabContent.BeginAnimation(OpacityProperty,
-            new DoubleAnimation(0.2, 1, TimeSpan.FromMilliseconds(180)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
+        // Slide in from the side we're moving to, with a soft fade
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        TabContent.BeginAnimation(OpacityProperty, new DoubleAnimation(0.15, 1, TimeSpan.FromMilliseconds(220)) { EasingFunction = ease });
+        if (direction != 0)
+            TabShift.BeginAnimation(TranslateTransform.XProperty,
+                new DoubleAnimation(Math.Sign(direction) * 36, 0, TimeSpan.FromMilliseconds(260)) { EasingFunction = ease });
 
         StopMarquee();
         switch (tab)
@@ -446,9 +518,6 @@ public partial class NotchWindow : Window
             case "notifications":
                 RebuildRecent();
                 break;
-            case "todo":
-                UpdateTodoUi();
-                break;
             case "clipboard":
                 RebuildClipboard();
                 break;
@@ -466,6 +535,7 @@ public partial class NotchWindow : Window
         {
             UpdateClock();
             if (_hasMusic && MusicTab.IsVisible) UpdateProgress();
+            if (ClipboardTab.IsVisible) RefreshClipTimes();
 
             // Safety net in case MouseLeave never came: close once the pointer is gone.
             if (!_seeking && !_typing && !_closeTimer.IsEnabled && !NativeInterop.IsCursorOver(Expanded))
@@ -1133,29 +1203,84 @@ public partial class NotchWindow : Window
     }
 
     // ── Recent notifications ──────────────────────────────────────────
+    private string? _notifFilter;                       // show only this app, or all
+    private readonly Dictionary<string, Color> _appColours = new();
+
     private void RebuildRecent()
     {
-        RecentList.Children.Clear();
-        var items = _history.Items.Select(e => (e.Time, e.Data)).ToList();
+        var items = _history.Items.ToList();   // newest first
+        var apps = items.GroupBy(e => e.Data.AppName)
+                        .Select(g => (Name: g.Key, Count: g.Count(), Sample: g.First().Data))
+                        .ToList();
+        if (_notifFilter != null && apps.All(a => a.Name != _notifFilter)) _notifFilter = null;
+
+        // Filter chips, one per app (only worth it with more than one app)
+        NotifFilters.Children.Clear();
+        if (apps.Count > 1)
+        {
+            NotifFilters.Children.Add(MakeFilterChip(null, "Tất cả", items.Count, null));
+            foreach (var app in apps) NotifFilters.Children.Add(MakeFilterChip(app.Name, app.Name, app.Count, app.Sample));
+        }
+        else if (items.Count > 0)
+        {
+            NotifFilters.Children.Add(new TextBlock
+            {
+                Text = $"{items.Count} thông báo gần đây", Foreground = Frozen(Color.FromArgb(0x80, 0xFF, 0xFF, 0xFF)),
+                FontSize = 11.5, FontFamily = new FontFamily("Segoe UI"), VerticalAlignment = VerticalAlignment.Center
+            });
+        }
+
+        var shown = _notifFilter == null ? items : items.Where(e => e.Data.AppName == _notifFilter).ToList();
         NoNotificationsText.Visibility = items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         ClearAllBtn.Visibility = items.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
-        NotificationsCount.Text = items.Count == 0 ? "" : $"{items.Count} thông báo gần đây";
-        foreach (var (time, data) in items)
-            RecentList.Children.Add(MakeRecentRow(time, data));
+
+        RecentList.Children.Clear();
+        string? group = null;
+        foreach (var (time, data) in shown)
+        {
+            var g = time.Date == DateTime.Today ? "HÔM NAY" : time.Date == DateTime.Today.AddDays(-1) ? "HÔM QUA" : "TRƯỚC ĐÓ";
+            if (g != group)
+            {
+                group = g;
+                RecentList.Children.Add(new TextBlock
+                {
+                    Text = g, Foreground = Frozen(Color.FromArgb(0x70, 0xFF, 0xFF, 0xFF)), FontSize = 10.5,
+                    FontWeight = FontWeights.SemiBold, FontFamily = new FontFamily("Segoe UI"),
+                    Margin = new Thickness(4, RecentList.Children.Count == 0 ? 0 : 6, 0, 4)
+                });
+            }
+            RecentList.Children.Add(MakeNotificationCard(time, data));
+        }
     }
 
-    private UIElement MakeRecentRow(DateTime time, NotificationData data)
+    /// <summary>The app's colour: from its logo, else a steady colour from its name.</summary>
+    private Color AppColour(NotificationData data)
     {
-        var grid = new Grid();
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(32) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        if (_appColours.TryGetValue(data.AppName, out var c)) return c;
+        c = ColorExtractor.Dominant(data.Icon) is { } d ? ColorExtractor.EnsureBright(ColorExtractor.Vivid(d)) : NameColour(data.AppName);
+        if (c == Colors.White) c = NameColour(data.AppName);
+        return _appColours[data.AppName] = c;
+    }
 
-        // Round avatar: the site/app logo, or its first letter
+    private static Color NameColour(string name)
+    {
+        Color[] palette =
+        {
+            Color.FromRgb(0x30, 0xD1, 0x58), Color.FromRgb(0x0A, 0x84, 0xFF), Color.FromRgb(0xFF, 0x9F, 0x0A),
+            Color.FromRgb(0xBF, 0x5A, 0xF2), Color.FromRgb(0xFF, 0x45, 0x3A), Color.FromRgb(0x64, 0xD2, 0xFF),
+            Color.FromRgb(0xFF, 0x37, 0x5F), Color.FromRgb(0xFF, 0xD6, 0x0A)
+        };
+        uint h = 0;
+        foreach (var ch in name) h = h * 31 + ch;
+        return palette[h % (uint)palette.Length];
+    }
+
+    private FrameworkElement Avatar(NotificationData data, double size)
+    {
         var avatar = new Grid
         {
-            Width = 24, Height = 24, VerticalAlignment = VerticalAlignment.Center,
-            Clip  = new EllipseGeometry(new Point(12, 12), 12, 12)
+            Width = size, Height = size, VerticalAlignment = VerticalAlignment.Top,
+            Clip  = new EllipseGeometry(new Point(size / 2, size / 2), size / 2, size / 2)
         };
         if (data.Icon != null)
         {
@@ -1163,248 +1288,175 @@ public partial class NotchWindow : Window
         }
         else
         {
-            avatar.Children.Add(new Border { Background = Frozen(Color.FromRgb(0x3A, 0x3A, 0x3C)) });
+            avatar.Children.Add(new Border { Background = Frozen(AppColour(data)) });
             avatar.Children.Add(new TextBlock
             {
                 Text = data.AppName.Length > 0 ? data.AppName[..1].ToUpperInvariant() : "?",
-                Foreground = Brushes.White, FontSize = 11, FontWeight = FontWeights.Bold,
+                Foreground = Brushes.White, FontSize = size * 0.45, FontWeight = FontWeights.Bold,
                 HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
             });
         }
-        grid.Children.Add(avatar);
+        return avatar;
+    }
 
-        var body = string.IsNullOrWhiteSpace(data.Body) ? data.Title : data.Body;
-        var line = new TextBlock
+    private UIElement MakeFilterChip(string? app, string label, int count, NotificationData? sample)
+    {
+        bool on = _notifFilter == app;
+        var colour = sample != null ? AppColour(sample) : Colors.White;
+        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        if (sample != null) row.Children.Add(Avatar(sample, 14));
+        row.Children.Add(new TextBlock
         {
-            Margin = new Thickness(8, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center,
-            FontFamily = new FontFamily("Segoe UI"), FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis,
-            ToolTip = body
-        };
-        line.Inlines.Add(new System.Windows.Documents.Run(data.AppName + "  ")
-        {
-            Foreground = Brushes.White, FontWeight = FontWeights.SemiBold
+            Text = label, Foreground = on ? Brushes.White : Frozen(Color.FromArgb(0xBB, 0xFF, 0xFF, 0xFF)),
+            FontSize = 11.5, FontFamily = new FontFamily("Segoe UI"), FontWeight = on ? FontWeights.SemiBold : FontWeights.Normal,
+            Margin = new Thickness(sample != null ? 6 : 0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center
         });
-        line.Inlines.Add(new System.Windows.Documents.Run(body.ReplaceLineEndings(" "))
+        row.Children.Add(new TextBlock
         {
-            Foreground = Frozen(Color.FromArgb(0xAA, 0xFF, 0xFF, 0xFF))
+            Text = count.ToString(), Foreground = Frozen(Color.FromArgb(0x88, 0xFF, 0xFF, 0xFF)),
+            FontSize = 11, FontFamily = new FontFamily("Segoe UI"), VerticalAlignment = VerticalAlignment.Center
         });
-        Grid.SetColumn(line, 1);
-        grid.Children.Add(line);
-
-        var when = new TextBlock
+        var chip = new Border
         {
-            Text = time.Date == DateTime.Today ? time.ToString("HH:mm") : time.ToString("dd/MM"),
-            FontSize = 11, VerticalAlignment = VerticalAlignment.Center,
-            Foreground = Frozen(Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF)), FontFamily = new FontFamily("Segoe UI")
+            Child = row, CornerRadius = new CornerRadius(12), Padding = new Thickness(9, 3, 9, 3),
+            Margin = new Thickness(0, 0, 6, 0), Cursor = Cursors.Hand,
+            Background = on ? Frozen(Color.FromArgb(0x40, colour.R, colour.G, colour.B)) : Frozen(Color.FromRgb(0x1E, 0x1E, 0x21)),
+            BorderThickness = new Thickness(1),
+            BorderBrush = on ? Frozen(Color.FromArgb(0xAA, colour.R, colour.G, colour.B)) : Brushes.Transparent
         };
-        Grid.SetColumn(when, 2);
-        grid.Children.Add(when);
+        chip.MouseLeftButtonUp += (_, _) => { _notifFilter = app; RebuildRecent(); };
+        return chip;
+    }
 
+    private UIElement MakeNotificationCard(DateTime time, NotificationData data)
+    {
+        var colour = AppColour(data);
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        grid.Children.Add(Avatar(data, 32));
+
+        var text = new StackPanel { Margin = new Thickness(10, 0, 8, 0) };
+        var top = new TextBlock { FontFamily = new FontFamily("Segoe UI"), TextTrimming = TextTrimming.CharacterEllipsis };
+        top.Inlines.Add(new System.Windows.Documents.Run(data.AppName)
+        {
+            Foreground = Frozen(colour), FontWeight = FontWeights.SemiBold, FontSize = 11.5
+        });
+        top.Inlines.Add(new System.Windows.Documents.Run("  ·  " + Ago(time))
+        {
+            Foreground = Frozen(Color.FromArgb(0x70, 0xFF, 0xFF, 0xFF)), FontSize = 11
+        });
+        text.Children.Add(top);
+
+        bool hasTitle = !string.IsNullOrWhiteSpace(data.Title) && data.Title != data.AppName;
+        if (hasTitle)
+        {
+            text.Children.Add(new TextBlock
+            {
+                Text = data.Title, Foreground = Brushes.White, FontSize = 12.5, FontWeight = FontWeights.SemiBold,
+                FontFamily = new FontFamily("Segoe UI"), TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 1, 0, 0)
+            });
+        }
+        if (!string.IsNullOrWhiteSpace(data.Body))
+        {
+            text.Children.Add(new TextBlock
+            {
+                Text = data.Body.ReplaceLineEndings(" "), Foreground = Frozen(Color.FromArgb(0xAA, 0xFF, 0xFF, 0xFF)),
+                FontSize = 12, FontFamily = new FontFamily("Segoe UI"), TextWrapping = TextWrapping.Wrap,
+                TextTrimming = TextTrimming.CharacterEllipsis, MaxHeight = 34, Margin = new Thickness(0, 1, 0, 0),
+                ToolTip = data.Body
+            });
+        }
+        Grid.SetColumn(text, 1);
+        grid.Children.Add(text);
+
+        // Hover actions: mute this app, remove
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Top, Visibility = Visibility.Hidden };
+        if (data.SourceKey != null)
+        {
+            var mute = new Button
+            {
+                Content = "", Style = (Style)FindResource("QuickButton"), Width = 24, Height = 24, FontSize = 11,
+                Margin = new Thickness(0), ToolTip = $"Tắt thông báo từ {data.AppName}"
+            };
+            mute.Click += (_, e) => { e.Handled = true; MuteRequested?.Invoke(data); };
+            actions.Children.Add(mute);
+        }
         var remove = new Button
         {
-            Content = "\uE711", Style = (Style)FindResource("QuickButton"), Width = 22, Height = 22, FontSize = 10,
-            Margin = new Thickness(0), ToolTip = "Xoá thông báo này", Visibility = Visibility.Collapsed
+            Content = "", Style = (Style)FindResource("QuickButton"), Width = 24, Height = 24, FontSize = 10,
+            Margin = new Thickness(0), ToolTip = "Xoá thông báo này"
         };
-        remove.Click += (_, e) =>
-        {
-            e.Handled = true;
-            _history.Remove(data);
-            RebuildRecent();
-        };
-        Grid.SetColumn(remove, 2);
-        grid.Children.Add(remove);
+        remove.Click += (_, e) => { e.Handled = true; _history.Remove(data); RebuildRecent(); };
+        actions.Children.Add(remove);
+        Grid.SetColumn(actions, 2);
+        grid.Children.Add(actions);
 
-        var row = new Border
+        var normal = Frozen(Color.FromRgb(0x1A, 0x1A, 0x1D));
+        var hover  = Frozen(Color.FromRgb(0x24, 0x24, 0x28));
+        var card = new Border
         {
-            Child = grid, CornerRadius = new CornerRadius(10), Padding = new Thickness(8, 5, 10, 5),
-            Background = Brushes.Transparent, Cursor = Cursors.Hand
+            Child = grid, CornerRadius = new CornerRadius(12), Padding = new Thickness(10, 8, 8, 8),
+            Margin = new Thickness(0, 0, 0, 6), Background = normal, Cursor = Cursors.Hand,
+            BorderThickness = new Thickness(3, 0, 0, 0), BorderBrush = Frozen(Color.FromArgb(0xCC, colour.R, colour.G, colour.B))
         };
-        var hover = Frozen(Color.FromArgb(0x1E, 0xFF, 0xFF, 0xFF));
-        row.MouseEnter += (_, _) =>
+        card.MouseEnter += (_, _) => { card.Background = hover;  actions.Visibility = Visibility.Visible; };
+        card.MouseLeave += (_, _) => { card.Background = normal; actions.Visibility = Visibility.Hidden; };
+        card.MouseLeftButtonUp += (_, _) =>
         {
-            row.Background = hover;
-            when.Visibility = Visibility.Hidden;
-            remove.Visibility = Visibility.Visible;
-        };
-        row.MouseLeave += (_, _) =>
-        {
-            row.Background = Brushes.Transparent;
-            when.Visibility = Visibility.Visible;
-            remove.Visibility = Visibility.Collapsed;
-        };
-        row.MouseLeftButtonUp += (_, e) =>
-        {
-            if (remove.IsMouseOver) return;
+            if (actions.IsMouseOver) return;
             IslandWindow.OpenSource(data, data.AppUserModelId);
             Collapse();
         };
-        return row;
+        return card;
     }
 
     private void ClearAll_Click(object sender, RoutedEventArgs e)
     {
         _history.Clear();
+        _notifFilter = null;
         RebuildRecent();
     }
 
-    // ── To-do ─────────────────────────────────────────────────────────
-    private void UpdateTodoBadge()
+    /// <summary>"vừa xong", "5 phút trước", "14:20", "Hôm qua 09:10", "02/11 18:00".</summary>
+    private static string Ago(DateTime time)
     {
-        var (done, total) = _todos.Progress();
-        int left = total - done;
-        TodoBadge.Visibility = total == 0 || left > 0 ? Visibility.Visible : Visibility.Collapsed;
-        TodoBadgeText.Text   = total == 0 ? "!" : left.ToString();
-        TodoBadge.ToolTip    = total == 0 ? "Chưa có việc nào cho hôm nay" : $"Còn {left} việc chưa xong";
+        var d = DateTime.Now - time;
+        if (d.TotalSeconds < 45) return "vừa xong";
+        if (d.TotalMinutes < 60) return $"{Math.Max(1, (int)d.TotalMinutes)} phút trước";
+        if (time.Date == DateTime.Today) return d.TotalHours < 6 ? $"{(int)d.TotalHours} giờ trước" : time.ToString("HH:mm");
+        if (time.Date == DateTime.Today.AddDays(-1)) return "Hôm qua " + time.ToString("HH:mm");
+        return time.ToString("dd/MM HH:mm");
     }
 
-    private void UpdateTodoUi()
-    {
-        UpdateTodoBadge();
-        var (doneCount, totalCount) = _todos.Progress();
-        bool allDone = totalCount > 0 && doneCount == totalCount;
-        if (allDone && !_allDone) CatReact(CatMood.Happy, 8);   // Mây celebrates a finished list
-        _allDone = allDone;
-        if (!TodoTab.IsVisible && !_expanded) return;
+    // ── Typing (clipboard search) ─────────────────────────────────────
+    // The notch doesn't normally take the keyboard (so it never steals focus
+    // from your work). Clicking the box lets it, until you're done.
+    private TextBox? _typingBox;
 
-        var items = _todos.Today();
-        TodoEmpty.Visibility = items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        TodoList.Children.Clear();
-        foreach (var item in items) TodoList.Children.Add(MakeTodoRow(item));
-    }
-
-    private UIElement MakeTodoRow(TodoItem item)
-    {
-        var green = Frozen(Color.FromRgb(0x34, 0xC7, 0x59));
-        var grid = new Grid();
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-        // Round tick box
-        var tick = new Border
-        {
-            Width = 18, Height = 18, CornerRadius = new CornerRadius(9), Cursor = Cursors.Hand,
-            BorderThickness = new Thickness(1.5), VerticalAlignment = VerticalAlignment.Center,
-            BorderBrush = item.Done ? green : Frozen(Color.FromArgb(0x88, 0xFF, 0xFF, 0xFF)),
-            Background  = item.Done ? green : Brushes.Transparent,
-            Child = item.Done
-                ? new TextBlock { Text = "\uE73E", FontFamily = (FontFamily)FindResource("IconFont"), FontSize = 10,
-                                  Foreground = Brushes.Black, HorizontalAlignment = HorizontalAlignment.Center,
-                                  VerticalAlignment = VerticalAlignment.Center }
-                : null
-        };
-        tick.MouseLeftButtonUp += (_, _) => _todos.Toggle(item.Id);
-        grid.Children.Add(tick);
-
-        var text = new TextBlock
-        {
-            Text = item.Text, FontSize = 12.5, FontFamily = new FontFamily("Segoe UI"),
-            Margin = new Thickness(10, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center,
-            TextTrimming = TextTrimming.CharacterEllipsis, ToolTip = item.Text,
-            Foreground = item.Done ? Frozen(Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF)) : Brushes.White,
-            TextDecorations = item.Done ? TextDecorations.Strikethrough : null
-        };
-        Grid.SetColumn(text, 1);
-        grid.Children.Add(text);
-
-        // Due time / "từ hôm qua"
-        string meta = "";
-        Brush metaBrush = Frozen(Color.FromArgb(0x88, 0xFF, 0xFF, 0xFF));
-        if (item.Due is { } due)
-        {
-            meta = $"{(int)due.TotalHours:00}:{due.Minutes:00}";
-            if (!item.Done && DateTime.Now.TimeOfDay > due) metaBrush = Frozen(Color.FromRgb(0xFF, 0x45, 0x3A));
-            else if (!item.Done && DateTime.Now.TimeOfDay > due - TodoService.SoonBefore) metaBrush = Frozen(Color.FromRgb(0xFF, 0x9F, 0x0A));
-        }
-        if (item.FromEarlier) meta = (meta.Length > 0 ? meta + " · " : "") + "từ hôm qua";
-        var metaText = new TextBlock
-        {
-            Text = meta, FontSize = 11, FontFamily = new FontFamily("Segoe UI"), Foreground = metaBrush,
-            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0)
-        };
-        Grid.SetColumn(metaText, 2);
-        grid.Children.Add(metaText);
-
-        var remove = new Button
-        {
-            Content = "\uE711", Style = (Style)FindResource("QuickButton"), Width = 22, Height = 22, FontSize = 10,
-            Margin = new Thickness(0), ToolTip = "Xoá việc này", Opacity = 0
-        };
-        remove.Click += (_, _) => _todos.Delete(item.Id);
-        Grid.SetColumn(remove, 3);
-        grid.Children.Add(remove);
-
-        var row = new Border
-        {
-            Child = grid, CornerRadius = new CornerRadius(10), Padding = new Thickness(8, 4, 4, 4),
-            Background = Brushes.Transparent
-        };
-        var hover = Frozen(Color.FromArgb(0x1E, 0xFF, 0xFF, 0xFF));
-        row.MouseEnter += (_, _) => { row.Background = hover; remove.Opacity = 1; };
-        row.MouseLeave += (_, _) => { row.Background = Brushes.Transparent; remove.Opacity = 0; };
-        return row;
-    }
-
-    // Typing: the notch doesn't normally take the keyboard (so it never steals
-    // focus from your work). Clicking the box lets it, until you're done.
-    private void TodoInput_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        if (_typing) return;
-        BeginTyping();
-        e.Handled = true;
-    }
-
-    private void BeginTyping()
+    private void BeginTyping(TextBox box)
     {
         _typing = true;
+        _typingBox = box;
         _closeTimer.Stop();
         NativeInterop.SetActivatable(this, true);
         Activate();
-        TodoInput.Focus();
-        Keyboard.Focus(TodoInput);
-        TodoInput.CaretIndex = TodoInput.Text.Length;
+        box.Focus();
+        Keyboard.Focus(box);
+        box.CaretIndex = box.Text.Length;
     }
 
     private void EndTyping(bool collapse)
     {
         if (!_typing) return;
         _typing = false;
+        _typingBox = null;
         Keyboard.ClearFocus();
         NativeInterop.SetActivatable(this, false);
         if (collapse) Collapse();
         else if (_expanded && !NativeInterop.IsCursorOver(Expanded)) _closeTimer.Start();
-    }
-
-    private void TodoInput_KeyDown(object sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.Enter)
-        {
-            AddTodo();
-            e.Handled = true;
-        }
-        else if (e.Key == Key.Escape)
-        {
-            TodoInput.Text = "";
-            EndTyping(collapse: true);
-            e.Handled = true;
-        }
-    }
-
-    private void TodoInput_TextChanged(object sender, TextChangedEventArgs e)
-    {
-        if (!_ready) return;
-        TodoPlaceholder.Visibility = TodoInput.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
-    }
-
-    private void AddTodo_Click(object sender, RoutedEventArgs e) => AddTodo();
-
-    private void AddTodo()
-    {
-        var text = TodoInput.Text.Trim();
-        if (text.Length == 0) return;
-        _todos.Add(text);
-        TodoInput.Text = "";
     }
 
     // ── Quick buttons ─────────────────────────────────────────────────
@@ -1529,100 +1581,182 @@ public partial class NotchWindow : Window
 
     // ── Clipboard history ─────────────────────────────────────────────
     private readonly Dictionary<Guid, BitmapSource?> _thumbs = new();
-    private readonly DispatcherTimer _clipToastTimer = new() { Interval = TimeSpan.FromMilliseconds(650) };
+    private readonly List<(TextBlock Label, ClipItem Item)> _clipTimes = new();
+    private readonly DispatcherTimer _clipToastTimer = new() { Interval = TimeSpan.FromSeconds(2) };
+    private Guid? _justCopied;
 
     private void RebuildClipboard()
     {
         if (!_expanded || _tab != "clipboard") return;
 
-        var items  = _clips.Items;
-        var texts  = items.Where(i => !i.IsImage).ToList();
-        var images = items.Where(i => i.IsImage).ToList();
+        var all    = _clips.Items;                      // pinned first, then newest
+        var newest = all.OrderByDescending(i => i.Time).FirstOrDefault();
+        var q      = ClipSearch.Text.Trim();
+        bool Match(ClipItem i) => q.Length == 0
+            || (i.Text ?? "").Contains(q, StringComparison.CurrentCultureIgnoreCase)
+            || (i.Source ?? "").Contains(q, StringComparison.CurrentCultureIgnoreCase);
 
-        ClipCount.Text = items.Count == 0 ? "" : $"{texts.Count} đoạn chữ · {images.Count} ảnh";
-        ClipEmpty.Visibility       = items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        ClipClearBtn.Visibility    = items.Any(i => !i.Pinned) ? Visibility.Visible : Visibility.Collapsed;
-        ClipImageScroll.Visibility = images.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        var texts  = all.Where(i => !i.IsImage && Match(i)).ToList();
+        var images = all.Where(i => i.IsImage && Match(i)).ToList();
+        int pinned = texts.Count(i => i.Pinned);
 
+        ClipTextHeader.Text  = $"VĂN BẢN · {texts.Count}" + (pinned > 0 ? $"  ·  {pinned} đã ghim" : "");
+        ClipImageHeader.Text = $"ẢNH · {images.Count}";
+        ClipClearBtn.Visibility = all.Any(i => !i.Pinned) ? Visibility.Visible : Visibility.Collapsed;
+        ClipImageSection.Visibility = images.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        ClipEmpty.Text = all.Count == 0 ? "Chưa có gì. Copy (Ctrl + C) chữ hoặc ảnh, chúng sẽ hiện ở đây."
+                       : q.Length > 0 ? $"Không tìm thấy “{q}”"
+                       : "Chưa có đoạn chữ nào";
+        ClipEmpty.Visibility = texts.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        _clipTimes.Clear();
         ClipTextList.Children.Clear();
-        foreach (var item in texts) ClipTextList.Children.Add(MakeClipTextRow(item));
+        bool hadPinned = false;
+        foreach (var item in texts)
+        {
+            if (item.Pinned) hadPinned = true;
+            else if (hadPinned)   // a thin line between pinned and recent
+            {
+                ClipTextList.Children.Add(new Border { Height = 1, Margin = new Thickness(6, 2, 6, 6), Background = Frozen(Color.FromArgb(0x22, 0xFF, 0xFF, 0xFF)) });
+                hadPinned = false;
+            }
+            ClipTextList.Children.Add(MakeClipTextRow(item, item == newest));
+        }
 
         ClipImageList.Children.Clear();
-        foreach (var item in images) ClipImageList.Children.Add(MakeClipImageTile(item));
+        foreach (var item in images) ClipImageList.Children.Add(MakeClipImageTile(item, item == newest));
 
         // Forget thumbnails of deleted images
-        foreach (var id in _thumbs.Keys.Where(id => images.All(i => i.Id != id)).ToList()) _thumbs.Remove(id);
+        var ids = images.Select(i => i.Id).ToHashSet();
+        foreach (var id in _thumbs.Keys.Where(id => !ids.Contains(id) && all.All(i => i.Id != id)).ToList()) _thumbs.Remove(id);
     }
 
-    private UIElement MakeClipTextRow(ClipItem item)
+    /// <summary>"Edge · 2 phút trước · 120 ký tự"</summary>
+    private static string ClipMeta(ClipItem item)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(item.Source)) parts.Add(item.Source!);
+        parts.Add(Ago(item.Time));
+        if (!item.IsImage) parts.Add($"{(item.Text ?? "").Length} ký tự");
+        return string.Join(" · ", parts);
+    }
+
+    private void RefreshClipTimes()
+    {
+        foreach (var (label, item) in _clipTimes) label.Text = ClipMeta(item);
+    }
+
+    /// <summary>A small coloured label: "Vừa copy" for the newest, "✓ Đã chép" right after copying.</summary>
+    private Border? Badge(ClipItem item, bool newest)
+    {
+        bool copied = _justCopied == item.Id;
+        if (!copied && !newest) return null;
+        var c = copied ? Color.FromRgb(0x34, 0xC7, 0x59) : (_hasColour ? _accent : Color.FromRgb(0x0A, 0x84, 0xFF));
+        return new Border
+        {
+            CornerRadius = new CornerRadius(6), Padding = new Thickness(6, 1, 6, 1), Margin = new Thickness(0, 0, 6, 0),
+            Background = Frozen(Color.FromArgb(0x33, c.R, c.G, c.B)), VerticalAlignment = VerticalAlignment.Center,
+            Child = new TextBlock
+            {
+                Text = copied ? "✓ Đã chép" : "Vừa copy", Foreground = Frozen(c), FontSize = 10.5,
+                FontWeight = FontWeights.SemiBold, FontFamily = new FontFamily("Segoe UI")
+            }
+        };
+    }
+
+    private UIElement MakeClipTextRow(ClipItem item, bool newest)
     {
         var grid = new Grid();
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        var pinMark = new TextBlock
+        var full = (item.Text ?? "").Trim();
+        var body = new StackPanel();
+        body.Children.Add(new TextBlock
         {
-            Text = "", FontFamily = (FontFamily)FindResource("IconFont"), FontSize = 11,
-            Foreground = Frozen(Color.FromRgb(0xFF, 0x9F, 0x0A)), VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, 0, 6, 0), Visibility = item.Pinned ? Visibility.Visible : Visibility.Collapsed
-        };
-        grid.Children.Add(pinMark);
+            Text = full.Length > 400 ? full[..400] : full, FontSize = 12.5, FontFamily = new FontFamily("Segoe UI"),
+            Foreground = Brushes.White, TextWrapping = TextWrapping.Wrap, TextTrimming = TextTrimming.CharacterEllipsis,
+            MaxHeight = 36, ToolTip = full.Length > 800 ? full[..800] + "…" : full
+        });
 
-        var full = item.Text ?? "";
-        var line = new TextBlock
+        var meta = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 0) };
+        if (Badge(item, newest) is { } badge) meta.Children.Add(badge);
+        if (item.Pinned)
         {
-            Text = full.ReplaceLineEndings(" ").Trim(), FontSize = 12.5, FontFamily = new FontFamily("Segoe UI"),
-            Foreground = Brushes.White, TextTrimming = TextTrimming.CharacterEllipsis,
-            VerticalAlignment = VerticalAlignment.Center,
-            ToolTip = full.Length > 600 ? full[..600] + "…" : full
-        };
-        Grid.SetColumn(line, 1);
-        grid.Children.Add(line);
-
+            meta.Children.Add(new TextBlock
+            {
+                Text = "", FontFamily = (FontFamily)FindResource("IconFont"), FontSize = 10.5, Margin = new Thickness(0, 0, 6, 0),
+                Foreground = Frozen(Color.FromRgb(0xFF, 0x9F, 0x0A)), VerticalAlignment = VerticalAlignment.Center
+            });
+        }
         var when = new TextBlock
         {
-            Text = item.Time.Date == DateTime.Today ? item.Time.ToString("HH:mm") : item.Time.ToString("dd/MM"),
-            FontSize = 11, FontFamily = new FontFamily("Segoe UI"), VerticalAlignment = VerticalAlignment.Center,
-            Foreground = Frozen(Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF)), Margin = new Thickness(8, 0, 0, 0)
+            Text = ClipMeta(item), FontSize = 11, FontFamily = new FontFamily("Segoe UI"),
+            Foreground = Frozen(Color.FromArgb(0x70, 0xFF, 0xFF, 0xFF)), VerticalAlignment = VerticalAlignment.Center
         };
-        var buttons = MakeClipButtons(item);
-        buttons.Visibility = Visibility.Collapsed;
-        var right = new Grid();
-        right.Children.Add(when);
-        right.Children.Add(buttons);
-        Grid.SetColumn(right, 2);
-        grid.Children.Add(right);
+        _clipTimes.Add((when, item));
+        meta.Children.Add(when);
+        body.Children.Add(meta);
+        grid.Children.Add(body);
 
+        var buttons = MakeClipButtons(item);
+        buttons.VerticalAlignment = VerticalAlignment.Top;
+        buttons.Visibility = Visibility.Hidden;
+        Grid.SetColumn(buttons, 1);
+        grid.Children.Add(buttons);
+
+        var normal = Frozen(Color.FromRgb(0x1A, 0x1A, 0x1D));
+        var hover  = Frozen(Color.FromRgb(0x24, 0x24, 0x28));
+        var edge   = newest ? Frozen(Color.FromArgb(0x99, (_hasColour ? _accent : Colors.White).R, (_hasColour ? _accent : Colors.White).G, (_hasColour ? _accent : Colors.White).B))
+                            : Brushes.Transparent;
         var row = new Border
         {
-            Child = grid, CornerRadius = new CornerRadius(10), Padding = new Thickness(8, 4, 6, 4),
-            Background = Brushes.Transparent, Cursor = Cursors.Hand
+            Child = grid, CornerRadius = new CornerRadius(10), Padding = new Thickness(10, 7, 6, 7),
+            Margin = new Thickness(0, 0, 0, 5), Background = normal, Cursor = Cursors.Hand,
+            BorderThickness = new Thickness(1), BorderBrush = edge
         };
-        var hover = Frozen(Color.FromArgb(0x1E, 0xFF, 0xFF, 0xFF));
-        row.MouseEnter += (_, _) => { row.Background = hover; when.Visibility = Visibility.Hidden; buttons.Visibility = Visibility.Visible; };
-        row.MouseLeave += (_, _) => { row.Background = Brushes.Transparent; when.Visibility = Visibility.Visible; buttons.Visibility = Visibility.Collapsed; };
+        row.MouseEnter += (_, _) => { row.Background = hover;  buttons.Visibility = Visibility.Visible; };
+        row.MouseLeave += (_, _) => { row.Background = normal; buttons.Visibility = Visibility.Hidden; };
         row.MouseLeftButtonUp += (_, _) => { if (!buttons.IsMouseOver) CopyClip(item); };
         return row;
     }
 
-    private UIElement MakeClipImageTile(ClipItem item)
+    private UIElement MakeClipImageTile(ClipItem item, bool newest)
     {
         if (!_thumbs.TryGetValue(item.Id, out var thumb))
-            _thumbs[item.Id] = thumb = ClipboardService.LoadImage(item, 112);
+            _thumbs[item.Id] = thumb = ClipboardService.LoadImage(item, 160);
 
-        var box = new Grid { Width = 86, Height = 56 };
+        const double W = 128, H = 80;
+        var box = new Grid { Width = W, Height = H, Clip = new RectangleGeometry(new Rect(0, 0, W, H), 9, 9) };
         box.Children.Add(new Border { Background = Frozen(Color.FromRgb(0x1C, 0x1C, 0x1E)) });
-        if (thumb != null)
-            box.Children.Add(new Image { Source = thumb, Stretch = Stretch.UniformToFill, HorizontalAlignment = HorizontalAlignment.Center });
+        if (thumb != null) box.Children.Add(new Image { Source = thumb, Stretch = Stretch.UniformToFill });
 
+        // Time along the bottom on a soft shade
+        var shade = new Border
+        {
+            VerticalAlignment = VerticalAlignment.Bottom, Padding = new Thickness(7, 10, 7, 4),
+            Background = new LinearGradientBrush(Color.FromArgb(0x00, 0, 0, 0), Color.FromArgb(0xCC, 0, 0, 0), 90)
+        };
+        var when = new TextBlock
+        {
+            Text = Ago(item.Time), Foreground = Frozen(Color.FromArgb(0xDD, 0xFF, 0xFF, 0xFF)), FontSize = 10.5,
+            FontFamily = new FontFamily("Segoe UI"), TextTrimming = TextTrimming.CharacterEllipsis
+        };
+        shade.Child = when;
+        box.Children.Add(shade);
+
+        var top = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(5), VerticalAlignment = VerticalAlignment.Top, HorizontalAlignment = HorizontalAlignment.Left };
+        if (Badge(item, newest) is { } badge)
+        {
+            badge.Background = Frozen(Color.FromArgb(0xDD, 0, 0, 0));
+            top.Children.Add(badge);
+        }
         if (item.Pinned)
         {
-            box.Children.Add(new Border
+            top.Children.Add(new Border
             {
-                Width = 18, Height = 18, CornerRadius = new CornerRadius(9), Margin = new Thickness(4),
-                Background = Frozen(Color.FromArgb(0xCC, 0x00, 0x00, 0x00)),
-                HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+                Width = 18, Height = 18, CornerRadius = new CornerRadius(9), Background = Frozen(Color.FromArgb(0xDD, 0, 0, 0)),
                 Child = new TextBlock
                 {
                     Text = "", FontFamily = (FontFamily)FindResource("IconFont"), FontSize = 10,
@@ -1631,25 +1765,48 @@ public partial class NotchWindow : Window
                 }
             });
         }
+        box.Children.Add(top);
 
         var buttons = MakeClipButtons(item);
-        buttons.Background = Frozen(Color.FromArgb(0xCC, 0x00, 0x00, 0x00));
+        buttons.Background = Frozen(Color.FromArgb(0xDD, 0, 0, 0));
         buttons.HorizontalAlignment = HorizontalAlignment.Right;
         buttons.VerticalAlignment   = VerticalAlignment.Top;
+        buttons.Margin = new Thickness(0, 4, 4, 0);
         buttons.Visibility = Visibility.Collapsed;
         box.Children.Add(buttons);
 
+        var rest   = Frozen(Color.FromArgb(0x26, 0xFF, 0xFF, 0xFF));
+        var accent = Frozen(_hasColour ? _accent : Colors.White);
         var tile = new Border
         {
-            Child = box, CornerRadius = new CornerRadius(9), Margin = new Thickness(0, 0, 8, 0),
-            BorderThickness = new Thickness(1.5), BorderBrush = Frozen(Color.FromArgb(0x26, 0xFF, 0xFF, 0xFF)),
-            Cursor = Cursors.Hand, ClipToBounds = true,
-            ToolTip = $"Ảnh · {item.Time:HH:mm dd/MM} · bấm để chép lại"
+            Child = box, CornerRadius = new CornerRadius(10), Margin = new Thickness(0, 0, 8, 0),
+            BorderThickness = new Thickness(1.5), BorderBrush = newest ? accent : rest, Cursor = Cursors.Hand
         };
-        box.Clip = new RectangleGeometry(new Rect(0, 0, 86, 56), 8, 8);
-        var accent = Frozen(_hasColour ? _accent : Colors.White);
+
+        // Hover: a bigger preview
+        var tip = new ToolTip { Background = Frozen(Color.FromRgb(0x10, 0x10, 0x12)), BorderThickness = new Thickness(0), Padding = new Thickness(4) };
+        tip.Opened += (_, _) =>
+        {
+            if (tip.Content != null) return;
+            var big = ClipboardService.LoadImage(item, 0);
+            tip.Content = big == null ? "Không mở được ảnh" : new StackPanel
+            {
+                Children =
+                {
+                    new Image { Source = big, MaxWidth = 440, MaxHeight = 300, Stretch = Stretch.Uniform },
+                    new TextBlock
+                    {
+                        Text = $"{(int)big.PixelWidth}×{(int)big.PixelHeight} · {ClipMeta(item)} · bấm để chép",
+                        Foreground = Frozen(Color.FromArgb(0xAA, 0xFF, 0xFF, 0xFF)), FontSize = 11, Margin = new Thickness(2, 4, 2, 0)
+                    }
+                }
+            };
+        };
+        tile.ToolTip = tip;
+        ToolTipService.SetInitialShowDelay(tile, 350);
+
         tile.MouseEnter += (_, _) => { tile.BorderBrush = accent; buttons.Visibility = Visibility.Visible; };
-        tile.MouseLeave += (_, _) => { tile.BorderBrush = Frozen(Color.FromArgb(0x26, 0xFF, 0xFF, 0xFF)); buttons.Visibility = Visibility.Collapsed; };
+        tile.MouseLeave += (_, _) => { tile.BorderBrush = newest ? accent : rest; buttons.Visibility = Visibility.Collapsed; };
         tile.MouseLeftButtonUp += (_, _) => { if (!buttons.IsMouseOver) CopyClip(item); };
         return tile;
     }
@@ -1661,14 +1818,14 @@ public partial class NotchWindow : Window
         var pin = new Button
         {
             Content = item.Pinned ? "" : "", Style = (Style)FindResource("QuickButton"),
-            Width = 22, Height = 22, FontSize = 10, Margin = new Thickness(0),
-            ToolTip = item.Pinned ? "Bỏ ghim" : "Ghim (không bị xoá)"
+            Width = 24, Height = 24, FontSize = 10.5, Margin = new Thickness(0),
+            ToolTip = item.Pinned ? "Bỏ ghim" : "Ghim (giữ lại, không bị xoá)"
         };
         pin.Click += (_, e) => { e.Handled = true; _clips.TogglePin(item); };
         var del = new Button
         {
             Content = "", Style = (Style)FindResource("QuickButton"),
-            Width = 22, Height = 22, FontSize = 10, Margin = new Thickness(0), ToolTip = "Xoá"
+            Width = 24, Height = 24, FontSize = 10, Margin = new Thickness(0), ToolTip = "Xoá"
         };
         del.Click += (_, e) => { e.Handled = true; _clips.Delete(item); };
         panel.Children.Add(pin);
@@ -1676,13 +1833,17 @@ public partial class NotchWindow : Window
         return panel;
     }
 
-    /// <summary>Puts the item back on the clipboard, then closes so you can paste.</summary>
+    /// <summary>Puts the item back on the clipboard; the panel stays open.</summary>
     private void CopyClip(ClipItem item)
     {
-        bool ok = _clips.CopyBack(item);
-        ClipToast.Text = ok ? "Đã chép · dán bằng Ctrl + V" : "Không chép được, thử lại nhé";
+        bool ok = _clips.CopyBack(item);     // → Changed → rebuilt, this item now on top
+        _justCopied = ok ? item.Id : null;
+        ClipToast.Text = ok ? "✓ Đã chép · Ctrl + V để dán" : "Không chép được, thử lại nhé";
+        ClipToast.Foreground = ok ? Frozen(Color.FromRgb(0x34, 0xC7, 0x59)) : Frozen(Color.FromRgb(0xFF, 0x45, 0x3A));
         ClipToast.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(120)));
-        if (!ok) return;
+        RebuildClipboard();
+        ClipTextScroll.ScrollToTop();
+        ClipImageScroll.ScrollToLeftEnd();
         _clipToastTimer.Stop();
         _clipToastTimer.Tick -= ClipToastDone;
         _clipToastTimer.Tick += ClipToastDone;
@@ -1692,22 +1853,57 @@ public partial class NotchWindow : Window
     private void ClipToastDone(object? sender, EventArgs e)
     {
         _clipToastTimer.Stop();
-        ClipToast.BeginAnimation(OpacityProperty, null);
-        ClipToast.Opacity = 0;
-        Collapse();
+        _justCopied = null;
+        ClipToast.BeginAnimation(OpacityProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(300)));
+        RebuildClipboard();
     }
 
     private void ClipClear_Click(object sender, RoutedEventArgs e) => _clips.ClearUnpinned();
 
-    /// <summary>The mouse wheel scrolls the image row sideways.</summary>
-    private void ClipImageScroll_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    private void ClipImagesLeft_Click(object sender, RoutedEventArgs e)  => ScrollImages(-1);
+    private void ClipImagesRight_Click(object sender, RoutedEventArgs e) => ScrollImages(+1);
+
+    private void ScrollImages(int dir)
     {
-        ClipImageScroll.ScrollToHorizontalOffset(ClipImageScroll.HorizontalOffset - e.Delta / 2.0);
+        double target = Math.Clamp(ClipImageScroll.HorizontalOffset + dir * 272, 0, ClipImageScroll.ScrollableWidth);
+        ClipImageScroll.ScrollToHorizontalOffset(target);
+    }
+
+    // Search box
+    private void ClipSearch_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (_typing) return;
+        BeginTyping(ClipSearch);
         e.Handled = true;
     }
 
+    private void ClipSearch_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            ClipSearch.Text = "";
+            EndTyping(collapse: false);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Enter)
+        {
+            // Enter copies the first match
+            var q = ClipSearch.Text.Trim();
+            var first = _clips.Items.FirstOrDefault(i => !i.IsImage && (q.Length == 0 || (i.Text ?? "").Contains(q, StringComparison.CurrentCultureIgnoreCase)));
+            if (first != null) CopyClip(first);
+            e.Handled = true;
+        }
+    }
+
+    private void ClipSearch_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (!_ready) return;
+        ClipSearchPlaceholder.Visibility = ClipSearch.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        RebuildClipboard();
+    }
+
     // ── Mây the cat ───────────────────────────────────────────────────
-    private IEnumerable<PixelCat> Cats => new[] { CatRest, CatPanel, CatTree };
+    private IEnumerable<MayCat> Cats => new[] { CatPanel, CatTree };
 
     /// <summary>A short reaction: happy hops, or sad after giving up.</summary>
     private void CatReact(CatMood mood, double seconds)
@@ -1741,6 +1937,7 @@ public partial class NotchWindow : Window
             cat.Mood   = mood;
             cat.Growth = growth;
         }
+        CatRest.Mood = mood;
 
         string doing = mood switch
         {
