@@ -1,5 +1,11 @@
 Bản chỉnh sửa từ [sadeeshasathsara/dynamic-island-on-windows](https://github.com/sadeeshasathsara/dynamic-island-on-windows) (MIT).
 
+### Sửa trong v1.8.5
+- **Viên tai thỏ mới: đồng hồ LED** (số 7 vạch, vạch tắt hiện mờ phía sau) **luôn ở đúng một chỗ, không đổi độ dài**. Nghe nhạc thì số và viền sáng theo màu bài hát, kèm **sóng nhạc** bên phải; không nghe nhạc thì số trắng; đang trồng cây thì **đếm ngược màu xanh lá**. Bỏ ảnh bìa, tên bài và vạch tiến độ trên viên; **viền dày gấp đôi**
+- **Ảnh bìa không còn bị lệch**: ảnh YouTube (ảnh ngang) giờ được cắt quanh phần giữa, cả trong bảng và trong tab Copy
+- **Thông báo**: các nút lọc theo app xuống dòng khi nhiều, không còn bị khuất phía sau
+- **Tự chạy khi bật máy chắc chắn hơn**: chờ Windows khởi động xong vài giây, thử lại nếu dịch vụ thông báo / nhạc chưa sẵn sàng, bật lại công tắc trong Task Manager → Startup apps nếu bị tắt. Ghi lại giờ khởi động và lỗi (nếu có) vào `%LOCALAPPDATA%\DynamicIslandNotifier\startup.log`
+
 ### Sửa trong v1.8.4
 - Mây không còn đè lên thanh âm lượng: chuyển lên **góc trên bên trái**, ngay trên thanh icon, cạnh giờ
 
