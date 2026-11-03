@@ -1,5 +1,12 @@
 Bản chỉnh sửa từ [sadeeshasathsara/dynamic-island-on-windows](https://github.com/sadeeshasathsara/dynamic-island-on-windows) (MIT).
 
+### Sửa trong v1.8.3
+- **Cả bảng mang màu bài hát**: nền chuyển dần từ màu ảnh bìa sang gần đen (kiểu Apple Music); đổi bài là đổi màu. Không có nhạc thì nền đen
+- **Trình phát kiểu Apple Music**: ảnh bìa to (96px) có bóng đổ, tên bài lớn, thanh tua sóng màu trắng, **nút Phát tròn trắng**
+- **Tab Copy** gộp lại thành một tab, bên trong có công tắc **Văn bản | Hình ảnh** (kèm số lượng); mở tab là vào đúng mục vừa copy
+- **Viên tai thỏ ngắn lại**: tên bài dài **chạy chữ ngang** trong khoảng ~120px thay vì kéo dài viên
+- Thanh icon bên trái nằm trong một rãnh mờ, các thẻ và nút trong bảng trong suốt nhẹ để hợp với nền màu
+
 ### Sửa trong v1.8.2
 - **Bố cục trở lại như v1.7**, giữ nguyên mọi tính năng: bảng rộng 620px, **chiều cao vừa với từng tab** (Nhạc, Trồng cây không còn khoảng trống), đổi tab thì bảng co giãn mượt
 - **Thanh icon dọc bên trái** để chuyển tab (thay cho ‹ › và chấm trang); tab đang mở sáng theo màu bài hát. Vẫn vuốt ngang hai ngón để chuyển tab được
