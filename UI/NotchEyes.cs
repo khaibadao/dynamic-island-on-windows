@@ -25,7 +25,7 @@ public sealed class NotchEyes : FrameworkElement
 
     private sealed record Expression(string Name, Key[] Keys, bool Bob = false, bool Zzz = false, bool Sweat = false, bool Tremble = false);
 
-    private static readonly Eye N = new();
+    private static readonly Eye N = new(Lx: 0);   // (a bare new() on a struct would zero the scales)
     private static Eye Closed(double sx = 1.12) => new(Top: 1, Sx: sx, Sy: 0.85);
     private static readonly Eye Arc = new(Bot: 0.58, Happy: true);
 

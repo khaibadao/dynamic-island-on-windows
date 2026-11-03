@@ -1,5 +1,10 @@
 Bản chỉnh sửa từ [sadeeshasathsara/dynamic-island-on-windows](https://github.com/sadeeshasathsara/dynamic-island-on-windows) (MIT).
 
+### Mới trong v1.8.7
+- **Đôi mắt trên tai thỏ**: cứ **30 giây** đồng hồ nhường chỗ cho một đôi mắt khoảng **5–6 giây** (viên nhô to hơn một chút cho dễ nhìn) rồi quay lại giờ. 11 biểu cảm: chớp mắt, liếc trái phải, vui, nháy mắt, ngạc nhiên, mắt trái tim, buồn ngủ, hờn dỗi, buồn, nghi ngờ, chóng mặt; chuyển động có nhịp lấy đà, nảy nhẹ và "thở" nên trông tự nhiên hơn
+- **Mắt phản ứng theo tình huống**: có thông báo mới → mở to ngạc nhiên rồi thông báo mới trượt xuống; trồng xong cây → mắt trái tim, bỏ cuộc → mắt buồn; đang nghe nhạc → mắt vui nhún theo nhạc; sau 23 giờ hoặc máy để yên lâu → lim dim buồn ngủ; đưa chuột lại gần → mắt **nhìn theo con trỏ**
+- Mây đi dạo và đôi mắt thay phiên nhau, không bao giờ cùng lúc
+
 ### Mới trong v1.8.6
 - **Viên tai thỏ kiểu LED trắng**: số, sóng nhạc và viền cùng **một màu trắng cố định** (viền dịu hơn số một chút), không đổi theo bài hát nữa. Đang trồng cây: đếm ngược vẫn màu trắng, có **chiếc lá nhỏ** bên trái
 - **Mây đi dạo**: cứ 10–15 giây Mây bước ra từ sau mép phải, đi dọc viên sang trái rồi quay về. Rê chuột lại gần là Mây thôi đi; đang trồng cây hoặc máy để yên thì Mây ngồi im. Tắt / bật ở menu khay → **Mây đi dạo**
