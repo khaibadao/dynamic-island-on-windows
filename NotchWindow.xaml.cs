@@ -163,7 +163,9 @@ public partial class NotchWindow : Window
             _tickTimer.Start();
             _fullscreenTimer.Start();
             _hoverTimer.Start();
+            ScheduleWalk();
         };
+        _walkTimer.Tick += (_, _) => { _walkTimer.Stop(); StartWalk(); ScheduleWalk(); };
         SystemParameters.StaticPropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(SystemParameters.PrimaryScreenWidth)) Recenter();
@@ -231,6 +233,8 @@ public partial class NotchWindow : Window
     // ── Resting: watch the pointer (the window lets clicks through) ──
     private void WatchPointer()
     {
+        // In the open panel: pointer close to Mây → she rolls over for a belly rub
+        if (_expanded) CatPanel.BellyUp = NativeInterop.IsCursorNear(CatPanel, 18);
         if (!IsVisible || _expanded) { _dwellStart = null; return; }
 
         FrameworkElement? target = Pill.IsVisible ? Pill : StripHost.IsVisible ? StripHost : null;
@@ -255,6 +259,7 @@ public partial class NotchWindow : Window
     {
         if (faded == _faded) return;
         _faded = faded;
+        if (faded) EndWalk();
         var anim = new DoubleAnimation(faded ? 0.3 : 1, TimeSpan.FromMilliseconds(160));
         RestArea.BeginAnimation(OpacityProperty, anim);
         CatRest.BeginAnimation(OpacityProperty, anim);
@@ -270,6 +275,62 @@ public partial class NotchWindow : Window
         RestArea.Visibility  = Visibility.Visible;
         CatRest.Visibility   = Visibility.Visible;
         PlaceCat();
+    }
+
+    // ── Mây's strolls across the pill ────────────────────────────────
+    private readonly DispatcherTimer _walkTimer = new();
+    private readonly Random _rng = new();
+    private bool _walking;
+    private int _walkGen;
+
+    /// <summary>Next stroll in 10–15 s.</summary>
+    private void ScheduleWalk()
+    {
+        _walkTimer.Interval = TimeSpan.FromSeconds(10 + _rng.NextDouble() * 5);
+        _walkTimer.Start();
+    }
+
+    /// <summary>Out from behind the right end, along the pill to the left, and back.</summary>
+    private void StartWalk()
+    {
+        if (_walking || !AppSettings.Current.MayWalks || _expanded || !IsVisible || !Pill.IsVisible || _faded
+            || _focus.IsRunning || VolumeView.Visibility == Visibility.Visible
+            || NativeInterop.IdleTime() >= TimeSpan.FromMinutes(10)) return;   // asleep, or you're away
+        double w = WalkLayer.ActualWidth;
+        if (w < 40) return;
+
+        _walking = true;
+        int gen = ++_walkGen;
+        double right = w - 10, left = -8;
+        var dur = TimeSpan.FromSeconds(2.4);
+
+        CatRest.Visibility = Visibility.Hidden;   // the peeking head becomes the walking cat
+        Walker.Visibility  = Visibility.Visible;
+        Walker.FacingRight = false;
+        Walker.StartWalking();
+
+        var go = new DoubleAnimation(right, left, dur);
+        go.Completed += (_, _) =>
+        {
+            if (gen != _walkGen) return;
+            Walker.FacingRight = true;
+            var back = new DoubleAnimation(left, right, dur);
+            back.Completed += (_, _) => { if (gen == _walkGen) EndWalk(); };
+            WalkerShift.BeginAnimation(TranslateTransform.XProperty, back);
+        };
+        WalkerShift.BeginAnimation(TranslateTransform.XProperty, go);
+    }
+
+    /// <summary>Back to peeking from behind the pill (also when interrupted).</summary>
+    private void EndWalk()
+    {
+        if (!_walking) return;
+        _walking = false;
+        _walkGen++;
+        WalkerShift.BeginAnimation(TranslateTransform.XProperty, null);
+        Walker.StopWalking();
+        Walker.Visibility = Visibility.Collapsed;
+        if (!_expanded && VolumeView.Visibility != Visibility.Visible) CatRest.Visibility = Visibility.Visible;
     }
 
     /// <summary>Mây peeks out from behind the right end of the strip / pill.</summary>
@@ -304,6 +365,7 @@ public partial class NotchWindow : Window
 
         _volumeTimer.Stop();
         _dwellStart = null;
+        EndWalk();
         SetFaded(false);
         VolumeView.Visibility = Visibility.Collapsed;
         RestArea.Visibility   = Visibility.Collapsed;
@@ -353,6 +415,7 @@ public partial class NotchWindow : Window
         StopMarquee();
         ResetGiveUp();
         _lyricsTimer.Stop();
+        CatPanel.BellyUp = false;
 
         // Shrinks back into the notch, then the resting notch returns.
         bool pill = true;   // the LED clock pill is always there
@@ -624,6 +687,8 @@ public partial class NotchWindow : Window
     }
 
     private static readonly Color FocusGreen = Color.FromRgb(0x34, 0xC7, 0x59);
+    private static readonly Brush PillWhite = Frozen(Color.FromRgb(0xF2, 0xF2, 0xF2));
+    private static readonly Brush PillRim   = Frozen(Color.FromRgb(0xBF, 0xBF, 0xBF));
 
     /// <summary>
     /// The LED clock: the time (HH:mm), or the time left on the tree (mm:ss) in green.
@@ -642,21 +707,14 @@ public partial class NotchWindow : Window
             PillClock.Text = DateTime.Now.ToString("HH:mm");
         }
 
-        Color on = focus ? FocusGreen
-                 : _hasMusic && _hasColour ? ColorExtractor.EnsureBright(_accent)
-                 : Color.FromRgb(0xEE, 0xEE, 0xEE);
-        PillClock.On  = Frozen(on);
-        PillClock.Off = Frozen(ColorExtractor.Mix(on, Colors.Black, 0.86));   // the faint "88:88" behind
-        PillClockGlow.Color   = on;
-        PillClockGlow.Opacity = focus || (_hasMusic && _hasColour) ? 0.5 : 0.25;
-
-        Color rim = focus ? ColorExtractor.Mix(FocusGreen, Colors.Black, 0.35)
-                  : _hasMusic && _hasColour ? ColorExtractor.Mix(_accent, Colors.Black, 0.35)
-                  : QuickActions.DoNotDisturb ? DndColour
-                  : Color.FromRgb(0x3A, 0x3A, 0x3C);
-        Pill.BorderBrush = Frozen(rim);
-        PillGlow.Color   = focus ? FocusGreen : _hasMusic && _hasColour ? _accent : Neutral;
-        PillGlow.Opacity = focus || (_hasMusic && _hasColour) ? 0.4 : 0.25;
+        // Style C: one fixed white for the digits, the bars and (a little softer) the rim
+        PillLeaf.Visibility   = focus ? Visibility.Visible : Visibility.Collapsed;
+        PillClock.On          = PillWhite;
+        PillClock.Off         = null;
+        PillClockGlow.Opacity = 0;
+        Pill.BorderBrush      = PillRim;
+        PillGlow.Color        = Neutral;
+        PillGlow.Opacity      = 0.25;
     }
 
     private string _pillTitle = "";
@@ -799,7 +857,7 @@ public partial class NotchWindow : Window
         var accent = new SolidColorBrush(vivid);
         accent.Freeze();
         Resources["AccentBrush"] = accent;
-        foreach (var bar in Bars) bar.Fill = accent;
+        foreach (var bar in Bars) bar.Fill = PillWhite;   // fixed, like the clock
         if (_ready) UpdateSideBar();
         SeekBar.Accent = Brushes.White;
 
@@ -1116,6 +1174,7 @@ public partial class NotchWindow : Window
         VolFillScale.ScaleX = muted ? 0 : Math.Clamp(level, 0f, 1f);
         VolText.Text        = muted ? "Tắt" : Math.Round(level * 100).ToString();
 
+        EndWalk();
         RestArea.Visibility   = Visibility.Collapsed;
         CatRest.Visibility    = Visibility.Collapsed;
         VolumeView.Visibility = Visibility.Visible;

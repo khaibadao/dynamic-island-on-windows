@@ -258,8 +258,18 @@ public partial class App : Application
         var tray = (Hardcodet.Wpf.TaskbarNotification.TaskbarIcon?)Current.Resources["TrayIcon"];
         if (tray?.ContextMenu == null) return;
         foreach (var obj in tray.ContextMenu.Items)
-            if (obj is MenuItem { Tag: "notch" } item)
-                item.IsChecked = _notch?.NotchEnabled == true;
+        {
+            if (obj is MenuItem { Tag: "notch" } item)   item.IsChecked = _notch?.NotchEnabled == true;
+            if (obj is MenuItem { Tag: "maywalk" } walk) walk.IsChecked = AppSettings.Current.MayWalks;
+        }
+    }
+
+    /// <summary>Mây's strolls across the notch on / off.</summary>
+    private void MayWalkToggle_Click(object sender, RoutedEventArgs e)
+    {
+        AppSettings.Current.MayWalks = !AppSettings.Current.MayWalks;
+        AppSettings.Current.Save();
+        UpdateNotchMenu();
     }
 
     private void MusicToggle_Click(object sender, RoutedEventArgs e)

@@ -356,7 +356,7 @@
                     Visibility="Collapsed"
                     Background="#000000"
                     BorderThickness="2,0,2,2"
-                    BorderBrush="#3A3A3C"
+                    BorderBrush="#BFBFBF"
                     CornerRadius="0,0,12,12"
                     Height="24"
                     Padding="14,0,14,1"
@@ -365,10 +365,15 @@
                 <Border.Effect>
                     <DropShadowEffect x:Name="PillGlow" Color="#5A5A5E" BlurRadius="12" ShadowDepth="0" Opacity="0.3"/>
                 </Border.Effect>
+                <Grid>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <!-- A small leaf while a tree grows, so the countdown isn't mistaken for the time -->
+                    <Path x:Name="PillLeaf" Data="M10,1 C2,4 0,12 3,19 C11,18 16,9 10,1 Z M4,17 L10,7" Fill="#F2F2F2"
+                          Stroke="Black" StrokeThickness="1.2" Width="9" Height="12" Stretch="Uniform"
+                          Margin="0,0,7,0" VerticalAlignment="Center" Visibility="Collapsed"/>
                     <ui:LedClock x:Name="PillClock" DigitHeight="14" VerticalAlignment="Center">
                         <ui:LedClock.Effect>
-                            <DropShadowEffect x:Name="PillClockGlow" Color="White" BlurRadius="5" ShadowDepth="0" Opacity="0.45"/>
+                            <DropShadowEffect x:Name="PillClockGlow" Color="White" BlurRadius="5" ShadowDepth="0" Opacity="0"/>
                         </ui:LedClock.Effect>
                     </ui:LedClock>
                     <StackPanel x:Name="PillBars" Orientation="Horizontal" Height="11" Margin="10,0,0,0"
@@ -411,6 +416,16 @@
                         <Border.RenderTransform><ScaleTransform x:Name="PillProgressScale"/></Border.RenderTransform>
                     </Border>
                 </StackPanel>
+
+                <!-- Mây strolls across the pill now and then -->
+                <Canvas x:Name="WalkLayer" IsHitTestVisible="False">
+                    <ui:MayWalker x:Name="Walker" Canvas.Top="7" Visibility="Collapsed">
+                        <ui:MayWalker.RenderTransform>
+                            <TranslateTransform x:Name="WalkerShift"/>
+                        </ui:MayWalker.RenderTransform>
+                    </ui:MayWalker>
+                </Canvas>
+                </Grid>
             </Border>
         </Grid>
 

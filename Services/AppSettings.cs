@@ -30,6 +30,9 @@ public sealed class AppSettings
     /// <summary>Lyrics pane open next to the player.</summary>
     public bool LyricsOpen { get; set; }
 
+    /// <summary>Mây strolls across the notch now and then.</summary>
+    public bool MayWalks { get; set; } = true;
+
     /// <summary>Where the floating tree timer was dragged to (null = bottom-right corner).</summary>
     public double? FocusWidgetLeft { get; set; }
     public double? FocusWidgetTop  { get; set; }

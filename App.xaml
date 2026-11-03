@@ -17,6 +17,7 @@
                         <MenuItem Header="Notch bar" Tag="notch" IsCheckable="True" Click="NotchToggle_Click"/>
                         <MenuItem Header="Music: On" Tag="music" Click="MusicToggle_Click"/>
                         <MenuItem Header="Start with Windows" Tag="autostart" IsCheckable="True" Click="AutoStartToggle_Click"/>
+                        <MenuItem Header="Mây đi dạo" Tag="maywalk" IsCheckable="True" Click="MayWalkToggle_Click"/>
                         <Separator/>
                         <!-- Filled in code each time the menu opens -->
                         <MenuItem Header="Recent notifications" Tag="history">

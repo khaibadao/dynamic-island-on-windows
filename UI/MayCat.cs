@@ -131,6 +131,9 @@ public sealed class MayCat : Canvas
 
     private CatMood _mood = (CatMood)(-1);
     private double _size = 28, _growth = 1;
+    private readonly Canvas _belly;
+    private readonly Path _heart;
+    private bool _bellyUp;
 
     public MayCat()
     {
@@ -166,9 +169,41 @@ public sealed class MayCat : Canvas
         };
         Children.Add(_zzz);
 
+        _belly = CatBelly.Build(out _heart);
+        _belly.Visibility = Visibility.Collapsed;
+        var bg = new TransformGroup();
+        bg.Children.Add(_scale);
+        _belly.RenderTransform = bg;
+        Children.Add(_belly);
+
         _blinkTimer.Tick += (_, _) => Blink(_openEyes);
         ApplySize();
         Mood = CatMood.Idle;
+    }
+
+    /// <summary>Rolls onto her back, paws up, a heart floating (when the pointer comes close).</summary>
+    public bool BellyUp
+    {
+        get => _bellyUp;
+        set
+        {
+            if (value == _bellyUp) return;
+            _bellyUp = value;
+            _root.Visibility  = value ? Visibility.Collapsed : Visibility.Visible;
+            _belly.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
+            _zzz.Visibility   = !value && _mood == CatMood.Sleep ? Visibility.Visible : Visibility.Collapsed;
+            var t = (TranslateTransform)_heart.RenderTransform;
+            if (value)
+            {
+                t.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(4, -6, TimeSpan.FromSeconds(1.4)) { RepeatBehavior = RepeatBehavior.Forever });
+                _heart.BeginAnimation(OpacityProperty, new DoubleAnimation(1, 0, TimeSpan.FromSeconds(1.4)) { RepeatBehavior = RepeatBehavior.Forever });
+            }
+            else
+            {
+                t.BeginAnimation(TranslateTransform.YProperty, null);
+                _heart.BeginAnimation(OpacityProperty, null);
+            }
+        }
     }
 
     /// <summary>Height in px at growth 1.</summary>
@@ -373,5 +408,147 @@ public sealed class MayPeek : Canvas
                 _blinkTimer.Start();
                 break;
         }
+    }
+}
+
+/// <summary>
+/// Mây seen from the side, walking. Legs step in turn; <see cref="FacingRight"/>
+/// flips her around. Drawn in a 40×30 space and scaled by <see cref="Size"/>.
+/// </summary>
+public sealed class MayWalker : Canvas
+{
+    private readonly Canvas _root = new() { Width = 40, Height = 30 };
+    private readonly ScaleTransform _scale = new(1, 1);
+    private readonly ScaleTransform _flip = new(1, 1, 20, 15);
+    private readonly RotateTransform _tail = new(0, 33, 14);
+    private readonly RotateTransform[] _legs = new RotateTransform[4];
+    private readonly TranslateTransform _bob = new();
+    private readonly DispatcherTimer _step = new() { Interval = TimeSpan.FromMilliseconds(150) };
+    private bool _phase;
+
+    public MayWalker()
+    {
+        IsHitTestVisible = false;
+        var g = new TransformGroup();
+        g.Children.Add(_flip);
+        g.Children.Add(_bob);
+        g.Children.Add(_scale);
+        _root.RenderTransform = g;
+        Children.Add(_root);
+
+        var tail = CatParts.P("M33,14 C40,12 40,4 36,2", null, CatParts.Tail, 3);
+        tail.RenderTransform = _tail;
+        _root.Children.Add(tail);
+
+        double[] legX = { 12, 17, 25, 30 };
+        for (int i = 0; i < 4; i++)
+        {
+            _legs[i] = new RotateTransform(0, legX[i] + 1.6, 19);
+            var leg = new Rectangle
+            {
+                Width = 3.2, Height = 8, RadiusX = 1.6, RadiusY = 1.6, Fill = CatParts.Fur,
+                Stroke = CatParts.Line, StrokeThickness = 0.5, RenderTransform = _legs[i]
+            };
+            SetLeft(leg, legX[i]);
+            SetTop(leg, 19);
+            _root.Children.Add(leg);
+        }
+
+        _root.Children.Add(CatParts.E(23, 16, 12, 6.8, CatParts.Fur, CatParts.Line));
+        _root.Children.Add(CatParts.E(22, 19, 7, 3, CatParts.Cream));
+        _root.Children.Add(CatParts.P("M4.5,7 L5.5,0.5 L10,4.5 Z M9.5,5 L12.5,0.5 L14.5,6 Z", CatParts.Fur, CatParts.Line));
+        _root.Children.Add(CatParts.P("M6,5.5 L6.5,2.5 L8.6,4.5 Z", CatParts.Pink));
+        _root.Children.Add(CatParts.E(10, 11, 7, 7, CatParts.Fur, CatParts.Line));
+        _root.Children.Add(CatParts.E(6, 13.5, 3.6, 2.6, CatParts.Cream));
+        _root.Children.Add(CatParts.E(8, 10, 1.2, 1.6, CatParts.Eye));
+        _root.Children.Add(CatParts.P("M3,12.6 L4.4,12.6 L3.7,13.5 Z", CatParts.Nose));
+
+        _step.Tick += (_, _) => Step();
+        Size = 18;
+    }
+
+    /// <summary>Width in px.</summary>
+    public double Size
+    {
+        get => Width;
+        set
+        {
+            double s = value / 40;
+            _scale.ScaleX = _scale.ScaleY = s;
+            Width  = 40 * s;
+            Height = 30 * s;
+        }
+    }
+
+    /// <summary>She's drawn facing left; true turns her to face right.</summary>
+    public bool FacingRight
+    {
+        get => _flip.ScaleX < 0;
+        set => _flip.ScaleX = value ? -1 : 1;
+    }
+
+    public void StartWalking()
+    {
+        _tail.BeginAnimation(RotateTransform.AngleProperty, CatParts.Swing(-10, 10, 300));
+        _step.Start();
+    }
+
+    public void StopWalking()
+    {
+        _step.Stop();
+        _tail.BeginAnimation(RotateTransform.AngleProperty, null);
+        foreach (var l in _legs) l.Angle = 0;
+        _bob.Y = 0;
+    }
+
+    private void Step()
+    {
+        _phase = !_phase;
+        double a = _phase ? 14 : -14;
+        for (int i = 0; i < 4; i++) _legs[i].Angle = i % 2 == 0 ? a : -a;
+        _bob.Y = _phase ? -0.6 : 0;
+    }
+}
+
+/// <summary>Mây lying on her back, paws in the air, with a little heart.</summary>
+internal static class CatBelly
+{
+    public static Canvas Build(out Path heart)
+    {
+        var c = new Canvas { Width = 40, Height = 40 };
+        var g = new Canvas { RenderTransform = new TranslateTransform(-1, 8) };
+        g.Children.Add(CatParts.P("M35,24 C42,24 42,16 38,14", null, CatParts.Tail, 3));
+        g.Children.Add(CatParts.E(22, 22, 13, 7, CatParts.Fur, CatParts.Line));
+        g.Children.Add(CatParts.E(22, 19.5, 9, 4.2, CatParts.Cream));
+        (double x, double y, double angle)[] paws = { (14, 8, -18), (19, 7, -6), (24, 7, 8), (29, 8.5, 20) };
+        foreach (var (x, y, angle) in paws)
+        {
+            var paw = new Rectangle
+            {
+                Width = 3.4, Height = 9, RadiusX = 1.7, RadiusY = 1.7, Fill = CatParts.Paw, Stroke = CatParts.Line,
+                StrokeThickness = 0.5, RenderTransform = new RotateTransform(angle, 1.7, 8)
+            };
+            SetPos(paw, x, y);
+            g.Children.Add(paw);
+        }
+        g.Children.Add(CatParts.P("M2,20 L1,12 L7,15.5 Z M9,15 L11.5,9.5 L13.5,16 Z", CatParts.Fur, CatParts.Line));
+        g.Children.Add(CatParts.E(8, 21, 7, 7, CatParts.Fur, CatParts.Line));
+        g.Children.Add(CatParts.E(8, 24, 3.8, 2.6, CatParts.Cream));
+        g.Children.Add(CatParts.P("M3.6,20.5 Q5,19 6.4,20.5 M9.6,20.5 Q11,19 12.4,20.5", null, CatParts.Eye, 1));
+        g.Children.Add(CatParts.E(3.5, 23.5, 1.6, 1, CatParts.Blush));
+        g.Children.Add(CatParts.E(12.5, 23.5, 1.6, 1, CatParts.Blush));
+        c.Children.Add(g);
+
+        heart = CatParts.P("M30,4 C30,2 32.5,1.5 33,3.5 C33.5,1.5 36,2 36,4 C36,6 33,8 33,8 C33,8 30,6 30,4 Z",
+                           CatParts.Solid(0xFF, 0x5C, 0x7A));
+        heart.RenderTransform = new TranslateTransform();
+        c.Children.Add(heart);
+        return c;
+    }
+
+    private static void SetPos(UIElement e, double x, double y)
+    {
+        Canvas.SetLeft(e, x);
+        Canvas.SetTop(e, y);
     }
 }
