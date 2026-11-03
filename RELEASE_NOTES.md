@@ -1,5 +1,8 @@
 Bản chỉnh sửa từ [sadeeshasathsara/dynamic-island-on-windows](https://github.com/sadeeshasathsara/dynamic-island-on-windows) (MIT).
 
+### Sửa trong v1.8.4
+- Mây không còn đè lên thanh âm lượng: chuyển lên **góc trên bên trái**, ngay trên thanh icon, cạnh giờ
+
 ### Sửa trong v1.8.3
 - **Cả bảng mang màu bài hát**: nền chuyển dần từ màu ảnh bìa sang gần đen (kiểu Apple Music); đổi bài là đổi màu. Không có nhạc thì nền đen
 - **Trình phát kiểu Apple Music**: ảnh bìa to (96px) có bóng đổ, tên bài lớn, thanh tua sóng màu trắng, **nút Phát tròn trắng**

@@ -898,9 +898,9 @@
                 </Grid>
                 </Border>
 
-                <!-- Mây sits on the card's bottom-right corner -->
-                <ui:MayCat x:Name="CatPanel" Grid.Row="1" Grid.Column="1" Size="26" HorizontalAlignment="Right"
-                           VerticalAlignment="Bottom" Margin="0,0,14,-10" Cursor="Hand"/>
+                <!-- Mây sits in the top-left corner, above the tab icons and out of the way of the controls -->
+                <ui:MayCat x:Name="CatPanel" Grid.Row="0" Grid.Column="0" Size="24" HorizontalAlignment="Center"
+                           VerticalAlignment="Bottom" Margin="0,0,6,2" Cursor="Hand"/>
             </Grid>
         </Border>
     </Grid>
