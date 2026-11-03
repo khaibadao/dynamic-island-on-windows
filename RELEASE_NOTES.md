@@ -1,5 +1,12 @@
 Bản chỉnh sửa từ [sadeeshasathsara/dynamic-island-on-windows](https://github.com/sadeeshasathsara/dynamic-island-on-windows) (MIT).
 
+### Sửa trong v1.8.2
+- **Bố cục trở lại như v1.7**, giữ nguyên mọi tính năng: bảng rộng 620px, **chiều cao vừa với từng tab** (Nhạc, Trồng cây không còn khoảng trống), đổi tab thì bảng co giãn mượt
+- **Thanh icon dọc bên trái** để chuyển tab (thay cho ‹ › và chấm trang); tab đang mở sáng theo màu bài hát. Vẫn vuốt ngang hai ngón để chuyển tab được
+- Giờ · pin · tai nghe bên trái, **nút nhanh** bên phải trên cùng một dòng
+- **Clipboard tách làm hai tab riêng**: **Văn bản** (ô tìm kiếm, mỗi mục 2 dòng xem trước) và **Hình ảnh** (ảnh to hơn, xếp hàng ngang với thanh cuộn kéo được, nút ‹ ›); mỗi tab có nút xoá riêng
+- Tab Thông báo giữ nguyên
+
 ### Sửa trong v1.8.1
 - **Bảng gọn lại đúng khung của v1.7** (rộng 620px) và **cao bằng nhau ở mọi tab**, không còn tab cao tab thấp. Chấm trang + tên tab chuyển lên giữa dòng trạng thái để bảng thấp hơn
 - **Màu sáng hơn**: nền thẻ nội dung, các dòng thông báo / clipboard và chữ phụ đều sáng lên, dễ đọc hơn

@@ -437,7 +437,7 @@ public partial class NotchWindow : Window
             content.Children.Add(mark);
             var button = new Border
             {
-                Width = 34, Height = 26, CornerRadius = new CornerRadius(9), Margin = new Thickness(0, 0, 0, 2),
+                Width = 34, Height = 24, CornerRadius = new CornerRadius(8), Margin = new Thickness(0, 0, 0, 1),
                 Background = Brushes.Transparent, Cursor = Cursors.Hand, Child = content, ToolTip = TabNames[i]
             };
             var tab = Tabs[i];
