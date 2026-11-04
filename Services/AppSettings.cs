@@ -33,6 +33,9 @@ public sealed class AppSettings
     /// <summary>Mây strolls across the notch now and then.</summary>
     public bool MayWalks { get; set; } = true;
 
+    /// <summary>Step aside while a video, game or F11 page fills the screen.</summary>
+    public bool HideInFullscreen { get; set; } = true;
+
     /// <summary>Where the floating tree timer was dragged to (null = bottom-right corner).</summary>
     public double? FocusWidgetLeft { get; set; }
     public double? FocusWidgetTop  { get; set; }

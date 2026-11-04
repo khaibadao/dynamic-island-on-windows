@@ -270,7 +270,16 @@ public partial class App : Application
         {
             if (obj is MenuItem { Tag: "notch" } item)   item.IsChecked = _notch?.NotchEnabled == true;
             if (obj is MenuItem { Tag: "maywalk" } walk) walk.IsChecked = AppSettings.Current.MayWalks;
+            if (obj is MenuItem { Tag: "fullscreen" } fs) fs.IsChecked = AppSettings.Current.HideInFullscreen;
         }
+    }
+
+    /// <summary>Hide the notch during fullscreen videos / games (on), or keep it always (off).</summary>
+    private void FullscreenToggle_Click(object sender, RoutedEventArgs e)
+    {
+        AppSettings.Current.HideInFullscreen = !AppSettings.Current.HideInFullscreen;
+        AppSettings.Current.Save();
+        UpdateNotchMenu();
     }
 
     /// <summary>Mây's strolls across the notch on / off.</summary>

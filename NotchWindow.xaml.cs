@@ -202,7 +202,7 @@ public partial class NotchWindow : Window
 
     private void CheckFullscreen()
     {
-        bool fs = NativeInterop.IsForegroundFullscreenOnPrimary();
+        bool fs = AppSettings.Current.HideInFullscreen && NativeInterop.IsForegroundFullscreenOnPrimary();
         if (fs == _fullscreen) return;
         _fullscreen = fs;
         UpdateVisibility();

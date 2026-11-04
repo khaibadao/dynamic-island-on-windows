@@ -1,5 +1,9 @@
 Bản chỉnh sửa từ [sadeeshasathsara/dynamic-island-on-windows](https://github.com/sadeeshasathsara/dynamic-island-on-windows) (MIT).
 
+### Sửa trong v1.9.1
+- Sửa lỗi **tai thỏ tự ẩn khi mở Edge / tab khác** trên một số máy (thường là máy đặt thanh taskbar **tự ẩn**: cửa sổ phóng to khi đó phủ kín màn hình nên bị tưởng nhầm là đang xem phim toàn màn hình). Giờ chỉ ẩn khi thật sự toàn màn hình (F11, video, game)
+- Menu khay thêm **Ẩn khi toàn màn hình**: tắt đi nếu muốn tai thỏ luôn hiện
+
 ### Sửa trong v1.9.0
 - Đôi mắt quay về **mỗi 30 giây** cho đỡ rối mắt
 - **Mây đổi bên**: đi sang trái rồi **ở lại ló đầu sau mép trái** (như bên phải), lần đi dạo sau mới đi ngược về bên phải

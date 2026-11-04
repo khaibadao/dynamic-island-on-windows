@@ -18,6 +18,7 @@
                         <MenuItem Header="Music: On" Tag="music" Click="MusicToggle_Click"/>
                         <MenuItem Header="Start with Windows" Tag="autostart" IsCheckable="True" Click="AutoStartToggle_Click"/>
                         <MenuItem Header="Mây đi dạo" Tag="maywalk" IsCheckable="True" Click="MayWalkToggle_Click"/>
+                        <MenuItem Header="Ẩn khi toàn màn hình" Tag="fullscreen" IsCheckable="True" Click="FullscreenToggle_Click"/>
                         <Separator/>
                         <!-- Filled in code each time the menu opens -->
                         <MenuItem Header="Recent notifications" Tag="history">

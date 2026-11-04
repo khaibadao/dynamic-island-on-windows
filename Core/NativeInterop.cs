@@ -36,6 +36,7 @@ public static class NativeInterop
         int x, int y, int cx, int cy, uint flags);
 
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] private static extern bool IsZoomed(IntPtr hWnd);
     [DllImport("user32.dll")] private static extern IntPtr GetShellWindow();
     [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
@@ -123,6 +124,13 @@ public static class NativeInterop
             GetClassName(hwnd, cls, cls.Capacity);
             var name = cls.ToString();
             if (name is "Progman" or "WorkerW" or "Shell_TrayWnd" or "Shell_SecondaryTrayWnd") return false;
+
+            // A maximized window isn't fullscreen, even when it covers the whole screen
+            // (it does when the taskbar is set to auto-hide). Real fullscreen (F11,
+            // videos, games) isn't "maximized" and has no title bar.
+            if (IsZoomed(hwnd)) return false;
+            const int GWL_STYLE = -16, WS_CAPTION = 0x00C00000;
+            if ((GetWindowLong(hwnd, GWL_STYLE) & WS_CAPTION) == WS_CAPTION) return false;
 
             if (!GetWindowRect(hwnd, out var r)) return false;
 
