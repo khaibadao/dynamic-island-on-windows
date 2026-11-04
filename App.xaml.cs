@@ -135,7 +135,11 @@ public partial class App : Application
     private void ShowOnIsland(NotificationData data, bool keepInHistory, bool bypassDnd = false)
     {
         if (!_enabled || _island == null) return;
-        if (data.SourceKey != null && AppSettings.Current.MutedSources.ContainsKey(data.SourceKey)) return;
+        if (data.SourceKey != null && AppSettings.Current.MutedSources.ContainsKey(data.SourceKey))
+        {
+            CrashLog.Write($"Not shown (muted in the tray menu): {data.AppName}");
+            return;
+        }
 
         if (keepInHistory)
         {
@@ -143,7 +147,11 @@ public partial class App : Application
         }
 
         // Do Not Disturb (quick button in the notch): keep it in the history, don't drop down.
-        if (QuickActions.DoNotDisturb && !bypassDnd) return;
+        if (QuickActions.DoNotDisturb && !bypassDnd)
+        {
+            if (keepInHistory) CrashLog.Write($"Not shown (Do Not Disturb is on): {data.AppName}");
+            return;
+        }
 
         // Real notifications: the notch's eyes open wide first, then it drops down.
         if (keepInHistory && !_island.IsShowing && _notch?.React("surprise") == true)

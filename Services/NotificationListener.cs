@@ -25,6 +25,7 @@ public sealed class NotificationListener
     // per chat) can reuse the same id for the new message.
     private readonly HashSet<string> _seen = new();
     private bool _baselineTaken;
+    private DateTime _lastError;
     private readonly ToastSuppressor _suppressor;
 
     /// <summary>Fired on the background thread when a new notification arrives.</summary>
@@ -42,6 +43,7 @@ public sealed class NotificationListener
         var listener = UserNotificationListener.Current;
 
         var accessStatus = await listener.RequestAccessAsync();
+        CrashLog.Write($"Notification access: {accessStatus}");
         if (accessStatus != UserNotificationListenerAccessStatus.Allowed)
         {
             System.Windows.MessageBox.Show(
@@ -99,6 +101,8 @@ public sealed class NotificationListener
                             if (appModelId != null) _suppressor.SuppressApp(appModelId);
 
                             var data = await ExtractNotificationData(n);
+                            if (data.BrowserLaunchId != null || WebSourceResolver.IsBrowser(appModelId))
+                                CrashLog.Write($"Web notification from {data.AppName}");   // no message text, just the source
                             OnNotificationReceived?.Invoke(data);
 
                             // Keep browser notifications in the notification center:
@@ -118,7 +122,13 @@ public sealed class NotificationListener
             }
             catch (Exception ex) when (!token.IsCancellationRequested)
             {
-                System.Diagnostics.Debug.WriteLine($"[NotificationListener] {ex.Message}");
+                // Note it (at most once a minute) so a silent failure shows up in startup.log
+                if ((DateTime.UtcNow - _lastError).TotalSeconds > 60)
+                {
+                    _lastError = DateTime.UtcNow;
+                    CrashLog.Write($"Reading notifications failed: {ex.GetType().Name}: {ex.Message}");
+                }
+                await Task.Delay(2000, token);   // back off a little, then keep trying
             }
 
             await Task.Delay(500, token);

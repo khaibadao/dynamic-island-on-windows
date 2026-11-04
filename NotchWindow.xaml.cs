@@ -95,6 +95,16 @@ public partial class NotchWindow : Window
     private static readonly string[] Tabs     = { "music", "focus", "notifications", "clipboard" };
     private static readonly string[] TabNames = { "Nhạc", "Trồng cây", "Thông báo", "Copy" };
     private static readonly string[] TabGlyphs = { "\uE8D6", "", "\uEA8F", "\uE77F" };   // tree is drawn
+
+    /// <summary>Each tab's icon has its own colour (the tree draws its own).</summary>
+    private static readonly Color[] TabColours =
+    {
+        Color.FromRgb(0xFF, 0x5C, 0x7A),   // Nhạc: pink-red
+        Color.FromRgb(0x34, 0xC7, 0x59),   // Trồng cây: green
+        Color.FromRgb(0xFF, 0xB0, 0x20),   // Thông báo: orange-yellow
+        Color.FromRgb(0x4D, 0xA3, 0xFF),   // Copy: blue
+        Color.FromRgb(0xB3, 0x8C, 0xFF),   // Hạn chót: purple
+    };
     private string _clipMode = "texts";   // the Copy tab's section: "texts" or "images"
 
     public NotchWindow(MediaWatcher media, FocusService focus, NotificationHistory history, ClipboardService clips)
@@ -679,9 +689,11 @@ public partial class NotchWindow : Window
         {
             var (button, icon, mark) = _side[i];
             bool on = i == current;
-            button.Background = on ? Frozen(Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF)) : Brushes.Transparent;
-            if (icon is TextBlock t) t.Foreground = on ? Brushes.White : Frozen(Color.FromArgb(0xAA, 0xFF, 0xFF, 0xFF));
-            else icon.Opacity = on ? 1 : 0.65;
+            var c = TabColours[Math.Min(i, TabColours.Length - 1)];
+            // Open tab: its colour, bright, on a soft tint of it; the others keep their colour, dimmer
+            button.Background = on ? Frozen(Color.FromArgb(0x33, c.R, c.G, c.B)) : Brushes.Transparent;
+            if (icon is TextBlock t) t.Foreground = Frozen(on ? c : Color.FromArgb(0xA0, c.R, c.G, c.B));
+            icon.Opacity = on ? 1 : 0.8;
             mark.Background = Frozen(accent);
             mark.Opacity = 0;
         }
@@ -866,6 +878,7 @@ public partial class NotchWindow : Window
 
         // Style C: one fixed white for the digits, the bars and (a little softer) the rim
         PillLeaf.Visibility   = focus ? Visibility.Visible : Visibility.Collapsed;
+        DndDot.Visibility     = QuickActions.DoNotDisturb ? Visibility.Visible : Visibility.Collapsed;
         PillClock.On          = PillWhite;
         PillClock.Off         = null;
         PillClockGlow.Opacity = 0;
@@ -1242,10 +1255,12 @@ public partial class NotchWindow : Window
         LyricsStatus.Visibility = Visibility.Visible;
 
         var (_, dur) = _media.GetTimeline();
-        var lines = await LyricsService.FindAsync(_title, _artist, dur);
+        var found = await LyricsService.FindAsync(_title, _artist, dur);
         if (key != _lyricsKey) return;   // the song changed meanwhile
 
-        _lyrics = lines;
+        var lines = found.Lines;
+        // Plain lyrics (no timing) are shown as text; only synced ones highlight and scroll.
+        _lyrics = found.Synced ? lines : Array.Empty<LyricLine>();
         if (lines.Count == 0)
         {
             LyricsStatus.Text = "Không tìm thấy lời bài hát";
@@ -1255,19 +1270,32 @@ public partial class NotchWindow : Window
         }
 
         LyricsStatus.Visibility = Visibility.Collapsed;
+        if (!found.Synced)
+        {
+            LyricsList.Children.Add(new TextBlock
+            {
+                Text = "Lời không chạy theo nhạc", FontSize = 11, FontFamily = new FontFamily("Segoe UI"),
+                Foreground = Frozen(Color.FromArgb(0x88, 0xFF, 0xFF, 0xFF)), Margin = new Thickness(0, 0, 0, 6)
+            });
+        }
         foreach (var line in lines)
         {
             var text = new TextBlock
             {
-                Text = line.Text, FontSize = 15, FontWeight = FontWeights.SemiBold, FontFamily = new FontFamily("Segoe UI"),
-                TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 5, 0, 5), Cursor = Cursors.Hand,
-                Foreground = Frozen(Color.FromArgb(0x55, 0xFF, 0xFF, 0xFF))
+                Text = line.Text.Length == 0 ? " " : line.Text, FontSize = found.Synced ? 15 : 13.5,
+                FontWeight = found.Synced ? FontWeights.SemiBold : FontWeights.Normal, FontFamily = new FontFamily("Segoe UI"),
+                TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, found.Synced ? 5 : 2, 0, found.Synced ? 5 : 2),
+                Foreground = Frozen(found.Synced ? Color.FromArgb(0x55, 0xFF, 0xFF, 0xFF) : Color.FromArgb(0xDD, 0xFF, 0xFF, 0xFF))
             };
-            var at = line.Time;
-            text.MouseLeftButtonUp += (_, _) => { _media.Seek(at); _lyricIndex = -1; };
+            if (found.Synced)
+            {
+                text.Cursor = Cursors.Hand;
+                var at = line.Time;
+                text.MouseLeftButtonUp += (_, _) => { _media.Seek(at); _lyricIndex = -1; };
+            }
             LyricsList.Children.Add(text);
         }
-        UpdateLyrics();
+        if (found.Synced) UpdateLyrics();
     }
 
     /// <summary>Highlights the line being sung and keeps it in the middle.</summary>

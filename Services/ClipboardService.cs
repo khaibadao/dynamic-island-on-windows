@@ -20,6 +20,7 @@ public sealed class ClipItem
     public string? ImageFile { get; set; }    // file name in the clipboard folder
     public bool Pinned { get; set; }
     public string? Source { get; set; }       // the app it was copied from, e.g. "Microsoft Edge"
+    public string? Hash { get; set; }         // images: fingerprint of the pixels, to spot the same picture twice
 
     public bool IsImage => ImageFile != null;
 }
@@ -153,8 +154,20 @@ public sealed class ClipboardService
 
     private void AddImage(BitmapSource image)
     {
+        // Screenshot tools often put the same picture on the clipboard twice in a row:
+        // the same pixels again just moves the existing entry to the top.
+        var hash = PixelHash(image);
+        var same = hash == null ? null : _items.FirstOrDefault(i => i.IsImage && i.Hash == hash);
+        if (same != null)
+        {
+            same.Time = DateTime.Now;
+            Save();
+            Changed?.Invoke();
+            return;
+        }
+
         Directory.CreateDirectory(Folder);
-        var item = new ClipItem { ImageFile = $"{Guid.NewGuid():N}.png", Source = SourceApp() };
+        var item = new ClipItem { ImageFile = $"{Guid.NewGuid():N}.png", Source = SourceApp(), Hash = hash };
         using (var fs = File.Create(ImagePath(item)))
         {
             var enc = new PngBitmapEncoder();
@@ -165,6 +178,22 @@ public sealed class ClipboardService
         Trim();
         Save();
         Changed?.Invoke();
+    }
+
+    private static string? PixelHash(BitmapSource image)
+    {
+        try
+        {
+            var bgra = new FormatConvertedBitmap(image, System.Windows.Media.PixelFormats.Bgra32, null, 0);
+            int stride = bgra.PixelWidth * 4;
+            var pixels = new byte[stride * bgra.PixelHeight];
+            bgra.CopyPixels(pixels, stride, 0);
+            return $"{bgra.PixelWidth}x{bgra.PixelHeight}:" + Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(pixels));
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     /// <summary>Keeps pinned items plus the newest 30 others.</summary>
