@@ -37,6 +37,9 @@ public sealed class AppSettings
     /// <summary>Hạn chót: deadlines you count down to.</summary>
     public List<Deadline> Deadlines { get; set; } = new();
 
+    /// <summary>Colour wash behind the panel: "full", "light" (still picture) or "off".</summary>
+    public string Ambient { get; set; } = "full";
+
     /// <summary>Mây strolls across the notch now and then.</summary>
     public bool MayWalks { get; set; } = true;
 

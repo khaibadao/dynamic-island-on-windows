@@ -19,6 +19,13 @@
                         <MenuItem Header="Start with Windows" Tag="autostart" IsCheckable="True" Click="AutoStartToggle_Click"/>
                         <MenuItem Header="Mây đi dạo" Tag="maywalk" IsCheckable="True" Click="MayWalkToggle_Click"/>
                         <MenuItem Header="Ẩn khi toàn màn hình" Tag="fullscreen" IsCheckable="True" Click="FullscreenToggle_Click"/>
+                        <MenuItem Header="Loang màu" Tag="ambient">
+                            <MenuItem Header="Đầy đủ (màu trôi + ánh tràn ra mép)" Tag="full" IsCheckable="True" Click="Ambient_Click"/>
+                            <MenuItem Header="Nhẹ (ảnh nhòe đứng yên)" Tag="light" IsCheckable="True" Click="Ambient_Click"/>
+                            <MenuItem Header="Tắt" Tag="off" IsCheckable="True" Click="Ambient_Click"/>
+                            <Separator Tag="why"/>
+                            <MenuItem Tag="why" IsEnabled="False"/>
+                        </MenuItem>
                         <Separator/>
                         <!-- Filled in code each time the menu opens -->
                         <MenuItem Header="Recent notifications" Tag="history">

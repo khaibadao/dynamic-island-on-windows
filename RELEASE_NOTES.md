@@ -1,5 +1,10 @@
 Bản chỉnh sửa từ [sadeeshasathsara/dynamic-island-on-windows](https://github.com/sadeeshasathsara/dynamic-island-on-windows) (MIT).
 
+### Mới trong v2.1.0
+- **Loang màu theo bài hát**: nền bảng là chính ảnh bìa được làm nhòe, các mảng màu trôi chậm, đổi bài thì màu chuyển dần. **Ánh màu tràn ra ngoài** ôm theo đúng hình bảng, bo tròn ở hai góc dưới. Viên tai thỏ vẫn giữ LED trắng
+- Menu khay → **Loang màu**: *Đầy đủ*, *Nhẹ* (ảnh nhòe đứng yên) hoặc *Tắt*
+- Tự giảm cho máy yếu: không có tăng tốc đồ họa → tắt; đang Tiết kiệm pin hoặc Windows tắt hiệu ứng hoạt ảnh → chuyển sang Nhẹ; chạy dưới 20 khung hình/giây vài giây liền → chuyển sang Nhẹ và báo một lần. Chỉ chạy khi bảng đang mở
+
 ### Sửa trong v2.0.1
 - **Sóng nhạc nhảy theo nhạc thật**: âm thanh được tách thành 7 dải, trái là tiếng bass / trống, giữa là giọng, phải là tiếng cao. Mỗi thanh tự cân độ nhạy theo bài, bật lên khi trống đánh rồi rơi xuống từ từ. Chỉ phân tích ngay trên máy, không ghi âm, không lưu
 - **Copy ảnh bằng Snipping Tool không còn lưu 2 lần**

@@ -162,6 +162,7 @@ public partial class NotchWindow : Window
         BuildSideBar();
 
         _ready = true;
+        SetUpAmbient();
         _clips.Start(this);   // creates the window handle too
         // Two-finger sideways swipe / tilt wheel → previous / next tab
         System.Windows.Interop.HwndSource.FromHwnd(new System.Windows.Interop.WindowInteropHelper(this).Handle)?.AddHook(SidewaysHook);
@@ -567,12 +568,13 @@ public partial class NotchWindow : Window
             var dur  = TimeSpan.FromMilliseconds(360);
             var sx = new DoubleAnimation(Math.Clamp(fromWidth / w, 0.15, 1), 1, dur) { EasingFunction = grow };
             var sy = new DoubleAnimation(Math.Clamp(fromHeight / h, 0.04, 1), 1, dur) { EasingFunction = grow };
-            sy.Completed += (_, _) => { if (gen == _animation) EndMorph(); };
+            sy.Completed += (_, _) => { if (gen == _animation) { EndMorph(); AmbientOpened(true); } };
             Expanded.BeginAnimation(OpacityProperty, new DoubleAnimation(0.4, 1, TimeSpan.FromMilliseconds(160)));
             ExpandedScale.BeginAnimation(ScaleTransform.ScaleXProperty, sx);
             ExpandedScale.BeginAnimation(ScaleTransform.ScaleYProperty, sy);
         }
 
+        if (wasOpen) AmbientOpened(true);
         if (!_typing) _closeTimer.Start();   // closes again if the mouse just passed by
     }
 
@@ -589,6 +591,7 @@ public partial class NotchWindow : Window
 
         StopMarquee();
         ResetGiveUp();
+        AmbientOpened(false);
         _lyricsTimer.Stop();
         CatPanel.BellyUp = false;
 
@@ -1007,6 +1010,7 @@ public partial class NotchWindow : Window
         MusicAppRun.Text   = string.IsNullOrWhiteSpace(state.AppName) ? ""
                            : string.IsNullOrWhiteSpace(state.Artist) ? state.AppName : "  ·  " + state.AppName;
         FullArt.ImageSource = state.Art;
+        if (!ReferenceEquals(state.Art, _ambientArt)) SetAmbientArt(state.Art);
         PlayPauseGlyph.Text = _playing ? "" : "";   // pause / play icon
         ApplyAccent(ColorExtractor.Dominant(state.Art));
         SetBarsPlaying(_playing);
@@ -1075,6 +1079,163 @@ public partial class NotchWindow : Window
         ExpandedGlow.Color   = hasColour ? vivid : Neutral;
         ExpandedGlow.Opacity = hasColour ? 0.4 : 0.3;
         UpdateStrip();
+        UpdateBleed();
+    }
+
+    // ── Loang màu (colour wash from the cover) ────────────────────────
+    private BitmapSource? _ambientArt;
+    private bool _ambientSlow;          // this computer couldn't keep up: still picture until changed in the tray
+    private bool _ambientOpen;
+    private bool _energySaver;
+
+    /// <summary>"Máy hơi yếu…" and similar one-off notes for the island.</summary>
+    public event Action<string, string>? Notice;
+
+    private void SetUpAmbient()
+    {
+        Expanded.SizeChanged += (_, _) => UpdateBleedSize();
+        try
+        {
+            _energySaver = PowerManager.EnergySaverStatus == EnergySaverStatus.On;
+            PowerManager.EnergySaverStatusChanged += (_, _) => Dispatcher.BeginInvoke(new Action(() =>
+            {
+                _energySaver = PowerManager.EnergySaverStatus == EnergySaverStatus.On;
+                ApplyAmbient();
+            }));
+        }
+        catch { }
+        SystemParameters.StaticPropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(SystemParameters.ClientAreaAnimation)) Dispatcher.BeginInvoke(new Action(ApplyAmbient));
+        };
+        RenderCapability.TierChanged += (_, _) => ApplyAmbient();
+        ApplyAmbient();
+    }
+
+    /// <summary>Why the wash is weaker than chosen in the tray, or null.</summary>
+    public string? AmbientReason
+    {
+        get
+        {
+            if (AppSettings.Current.Ambient == "off") return null;
+            if ((RenderCapability.Tier >> 16) < 2) return "Máy không có tăng tốc đồ họa";
+            if (AppSettings.Current.Ambient == "light") return null;
+            if (_energySaver) return "Đang bật Tiết kiệm pin";
+            if (!SystemParameters.ClientAreaAnimation) return "Windows đang tắt hiệu ứng hoạt ảnh";
+            if (_ambientSlow) return "Máy hơi yếu nên đã tự giảm";
+            return null;
+        }
+    }
+
+    private AmbientLevel AmbientLevelNow()
+    {
+        var chosen = AppSettings.Current.Ambient;
+        if (chosen == "off" || (RenderCapability.Tier >> 16) < 2) return AmbientLevel.Off;
+        if (chosen == "light" || _energySaver || !SystemParameters.ClientAreaAnimation || _ambientSlow) return AmbientLevel.Light;
+        return AmbientLevel.Full;
+    }
+
+    /// <summary>After the tray choice changes (choosing again also forgets "máy hơi yếu").</summary>
+    public void ReapplyAmbient()
+    {
+        _ambientSlow = false;
+        ApplyAmbient();
+    }
+
+    private void ApplyAmbient()
+    {
+        Ambient.Level = AmbientLevelNow();
+        Ambient.Play(_ambientOpen);
+        WatchFps(_ambientOpen && Ambient.Level == AmbientLevel.Full && Ambient.HasArt);
+        UpdateBleed();
+    }
+
+    private void SetAmbientArt(BitmapSource? art)
+    {
+        _ambientArt = art;
+        try { Ambient.SetArt(art); }
+        catch (Exception ex) { CrashLog.Write($"Ambient: {ex.Message}"); Ambient.SetArt(null); }
+        ApplyAmbient();
+    }
+
+    private void AmbientOpened(bool open)
+    {
+        _ambientOpen = open;
+        ApplyAmbient();
+    }
+
+    /// <summary>The glow outside the panel: the blurred cover in the panel's shape, a bit bigger.</summary>
+    private void UpdateBleed()
+    {
+        if (!_ready) return;
+        bool show = _ambientOpen && Ambient.Level != AmbientLevel.Off && Ambient.HasArt && Ambient.Blurred != null;
+        if (show)
+        {
+            var brush = new ImageBrush(Ambient.Blurred) { Stretch = Stretch.UniformToFill };
+            RenderOptions.SetBitmapScalingMode(brush, BitmapScalingMode.HighQuality);
+            brush.Freeze();
+            AmbientBleed.Background = brush;
+            UpdateBleedSize();
+            AmbientBleed.Visibility = Visibility.Visible;
+            AmbientBleed.BeginAnimation(OpacityProperty, new DoubleAnimation(0.85, TimeSpan.FromMilliseconds(350)));
+            ExpandedGlow.Opacity = 0.12;   // the wash's own glow takes over
+        }
+        else if (AmbientBleed.Visibility == Visibility.Visible)
+        {
+            var fade = new DoubleAnimation(0, TimeSpan.FromMilliseconds(120));
+            fade.Completed += (_, _) => { if (AmbientBleed.Opacity < 0.01) AmbientBleed.Visibility = Visibility.Collapsed; };
+            AmbientBleed.BeginAnimation(OpacityProperty, fade);
+        }
+    }
+
+    private void UpdateBleedSize()
+    {
+        // 28 px past each side and 34 px below, but never past the window (no straight edges)
+        double w = Expanded.ActualWidth, h = Expanded.ActualHeight;
+        if (w <= 0) return;
+        double side = Math.Clamp((ActualWidth - 48 - w) / 2 - 34, 0, 28);
+        AmbientBleed.Width  = w + side * 2;
+        AmbientBleed.Height = h + 34;
+    }
+
+    // Too slow for the moving wash? Count frames while it's open.
+    private bool _watchingFps;
+    private int _frames, _slowSeconds, _fpsSkip;
+    private DateTime _fpsStart;
+    private TimeSpan _lastRender;
+
+    private void WatchFps(bool on)
+    {
+        if (on == _watchingFps) return;
+        _watchingFps = on;
+        if (on)
+        {
+            _frames = 0; _slowSeconds = 0; _fpsSkip = 1; _fpsStart = DateTime.UtcNow;
+            CompositionTarget.Rendering += CountFrame;
+        }
+        else CompositionTarget.Rendering -= CountFrame;
+    }
+
+    private void CountFrame(object? sender, EventArgs e)
+    {
+        if (e is RenderingEventArgs r)
+        {
+            if (r.RenderingTime == _lastRender) return;
+            _lastRender = r.RenderingTime;
+        }
+        _frames++;
+        double seconds = (DateTime.UtcNow - _fpsStart).TotalSeconds;
+        if (seconds < 1) return;
+        double fps = _frames / seconds;
+        _frames = 0;
+        _fpsStart = DateTime.UtcNow;
+        if (_fpsSkip-- > 0) return;   // the opening animation isn't a fair test
+        _slowSeconds = fps < 20 ? _slowSeconds + 1 : 0;
+        if (_slowSeconds < 3) return;
+        _ambientSlow = true;
+        CrashLog.Write($"Ambient: {fps:0} fps, switching to the still picture");
+        ApplyAmbient();
+        Notice?.Invoke("Máy hơi yếu, đã giảm hiệu ứng loang màu", "Chỉnh lại ở menu khay → Loang màu");
     }
 
     private bool _leafSwaying;

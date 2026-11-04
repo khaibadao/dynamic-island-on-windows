@@ -482,6 +482,14 @@
             </Grid>
         </Border>
 
+        <!-- Loang màu: the cover's colours glowing out past the panel's edge, in the panel's own shape -->
+        <Border x:Name="AmbientBleed" HorizontalAlignment="Center" VerticalAlignment="Top" CornerRadius="0,0,58,58"
+                IsHitTestVisible="False" Opacity="0" Visibility="Collapsed">
+            <Border.Effect>
+                <BlurEffect Radius="30" RenderingBias="Performance"/>
+            </Border.Effect>
+        </Border>
+
         <!-- ══════════ EXPANDED ══════════ -->
         <!-- status row on top · icon sidebar on the left · the tab's content -->
         <Border x:Name="Expanded"
@@ -513,6 +521,9 @@
                     <ColumnDefinition Width="44"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
+
+                <!-- Loang màu: the blurred cover behind everything (fills the padding too) -->
+                <ui:AmbientBackdrop x:Name="Ambient" Grid.RowSpan="2" Grid.ColumnSpan="2" Margin="-6,-6,-10,-10" CornerRadius="23"/>
 
                 <!-- Status row: time · battery · headphones | quick buttons -->
                 <Grid Grid.Column="1" Margin="2,0,0,6">

@@ -75,7 +75,7 @@ public partial class App : Application
 
         // Rebuild the history / muted lists each time the tray menu opens
         if (Current.Resources["TrayIcon"] is Hardcodet.Wpf.TaskbarNotification.TaskbarIcon { ContextMenu: { } menu })
-            menu.Opened += (_, _) => RebuildDynamicMenus();
+            menu.Opened += (_, _) => { RebuildDynamicMenus(); UpdateNotchMenu(); };
 
         // The notch: music, tree planting, volume, recent notifications
         _media  = new MediaWatcher { Enabled = AppSettings.Current.MusicEnabled };
@@ -84,6 +84,10 @@ public partial class App : Application
         _notch  = new NotchWindow(_media, _focus, _history, _clips);
         _notch.MuteRequested += Mute;
         _notch.Distracted += name => _focusWidget?.Nudge(name);
+        _notch.Notice += (title, body) => ShowOnIsland(new NotificationData
+        {
+            AppName = "Dynamic Island", Title = title, Body = body, Glyph = "\uE790", GlyphColor = "#FF5C7A"
+        }, keepInHistory: false);
 
         // Presenting (slide show / sharing the screen): the notch steps aside, notifications wait
         _presenting = new PresentationWatcher();
@@ -341,6 +345,16 @@ public partial class App : Application
             if (obj is MenuItem { Tag: "notch" } item)   item.IsChecked = _notch?.NotchEnabled == true;
             if (obj is MenuItem { Tag: "maywalk" } walk) walk.IsChecked = AppSettings.Current.MayWalks;
             if (obj is MenuItem { Tag: "fullscreen" } fs) fs.IsChecked = AppSettings.Current.HideInFullscreen;
+            if (obj is MenuItem { Tag: "ambient" } amb)
+            {
+                string? why = _notch?.AmbientReason;
+                foreach (var sub in amb.Items)
+                {
+                    if (sub is MenuItem { Tag: "why" } info) { info.Header = why != null ? $"Đang giảm: {why}" : ""; info.Visibility = why != null ? Visibility.Visible : Visibility.Collapsed; }
+                    else if (sub is Separator { Tag: "why" } line) line.Visibility = why != null ? Visibility.Visible : Visibility.Collapsed;
+                    else if (sub is MenuItem { Tag: string mode } choice) choice.IsChecked = AppSettings.Current.Ambient == mode;
+                }
+            }
         }
     }
 
@@ -349,6 +363,16 @@ public partial class App : Application
     {
         AppSettings.Current.HideInFullscreen = !AppSettings.Current.HideInFullscreen;
         AppSettings.Current.Save();
+        UpdateNotchMenu();
+    }
+
+    /// <summary>Loang màu: full / light / off.</summary>
+    private void Ambient_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { Tag: string mode }) return;
+        AppSettings.Current.Ambient = mode;
+        AppSettings.Current.Save();
+        _notch?.ReapplyAmbient();
         UpdateNotchMenu();
     }
 
