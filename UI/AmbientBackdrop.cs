@@ -52,6 +52,7 @@ public sealed class AmbientBackdrop : Grid
             }, new Point(0, 0), new Point(0, 1))
         };
         _shade.Fill.Freeze();
+        _shade.Visibility = Visibility.Collapsed;   // only over a cover
         Children.Add(_shade);
         SizeChanged += (_, _) => ClipBottomCorners();
     }
@@ -89,12 +90,14 @@ public sealed class AmbientBackdrop : Grid
         if (art == null)
         {
             Blurred = null;
+            _shade.Visibility = Visibility.Collapsed;
             foreach (var old in _layers.ToArray()) FadeOut(old);
             return;
         }
 
         var (blurred, colours) = Prepare(art);
         Blurred = blurred;
+        _shade.Visibility = Visibility.Visible;
         var layer = BuildLayer(blurred, colours);
         Children.Insert(Children.Count - 1, layer.Root);   // under the shade
         var previous = _layers.ToArray();

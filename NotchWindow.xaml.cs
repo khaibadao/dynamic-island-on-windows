@@ -993,6 +993,7 @@ public partial class NotchWindow : Window
             SeekBar.IsPlaying = false;
             StopMarquee();
             ApplyAccent(null);
+            if (_ambientArt != null) SetAmbientArt(null);
             UpdatePill();
             ApplyLyricsLayout(false);
             UpdateCat();
