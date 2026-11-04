@@ -57,6 +57,24 @@ public sealed class AmbientBackdrop : Grid
         SizeChanged += (_, _) => ClipBottomCorners();
     }
 
+    /// <summary>
+    /// Takes no room of its own: it only fills whatever size the panel's content
+    /// already has (otherwise the big picture and blobs would stretch the panel).
+    /// </summary>
+    protected override Size MeasureOverride(Size constraint)
+    {
+        foreach (UIElement child in InternalChildren)
+            child.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        return new Size(0, 0);
+    }
+
+    protected override Size ArrangeOverride(Size arrangeSize)
+    {
+        foreach (UIElement child in InternalChildren)
+            child.Arrange(new Rect(arrangeSize));
+        return arrangeSize;
+    }
+
     /// <summary>Radius of the panel's bottom corners, so the wash follows them exactly.</summary>
     public double CornerRadius { get; set; } = 23;
 
