@@ -1,5 +1,28 @@
 Bản chỉnh sửa từ [sadeeshasathsara/dynamic-island-on-windows](https://github.com/sadeeshasathsara/dynamic-island-on-windows) (MIT).
 
+### Mới trong v2.0.0
+**Trồng cây làm lại**
+- **Thước kéo** chọn thời gian từ **5 phút đến 3 giờ** (kéo ngang hoặc lăn chuột, mỗi nấc 5 phút)
+- **12 loại cây có hoạt ảnh** (lá đung đưa, hoa rơi, đom đóm nhấp nháy…): Sồi xanh, Thông tuyết, Anh đào có sẵn; Xương rồng nở hoa, Cam vàng, Trúc xanh, Phong đỏ, Liễu rủ, Tử đằng, Cây đom đóm, Cây pha lê, Bonsai cổ thụ **mở khoá theo số cây đã trồng** (3 → 70 cây)
+- **Deep focus**: đang trồng cây mà mở YouTube, Facebook, TikTok, Steam… thì tai thỏ nhắc quay lại (mắt giận + khung đếm giờ đổi màu cam). **Chỉ nhắc, cây không chết**. Danh sách sửa được, thêm app / trang tuỳ ý. Thông báo trong lúc tập trung được **giữ lại**, trồng xong hiện một thông báo tổng
+- **Thống kê Ngày / Tuần / Tháng / Năm** kèm **mảnh đất** vẽ lại tất cả cây bạn đã trồng (cây chết thành cây héo)
+
+**Hạn chót** (tab mới, biểu tượng tím)
+- Gõ tự nhiên: `Nộp báo cáo PRO 15/11 17h`, `Thi mai 9h30`, `Họp nhóm thứ 6 20h`. Không ghi giờ thì tính 23:59
+- Đếm ngược đổi màu (tím → cam khi còn dưới 1 ngày → đỏ khi dưới 1 giờ). Nhắc **trước 1 ngày, trước 1 giờ và lúc đến hạn**, kể cả khi bật Không làm phiền. Tự xoá 2 ngày sau hạn
+
+**Khác**
+- **Tự cập nhật**: có bản mới thì tai thỏ báo, **bấm vào là tự tải và mở lại**. Menu khay có **Kiểm tra cập nhật**
+- **Sóng nhạc chạy theo âm thanh thật** (to nhỏ theo bài hát)
+- **Chế độ thuyết trình**: khi trình chiếu PowerPoint hoặc chia sẻ màn hình (Meet, Zoom, Teams) tai thỏ tự ẩn, thông báo giữ lại và báo tổng sau
+- **Chấm Không làm phiền** nhỏ trên viên khi đang bật
+- Biểu tượng thanh bên **có màu**: Nhạc hồng đỏ, Trồng cây xanh lá, Thông báo cam vàng, Copy xanh dương, Hạn chót tím
+
+### Sửa trong v2.0.0
+- **Copy ảnh không còn lưu 2 lần** (ảnh giống hệt chỉ được đưa lên đầu)
+- **Lời bài hát tìm được nhiều bài hơn**: làm sạch tên bài YouTube (Official MV, Lyrics, ft…), thêm kho lời **NetEase**, và nếu chỉ có lời thường thì vẫn hiện (ghi "Lời không chạy theo nhạc")
+- Thông báo Edge: ghi thêm chẩn đoán vào `startup.log` (quyền truy cập thông báo, thông báo nào bị bỏ qua vì sao) để tìm lỗi không nhận thông báo
+
 ### Sửa trong v1.9.1
 - Sửa lỗi **tai thỏ tự ẩn khi mở Edge / tab khác** trên một số máy (thường là máy đặt thanh taskbar **tự ẩn**: cửa sổ phóng to khi đó phủ kín màn hình nên bị tưởng nhầm là đang xem phim toàn màn hình). Giờ chỉ ẩn khi thật sự toàn màn hình (F11, video, game)
 - Menu khay thêm **Ẩn khi toàn màn hình**: tắt đi nếu muốn tai thỏ luôn hiện
