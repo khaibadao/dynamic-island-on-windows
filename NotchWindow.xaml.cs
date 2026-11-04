@@ -1742,13 +1742,13 @@ public partial class NotchWindow : Window
         var left  = new Point(ox - n * tw / 2, oy + n * th / 2);
         var bottom = new Point(ox, oy + n * th);
         var right = new Point(ox + n * tw / 2, oy + n * th / 2);
-        Land.Children.Add(new Polygon { Points = { left, bottom, new Point(bottom.X, bottom.Y + 10), new Point(left.X, left.Y + 10) }, Fill = Frozen(Color.FromRgb(0x7A, 0x52, 0x33)) });
-        Land.Children.Add(new Polygon { Points = { bottom, right, new Point(right.X, right.Y + 10), new Point(bottom.X, bottom.Y + 10) }, Fill = Frozen(Color.FromRgb(0x5E, 0x3E, 0x26)) });
+        Land.Children.Add(new System.Windows.Shapes.Polygon { Points = { left, bottom, new Point(bottom.X, bottom.Y + 10), new Point(left.X, left.Y + 10) }, Fill = Frozen(Color.FromRgb(0x7A, 0x52, 0x33)) });
+        Land.Children.Add(new System.Windows.Shapes.Polygon { Points = { bottom, right, new Point(right.X, right.Y + 10), new Point(bottom.X, bottom.Y + 10) }, Fill = Frozen(Color.FromRgb(0x5E, 0x3E, 0x26)) });
         for (int r = 0; r < n; r++)
             for (int c = 0; c < n; c++)
             {
                 double x = ox + (c - r) * tw / 2, y = oy + (c + r) * th / 2;
-                Land.Children.Add(new Polygon
+                Land.Children.Add(new System.Windows.Shapes.Polygon
                 {
                     Points = { new Point(x, y), new Point(x + tw / 2, y + th / 2), new Point(x, y + th), new Point(x - tw / 2, y + th / 2) },
                     Fill = Frozen((r + c) % 2 == 0 ? Color.FromRgb(0x6F, 0xBF, 0x52) : Color.FromRgb(0x79, 0xC9, 0x5A))
