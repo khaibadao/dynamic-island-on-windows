@@ -1,5 +1,12 @@
 Bản chỉnh sửa từ [sadeeshasathsara/dynamic-island-on-windows](https://github.com/sadeeshasathsara/dynamic-island-on-windows) (MIT).
 
+### Mới trong v2.2.0
+- **Nốt nhạc trôi**: thay cho ảnh bìa xoay, phía sau bảng giờ là 7 nốt nhạc (♪ ♫ ♬ 𝄞) mang màu chủ đạo của bài hát, nhòe như khói màu, trôi ngang thật chậm, nhấp nhô và nghiêng nhẹ. Nền giữ tông màu sáng, rõ như v2.1.1
+- **Bỏ ánh loang ra ngoài viền bảng**
+
+### Sửa trong v2.2.0
+- **Hết khựng**: mỗi nốt và mảng màu chỉ vẽ (và làm nhòe) một lần rồi chỉ dịch chuyển, nhịp đều 30 khung hình/giây; bỏ lớp ánh ngoài viền vốn bị làm nhòe lại liên tục; sóng nhạc ngừng phân tích âm thanh khi bảng đang mở
+
 ### Sửa trong v2.1.1
 - Sửa lỗi **bảng bị phóng to hết khung** khi bật Loang màu (bản v2.1.0 đã gỡ). Lớp loang màu giờ chỉ phủ phía sau, không làm bảng to ra
 

@@ -1094,7 +1094,6 @@ public partial class NotchWindow : Window
 
     private void SetUpAmbient()
     {
-        Expanded.SizeChanged += (_, _) => UpdateBleedSize();
         try
         {
             _energySaver = PowerManager.EnergySaverStatus == EnergySaverStatus.On;
@@ -1165,39 +1164,8 @@ public partial class NotchWindow : Window
         ApplyAmbient();
     }
 
-    /// <summary>The glow outside the panel: the blurred cover in the panel's shape, a bit bigger.</summary>
-    private void UpdateBleed()
-    {
-        if (!_ready) return;
-        bool show = _ambientOpen && Ambient.Level != AmbientLevel.Off && Ambient.HasArt && Ambient.Blurred != null;
-        if (show)
-        {
-            var brush = new ImageBrush(Ambient.Blurred) { Stretch = Stretch.UniformToFill };
-            RenderOptions.SetBitmapScalingMode(brush, BitmapScalingMode.HighQuality);
-            brush.Freeze();
-            AmbientBleed.Background = brush;
-            UpdateBleedSize();
-            AmbientBleed.Visibility = Visibility.Visible;
-            AmbientBleed.BeginAnimation(OpacityProperty, new DoubleAnimation(0.85, TimeSpan.FromMilliseconds(350)));
-            ExpandedGlow.Opacity = 0.12;   // the wash's own glow takes over
-        }
-        else if (AmbientBleed.Visibility == Visibility.Visible)
-        {
-            var fade = new DoubleAnimation(0, TimeSpan.FromMilliseconds(120));
-            fade.Completed += (_, _) => { if (AmbientBleed.Opacity < 0.01) AmbientBleed.Visibility = Visibility.Collapsed; };
-            AmbientBleed.BeginAnimation(OpacityProperty, fade);
-        }
-    }
-
-    private void UpdateBleedSize()
-    {
-        // 28 px past each side and 34 px below, but never past the window (no straight edges)
-        double w = Expanded.ActualWidth, h = Expanded.ActualHeight;
-        if (w <= 0) return;
-        double side = Math.Clamp((ActualWidth - 48 - w) / 2 - 34, 0, 28);
-        AmbientBleed.Width  = w + side * 2;
-        AmbientBleed.Height = h + 34;
-    }
+    /// <summary>The panel's own soft glow stays as it always was (the glow outside the panel was dropped).</summary>
+    private void UpdateBleed() { }
 
     // Too slow for the moving wash? Count frames while it's open.
     private bool _watchingFps;
@@ -1303,9 +1271,9 @@ public partial class NotchWindow : Window
     private void MeterTick()
     {
         var bars = Bars;
-        if (PillBars.Visibility != Visibility.Visible || !IsVisible)
+        if (!PillBars.IsVisible)
         {
-            _spectrum.Stop();   // nobody's looking: stop listening
+            _spectrum.Stop();   // nobody's looking (hidden, or the panel is open): stop listening
             return;
         }
 

@@ -141,29 +141,37 @@ public sealed class AmbientBackdrop : Grid
         _layers.Remove(layer);
     }
 
+    // Seven notes, each on its own slow path: x/y where it starts (share of the panel),
+    // font size, seconds to cross the panel, how far it bobs, how much it tilts, colour.
+    private static readonly (string Glyph, double X, double Y, double Size, double Cross, double Bob, double Tilt, int Colour)[] Notes =
+    {
+        ("\u266A", 0.08, 0.50, 66, 130, 14, 14, 0),
+        ("\u266B", 0.27, 0.25, 60, 160, 18, 10, 1),
+        ("\U0001D11E", 0.46, 0.55, 88, 215, 10, 8, 2),
+        ("\u266C", 0.63, 0.30, 62, 145, 16, 16, 0),
+        ("\u266A", 0.80, 0.65, 52, 118, 20, 18, 1),
+        ("\u2669", 0.93, 0.22, 50, 185, 12, 12, 2),
+        ("\u266B", 0.38, 0.85, 56, 150, 14, 12, 1),
+    };
+
     private Layer BuildLayer(BitmapSource blurred, Color[] colours)
     {
         var root = new Grid { Opacity = 0 };
         var layer = new Layer { Root = root };
+        double w = ActualWidth > 0 ? ActualWidth : 640, h = ActualHeight > 0 ? ActualHeight : 220;
 
-        // The cover itself, much bigger than the panel, slowly turning and wandering
-        var scale  = new ScaleTransform(1.7, 1.7);
-        var rotate = new RotateTransform(0);
-        var shift  = new TranslateTransform();
-        var cover = new Image
+        // Base: the song's colours, bright and clear
+        Color Scale(Color c, double k) => Color.FromRgb((byte)(c.R * k), (byte)(c.G * k), (byte)(c.B * k));
+        var baseFill = new LinearGradientBrush(new GradientStopCollection
         {
-            Source = blurred, Stretch = Stretch.UniformToFill,
-            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
-            RenderTransformOrigin = new Point(0.5, 0.5),
-            RenderTransform = new TransformGroup { Children = { scale, rotate, shift } }
-        };
-        RenderOptions.SetBitmapScalingMode(cover, BitmapScalingMode.HighQuality);
-        root.Children.Add(cover);
-        layer.Moves.Add((rotate, RotateTransform.AngleProperty, Loop(0, 360, 140, autoReverse: false)));
-        layer.Moves.Add((shift, TranslateTransform.XProperty, Loop(-40, 40, 23)));
-        layer.Moves.Add((shift, TranslateTransform.YProperty, Loop(-18, 18, 17)));
+            new(Scale(colours[0], 0.7), 0),
+            new(Scale(colours[2], 0.55), 0.6),
+            new(Color.FromRgb(12, 10, 16), 1)
+        }, new Point(0, 0), new Point(1, 1));
+        baseFill.Freeze();
+        root.Children.Add(new Rectangle { Fill = baseFill });
 
-        // Three soft blobs of the cover's colours, each on its own slow loop
+        // Three soft glows of colour wandering underneath (each drawn once, then only moved)
         var paths = new[] { (-170.0, -50.0, 150.0, 40.0, 19.0, 13.0), (150.0, 30.0, -120.0, -40.0, 23.0, 16.0), (0.0, 70.0, 60.0, -60.0, 29.0, 21.0) };
         for (int i = 0; i < 3; i++)
         {
@@ -174,10 +182,11 @@ public sealed class AmbientBackdrop : Grid
                 HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
                 Fill = new RadialGradientBrush(new GradientStopCollection
                 {
-                    new(Color.FromArgb(0xD0, c.R, c.G, c.B), 0),
-                    new(Color.FromArgb(0x60, c.R, c.G, c.B), 0.5),
+                    new(Color.FromArgb(0x8C, c.R, c.G, c.B), 0),
+                    new(Color.FromArgb(0x40, c.R, c.G, c.B), 0.5),
                     new(Color.FromArgb(0x00, c.R, c.G, c.B), 1)
-                })
+                }),
+                CacheMode = new BitmapCache()
             };
             blob.Fill.Freeze();
             var (x0, y0, x1, y1, tx, ty) = paths[i];
@@ -187,15 +196,58 @@ public sealed class AmbientBackdrop : Grid
             layer.Moves.Add((move, TranslateTransform.XProperty, Loop(x0, x1, tx)));
             layer.Moves.Add((move, TranslateTransform.YProperty, Loop(y0, y1, ty)));
         }
+
+        // The notes: blurred like coloured smoke (blurred once, kept as a picture),
+        // drifting sideways across the panel, bobbing and tilting a little.
+        var symbols = new FontFamily("Segoe UI Symbol, Segoe UI Emoji, Segoe UI");
+        foreach (var n in Notes)
+        {
+            var c = colours[n.Colour];
+            var tint = Color.FromArgb(0xD8, (byte)Math.Min(255, c.R + 40), (byte)Math.Min(255, c.G + 40), (byte)Math.Min(255, c.B + 40));
+            var glyph = new TextBlock
+            {
+                Text = n.Glyph, FontFamily = symbols, FontSize = n.Size, Foreground = new SolidColorBrush(tint),
+                Margin = new Thickness(14),   // room for the blur
+                Effect = new BlurEffect { Radius = 13, RenderingBias = RenderingBias.Performance }
+            };
+            var shift = new TranslateTransform(n.X * w, n.Y * h - n.Size * 0.7);
+            var tilt  = new RotateTransform(0);
+            var note = new Border
+            {
+                Child = glyph, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+                RenderTransformOrigin = new Point(0.5, 0.5),
+                RenderTransform = new TransformGroup { Children = { tilt, shift } },
+                CacheMode = new BitmapCache()   // the blur is worked out once; moving it is then cheap
+            };
+            root.Children.Add(note);
+
+            // Sideways: from where it starts to past the right edge, then round again from the left
+            double from = -n.Size * 1.5, to = w + n.Size * 0.5;
+            double start = n.X * w;
+            var across = new DoubleAnimation(from, to, TimeSpan.FromSeconds(n.Cross)) { RepeatBehavior = RepeatBehavior.Forever };
+            across.BeginTime = -TimeSpan.FromSeconds(n.Cross * (start - from) / (to - from));
+            layer.Moves.Add((shift, TranslateTransform.XProperty, Smooth(across)));
+
+            double y = n.Y * h - n.Size * 0.7;
+            layer.Moves.Add((shift, TranslateTransform.YProperty, Loop(y - n.Bob, y + n.Bob, 9 + n.Colour * 1.3)));
+            layer.Moves.Add((tilt, RotateTransform.AngleProperty, Loop(-n.Tilt, n.Tilt, 14 + n.Colour * 2)));
+        }
         return layer;
     }
 
-    private static DoubleAnimation Loop(double from, double to, double seconds, bool autoReverse = true) =>
-        new(from, to, TimeSpan.FromSeconds(seconds))
+    /// <summary>A steady 30 frames a second: smooth enough for slow drifting, and even.</summary>
+    private static AnimationTimeline Smooth(AnimationTimeline a)
+    {
+        Timeline.SetDesiredFrameRate(a, 30);
+        return a;
+    }
+
+    private static AnimationTimeline Loop(double from, double to, double seconds, bool autoReverse = true) =>
+        Smooth(new DoubleAnimation(from, to, TimeSpan.FromSeconds(seconds))
         {
             AutoReverse = autoReverse, RepeatBehavior = RepeatBehavior.Forever,
             EasingFunction = autoReverse ? new SineEase { EasingMode = EasingMode.EaseInOut } : null
-        };
+        });
 
     /// <summary>Top corners square (they meet the screen edge), bottom ones rounded like the panel.</summary>
     private void ClipBottomCorners()

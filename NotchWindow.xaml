@@ -482,14 +482,6 @@
             </Grid>
         </Border>
 
-        <!-- Loang màu: the cover's colours glowing out past the panel's edge, in the panel's own shape -->
-        <Border x:Name="AmbientBleed" HorizontalAlignment="Center" VerticalAlignment="Top" CornerRadius="0,0,58,58"
-                IsHitTestVisible="False" Opacity="0" Visibility="Collapsed">
-            <Border.Effect>
-                <BlurEffect Radius="30" RenderingBias="Performance"/>
-            </Border.Effect>
-        </Border>
-
         <!-- ══════════ EXPANDED ══════════ -->
         <!-- status row on top · icon sidebar on the left · the tab's content -->
         <Border x:Name="Expanded"
