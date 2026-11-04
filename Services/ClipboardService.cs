@@ -154,10 +154,19 @@ public sealed class ClipboardService
 
     private void AddImage(BitmapSource image)
     {
-        // Screenshot tools often put the same picture on the clipboard twice in a row:
-        // the same pixels again just moves the existing entry to the top.
+        // Screenshot tools (Snipping Tool) put the same picture on the clipboard
+        // twice in a row, the second copy a little different inside (e.g. with or
+        // without transparency). So: the same picture (colours only), or a picture
+        // of the same size from the same app within 3 seconds, counts as one.
         var hash = PixelHash(image);
+        var source = SourceApp();
+        string size = $"{image.PixelWidth}x{image.PixelHeight}";
         var same = hash == null ? null : _items.FirstOrDefault(i => i.IsImage && i.Hash == hash);
+        var justNow = _items.Where(i => i.IsImage && i.Hash != null && i.Hash.StartsWith(size + ":")
+                                         && (DateTime.Now - i.Time).TotalSeconds < 3
+                                         && (source == null || i.Source == null || i.Source == source))
+                            .OrderByDescending(i => i.Time).FirstOrDefault();
+        same ??= justNow;
         if (same != null)
         {
             same.Time = DateTime.Now;
@@ -167,7 +176,7 @@ public sealed class ClipboardService
         }
 
         Directory.CreateDirectory(Folder);
-        var item = new ClipItem { ImageFile = $"{Guid.NewGuid():N}.png", Source = SourceApp(), Hash = hash };
+        var item = new ClipItem { ImageFile = $"{Guid.NewGuid():N}.png", Source = source, Hash = hash };
         using (var fs = File.Create(ImagePath(item)))
         {
             var enc = new PngBitmapEncoder();
@@ -180,6 +189,7 @@ public sealed class ClipboardService
         Changed?.Invoke();
     }
 
+    /// <summary>Size + a fingerprint of the colours (transparency ignored).</summary>
     private static string? PixelHash(BitmapSource image)
     {
         try
@@ -188,6 +198,7 @@ public sealed class ClipboardService
             int stride = bgra.PixelWidth * 4;
             var pixels = new byte[stride * bgra.PixelHeight];
             bgra.CopyPixels(pixels, stride, 0);
+            for (int i = 3; i < pixels.Length; i += 4) pixels[i] = 0;
             return $"{bgra.PixelWidth}x{bgra.PixelHeight}:" + Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(pixels));
         }
         catch

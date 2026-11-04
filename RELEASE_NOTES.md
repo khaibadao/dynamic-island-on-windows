@@ -1,5 +1,10 @@
 Bản chỉnh sửa từ [sadeeshasathsara/dynamic-island-on-windows](https://github.com/sadeeshasathsara/dynamic-island-on-windows) (MIT).
 
+### Sửa trong v2.0.1
+- **Sóng nhạc nhảy theo nhạc thật**: âm thanh được tách thành 7 dải, trái là tiếng bass / trống, giữa là giọng, phải là tiếng cao. Mỗi thanh tự cân độ nhạy theo bài, bật lên khi trống đánh rồi rơi xuống từ từ. Chỉ phân tích ngay trên máy, không ghi âm, không lưu
+- **Copy ảnh bằng Snipping Tool không còn lưu 2 lần**
+- **Chiếc lá khi trồng cây** vẽ lại: lá xanh có cuống và gân, **lay nhẹ** như có gió
+
 ### Mới trong v2.0.0
 **Trồng cây làm lại**
 - **Thước kéo** chọn thời gian từ **5 phút đến 3 giờ** (kéo ngang hoặc lăn chuột, mỗi nấc 5 phút)

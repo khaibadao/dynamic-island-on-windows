@@ -891,6 +891,7 @@ public partial class NotchWindow : Window
 
         // Style C: one fixed white for the digits, the bars and (a little softer) the rim
         PillLeaf.Visibility   = focus ? Visibility.Visible : Visibility.Collapsed;
+        SwayLeaf(focus);
         DndDot.Visibility     = QuickActions.DoNotDisturb ? Visibility.Visible : Visibility.Collapsed;
         PillClock.On          = PillWhite;
         PillClock.Off         = null;
@@ -1076,30 +1077,50 @@ public partial class NotchWindow : Window
         UpdateStrip();
     }
 
+    private bool _leafSwaying;
+
+    /// <summary>The leaf rocks a few degrees on its stem, like in a light breeze.</summary>
+    private void SwayLeaf(bool on)
+    {
+        if (on == _leafSwaying) return;
+        _leafSwaying = on;
+        if (!on) { PillLeafSway.BeginAnimation(RotateTransform.AngleProperty, null); PillLeafSway.Angle = 0; return; }
+        var sway = new DoubleAnimationUsingKeyFrames { RepeatBehavior = RepeatBehavior.Forever, Duration = TimeSpan.FromSeconds(3.2) };
+        var ease = new SineEase { EasingMode = EasingMode.EaseInOut };
+        sway.KeyFrames.Add(new EasingDoubleKeyFrame(-7, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(0.9)), ease));
+        sway.KeyFrames.Add(new EasingDoubleKeyFrame(5, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(2.0)), ease));
+        sway.KeyFrames.Add(new EasingDoubleKeyFrame(-2, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(2.7)), ease));
+        sway.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(3.2)), ease));
+        PillLeafSway.BeginAnimation(RotateTransform.AngleProperty, sway);
+    }
+
     private System.Windows.Shapes.Rectangle[] Bars => new[] { Bar1, Bar2, Bar3, Bar4, Bar5, Bar6, Bar7 };
 
+    private readonly AudioSpectrum _spectrum = new();
     private readonly AudioMeter _meter = new();
     private DispatcherTimer? _meterTimer;
     private readonly double[] _barLevel = new double[7];
+    private readonly double[] _bands = new double[AudioSpectrum.BandCount];
     private static readonly double[] BarWeight = { 0.55, 0.8, 1.0, 0.9, 1.0, 0.75, 0.5 };
     private readonly Random _barRandom = new();
 
     /// <summary>
-    /// While music plays the bars follow the real sound (Windows' peak meter);
-    /// if that can't be read they fall back to a looping animation.
+    /// While music plays each bar follows one band of the real sound, bass on
+    /// the left to treble on the right. If Windows won't share the sound, the
+    /// overall loudness is used; failing that, a looping animation.
     /// </summary>
     private void SetBarsPlaying(bool playing)
     {
         var bars = Bars;
         var rest = new[] { 0.3, 0.55, 0.4, 0.7, 0.45, 0.6, 0.35 };
 
-        if (playing && _meter.Peak() != null)
+        if (playing && (_spectrum.Start() || _meter.Peak() != null))
         {
             foreach (var b in bars)
                 if (b.RenderTransform is ScaleTransform sc) sc.BeginAnimation(ScaleTransform.ScaleYProperty, null);
             if (_meterTimer == null)
             {
-                _meterTimer = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(50) };
+                _meterTimer = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(30) };
                 _meterTimer.Tick += (_, _) => MeterTick();
             }
             _meterTimer.Start();
@@ -1107,6 +1128,7 @@ public partial class NotchWindow : Window
         }
 
         _meterTimer?.Stop();
+        _spectrum.Stop();
         if (playing) { AnimateBars(); return; }
         for (int i = 0; i < bars.Length; i++)
         {
@@ -1118,21 +1140,35 @@ public partial class NotchWindow : Window
 
     private void MeterTick()
     {
-        if (PillBars.Visibility != Visibility.Visible || !IsVisible) return;
-        var peak = _meter.Peak();
-        if (peak == null) { _meterTimer?.Stop(); AnimateBars(); return; }
-
-        // Peaks are small for quiet songs; a soft curve makes the bars readable.
-        double level = Math.Min(1, Math.Sqrt(peak.Value) * 1.15);
         var bars = Bars;
+        if (PillBars.Visibility != Visibility.Visible || !IsVisible)
+        {
+            _spectrum.Stop();   // nobody's looking: stop listening
+            return;
+        }
+
+        double[] target = new double[bars.Length];
+        if (_spectrum.Start())
+        {
+            _spectrum.Read(_bands);
+            for (int i = 0; i < bars.Length; i++) target[i] = 0.12 + 0.88 * _bands[i];
+        }
+        else
+        {
+            var peak = _meter.Peak();
+            if (peak == null) { _meterTimer?.Stop(); AnimateBars(); return; }
+            double level = Math.Min(1, Math.Sqrt(peak.Value) * 1.15);
+            for (int i = 0; i < bars.Length; i++)
+                target[i] = 0.15 + 0.85 * level * BarWeight[i] * (0.7 + 0.3 * _barRandom.NextDouble());
+        }
+
         for (int i = 0; i < bars.Length; i++)
         {
             if (bars[i].RenderTransform is not ScaleTransform scale) continue;
-            double target = 0.15 + 0.85 * level * BarWeight[i] * (0.7 + 0.3 * _barRandom.NextDouble());
-            // rise fast, fall slowly — like a real level meter
-            double k = target > _barLevel[i] ? 0.6 : 0.25;
-            _barLevel[i] += (target - _barLevel[i]) * k;
-            scale.ScaleY = Math.Clamp(_barLevel[i], 0.15, 1);
+            // jump up at once, fall back gently — like a real level meter
+            double k = target[i] > _barLevel[i] ? 0.85 : 0.22;
+            _barLevel[i] += (target[i] - _barLevel[i]) * k;
+            scale.ScaleY = Math.Clamp(_barLevel[i], 0.12, 1);
         }
     }
 
