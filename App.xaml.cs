@@ -19,6 +19,8 @@ public partial class App : Application
     private VolumeWatcher? _volume;
     private BluetoothBatteryWatcher? _headsets;
     private FocusWidget? _focusWidget;
+    private PresentationWatcher? _presenting;
+    private UpdateChecker? _updates;
     private bool _enabled = true;
     private static System.Threading.Mutex? _singleInstance;
     private BatteryWatcher? _battery;
@@ -80,10 +82,23 @@ public partial class App : Application
         _clips  = new ClipboardService();
         _notch  = new NotchWindow(_media, _focus, _history, _clips);
         _notch.MuteRequested += Mute;
+        _notch.Distracted += name => _focusWidget?.Nudge(name);
+
+        // Presenting (slide show / sharing the screen): the notch steps aside, notifications wait
+        _presenting = new PresentationWatcher();
+        _presenting.Changed += on =>
+        {
+            _notch.SetPresenting(on);
+            if (!on) ReleaseHeld("trong lúc bạn thuyết trình");
+        };
         _focusWidget = new FocusWidget(_focus);   // the small floating timer while a tree grows
         _ = _history.RestoreIconsAsync();   // site logos for notifications kept from last time
         _media.Changed += (state, newTrack) => _notch.Dispatcher.Invoke(() => _notch.UpdateMedia(state, newTrack));
-        _focus.Finished += session => _island.Dispatcher.Invoke(() => ShowOnIsland(MakeFocusNotification(session), keepInHistory: false));
+        _focus.Finished += session => _island.Dispatcher.Invoke(() =>
+        {
+            ShowOnIsland(MakeFocusNotification(session), keepInHistory: false);
+            ReleaseHeld("trong lúc bạn tập trung");
+        });
         _notch.Show();
         _notch.NotchEnabled = AppSettings.Current.NotchEnabled;
 
@@ -132,6 +147,26 @@ public partial class App : Application
     }
 
     // ── Notifications: mute + history ─────────────────────────────────
+    private int _held;
+    private bool HoldForFocus => _focus?.IsRunning == true && DeepFocus.Enabled;
+    private bool HoldForPresenting => _presenting?.IsPresenting == true;
+
+    /// <summary>"3 thông báo trong lúc bạn tập trung" once the quiet time is over.</summary>
+    private void ReleaseHeld(string when)
+    {
+        if (_held == 0 || HoldForFocus || HoldForPresenting) return;
+        int n = _held;
+        _held = 0;
+        ShowOnIsland(new NotificationData
+        {
+            AppName = "Dynamic Island",
+            Title   = $"{n} thông báo {when}",
+            Body    = "Bấm để xem trong tab Thông báo",
+            Glyph   = "\uEA8F",
+            OnClick = () => _notch?.Dispatcher.BeginInvoke(new Action(() => _notch.OpenTab("notifications")))
+        }, keepInHistory: false, bypassDnd: true);
+    }
+
     private void ShowOnIsland(NotificationData data, bool keepInHistory, bool bypassDnd = false)
     {
         if (!_enabled || _island == null) return;
@@ -150,6 +185,14 @@ public partial class App : Application
         if (QuickActions.DoNotDisturb && !bypassDnd)
         {
             if (keepInHistory) CrashLog.Write($"Not shown (Do Not Disturb is on): {data.AppName}");
+            return;
+        }
+
+        // Deep focus (while a tree grows) or presenting: keep it in the history, show a summary after.
+        if (keepInHistory && !bypassDnd && (HoldForFocus || HoldForPresenting))
+        {
+            _held++;
+            CrashLog.Write($"Held until later ({(HoldForPresenting ? "presenting" : "deep focus")}): {data.AppName}");
             return;
         }
 

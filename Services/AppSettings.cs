@@ -30,6 +30,13 @@ public sealed class AppSettings
     /// <summary>Lyrics pane open next to the player.</summary>
     public bool LyricsOpen { get; set; }
 
+    /// <summary>Deep focus: nudge when a distracting app / site comes up while a tree grows.</summary>
+    public bool DeepFocus { get; set; } = true;
+    public List<string> DeepFocusList { get; set; } = new(Services.DeepFocus.DefaultList);
+
+    /// <summary>Hạn chót: deadlines you count down to.</summary>
+    public List<Deadline> Deadlines { get; set; } = new();
+
     /// <summary>Mây strolls across the notch now and then.</summary>
     public bool MayWalks { get; set; } = true;
 
@@ -75,4 +82,15 @@ public sealed class AppSettings
         }
         catch { }
     }
+}
+
+/// <summary>A deadline to count down to; reminders already sent are remembered.</summary>
+public sealed class Deadline
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Title { get; set; } = "";
+    public DateTime Due { get; set; }
+    public bool Warned24h { get; set; }
+    public bool Warned1h { get; set; }
+    public bool WarnedDue { get; set; }
 }

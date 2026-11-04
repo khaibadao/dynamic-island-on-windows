@@ -23,6 +23,7 @@ public sealed record FocusSession(DateTime StartUtc, int Minutes, bool Success, 
 public sealed class FocusService
 {
     public static readonly int[] Presets = { 10, 25, 45, 60, 90 };
+    public const int MinMinutes = 5, MaxMinutes = 180;   // the ruler's range
 
     private static readonly string LogPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -126,6 +127,13 @@ public sealed class FocusService
 
     // ── Stats ─────────────────────────────────────────────────────────
     /// <summary>Sessions started today (local time), oldest first.</summary>
+    /// <summary>Sessions started between two local times, oldest first.</summary>
+    public IReadOnlyList<FocusSession> Between(DateTime fromLocal, DateTime toLocal)
+    {
+        lock (_gate)
+            return _log.Where(s => { var t = s.StartUtc.ToLocalTime(); return t >= fromLocal && t < toLocal; }).ToList();
+    }
+
     public IReadOnlyList<FocusSession> Today()
     {
         lock (_gate)

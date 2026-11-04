@@ -128,7 +128,8 @@ public sealed class FocusWidget : Window
         var left = _focus.Remaining;
         _time.Text = left.TotalHours >= 1 ? left.ToString(@"h\:mm\:ss") : left.ToString(@"m\:ss");
         var done = TimeSpan.FromMinutes(_focus.Minutes) - left;
-        _sub.Text  = $"{TreeCatalog.Get(_focus.CurrentKind).Name} · đã học {(int)done.TotalMinutes} / {_focus.Minutes} phút";
+        if (!_nudgeTimer.IsEnabled)
+            _sub.Text = $"{TreeCatalog.Get(_focus.CurrentKind).Name} · đã học {(int)done.TotalMinutes} / {_focus.Minutes} phút";
         _tree.Kind = _focus.CurrentKind;
         _tree.Set(_focus.Progress, dead: false);
         _fill.ScaleX = _focus.Progress;
@@ -188,6 +189,29 @@ public sealed class FocusWidget : Window
         giveUp.Items.Add(sure);
         menu.Items.Add(giveUp);
         return menu;
+    }
+
+    private readonly DispatcherTimer _nudgeTimer = new() { Interval = TimeSpan.FromSeconds(6) };
+
+    /// <summary>Deep focus: something distracting is open — say so for a few seconds.</summary>
+    public void Nudge(string what)
+    {
+        if (!IsVisible) return;
+        _sub.Text = $"👀 {what} đang mở · quay lại học nhé!";
+        _sub.Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0xC0, 0x5A));
+        _card.BorderBrush = new SolidColorBrush(Color.FromArgb(0xCC, 0xFF, 0x9F, 0x0A));
+        _nudgeTimer.Stop();
+        _nudgeTimer.Tick -= EndNudge;
+        _nudgeTimer.Tick += EndNudge;
+        _nudgeTimer.Start();
+    }
+
+    private void EndNudge(object? sender, EventArgs e)
+    {
+        _nudgeTimer.Stop();
+        _sub.Foreground = new SolidColorBrush(Color.FromArgb(0xAA, 0xFF, 0xFF, 0xFF));
+        _card.BorderBrush = new SolidColorBrush(Color.FromArgb(0x77, 0x34, 0xC7, 0x59));
+        Refresh();
     }
 
     public void Shutdown() => Close();

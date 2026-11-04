@@ -152,11 +152,11 @@ public partial class NotchWindow : Window
         RestArea.SizeChanged += (_, _) => PlaceCat();
 
         var s = AppSettings.Current;
-        _selectedMinutes = FocusService.Presets.Contains(s.LastFocusMinutes) ? s.LastFocusMinutes : 25;
+        _selectedMinutes = Math.Clamp(s.LastFocusMinutes, FocusService.MinMinutes, FocusService.MaxMinutes);
         _selectedKind    = TreeCatalog.Parse(s.LastTreeKind);
         if (!_focus.IsUnlocked(_selectedKind)) _selectedKind = TreeKind.Oak;
         _lyricsOpen      = s.LyricsOpen;
-        BuildPresets();
+        SetUpFocus();
 
         _focus.Changed += () => Dispatcher.BeginInvoke(new Action(UpdateFocusUi));
 
@@ -203,6 +203,15 @@ public partial class NotchWindow : Window
         set { _enabled = value; UpdateVisibility(); }
     }
 
+    private bool _presenting;
+
+    /// <summary>A slide show or screen share is on: step aside until it ends.</summary>
+    public void SetPresenting(bool on)
+    {
+        _presenting = on;
+        UpdateVisibility();
+    }
+
     /// <summary>A notification is using the top of the screen: step aside.</summary>
     public void SetIslandActive(bool active)
     {
@@ -220,7 +229,7 @@ public partial class NotchWindow : Window
 
     private void UpdateVisibility()
     {
-        bool show = _enabled && !_islandActive && !_fullscreen;
+        bool show = _enabled && !_islandActive && !_fullscreen && !_presenting;
         if (show && !IsVisible)
         {
             Show();
@@ -768,7 +777,8 @@ public partial class NotchWindow : Window
                 break;
             case "focus":
                 UpdateFocusUi();
-                if (_showWeek) BuildWeekChart();
+                if (_focusView == "stats") BuildStats();
+                if (_focusView == "pick") BuildSpecies();
                 break;
             case "notifications":
                 RebuildRecent();
@@ -1376,96 +1386,149 @@ public partial class NotchWindow : Window
         : "";                         // high
 
     // ── Tree planting ─────────────────────────────────────────────────
-    private void BuildPresets()
+    private string _focusView = "plant";    // plant | pick | stats | deep
+    private string _period = "week";
+    private DeepFocus? _deep;
+    private static readonly (string Key, string Label)[] FocusViews = { ("plant", "Trồng cây"), ("pick", "Chọn cây"), ("stats", "Thống kê") };
+    private static readonly (string Key, string Label)[] Periods = { ("day", "Ngày"), ("week", "Tuần"), ("month", "Tháng"), ("year", "Năm") };
+    private static readonly Color Green = Color.FromRgb(0x34, 0xC7, 0x59);
+
+    /// <summary>Raised when Deep focus spots a distraction (for the floating timer).</summary>
+    public event Action<string>? Distracted;
+
+    private void SetUpFocus()
     {
-        PresetPanel.Children.Clear();
-        foreach (var minutes in FocusService.Presets)
+        Ruler.Min = FocusService.MinMinutes;
+        Ruler.Max = FocusService.MaxMinutes;
+        Ruler.Minutes = _selectedMinutes;
+        Ruler.Changed += m =>
         {
-            var chip = new RadioButton
-            {
-                Content   = $"{minutes}p",
-                GroupName = "focusMinutes",
-                Style     = (Style)FindResource("Chip"),
-                IsChecked = minutes == _selectedMinutes,
-                ToolTip   = $"{minutes} phút"
-            };
-            int m = minutes;
-            chip.Checked += (_, _) => _selectedMinutes = m;
-            PresetPanel.Children.Add(chip);
-        }
+            _selectedMinutes = m;
+            if (!_focus.IsRunning) UpdateFocusUi();
+        };
+        _deep = new DeepFocus(_focus);
+        _deep.Distracted += name =>
+        {
+            FocusWarn.Text = $"👀 {name} đang mở. Quay lại học nhé! Cây vẫn đang chờ bạn.";
+            FocusWarn.Visibility = Visibility.Visible;
+            React("angry");
+            Distracted?.Invoke(name);
+        };
+        _deep.Back += () => FocusWarn.Visibility = Visibility.Collapsed;
+        BuildFocusNav();
     }
 
-    /// <summary>One button per kind of tree; locked ones show what's needed to unlock them.</summary>
-    private void BuildSpecies()
+    /// <summary>A small segmented button (the views, the periods).</summary>
+    private Border Segment(string label, bool on, Action click)
     {
-        SpeciesPanel.Children.Clear();
-        int grown = _focus.TotalTrees;
-
-        foreach (var info in TreeCatalog.All)
+        var b = new Border
         {
-            bool unlocked = grown >= info.UnlockAt;
-            bool selected = info.Kind == _selectedKind;
-
-            var icon = new TreeShape
+            CornerRadius = new CornerRadius(8), Padding = new Thickness(12, 4, 12, 4), Margin = new Thickness(0, 0, 2, 0), Cursor = Cursors.Hand,
+            Background = on ? Frozen(Color.FromArgb(0x38, 0xFF, 0xFF, 0xFF)) : Brushes.Transparent,
+            Child = new TextBlock
             {
-                Kind = info.Kind,
-                LayoutTransform = new ScaleTransform(0.3, 0.3),
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment   = VerticalAlignment.Center,
-                Opacity = unlocked ? 1 : 0.3
-            };
-
-            var content = new Grid();
-            content.Children.Add(icon);
-            if (!unlocked)
-            {
-                content.Children.Add(new TextBlock
-                {
-                    Text = "", FontFamily = (FontFamily)FindResource("IconFont"), FontSize = 12,
-                    Foreground = Brushes.White, HorizontalAlignment = HorizontalAlignment.Center,
-                    VerticalAlignment = VerticalAlignment.Center
-                });
+                Text = label, FontSize = 12, FontWeight = FontWeights.SemiBold, FontFamily = new FontFamily("Segoe UI"),
+                Foreground = on ? Brushes.White : Frozen(Color.FromArgb(0xA0, 0xFF, 0xFF, 0xFF))
             }
-
-            var tile = new Border
-            {
-                Width = 38, Height = 38, Margin = new Thickness(0, 0, 6, 0),
-                CornerRadius = new CornerRadius(10), Child = content,
-                Background = Frozen(Color.FromArgb(0x1A, 0xFF, 0xFF, 0xFF)),
-                BorderThickness = new Thickness(1.5),
-                BorderBrush = selected ? Frozen(Color.FromRgb(0x34, 0xC7, 0x59)) : Brushes.Transparent,
-                Cursor = unlocked ? Cursors.Hand : Cursors.Arrow
-            };
-
-            string hint = unlocked
-                ? info.Name
-                : $"{info.Name} · trồng thêm {info.UnlockAt - grown} cây để mở khoá";
-            tile.MouseEnter += (_, _) => SpeciesHint.Text = hint;
-            tile.MouseLeave += (_, _) => SpeciesHint.Text = SelectedHint();
-
-            var kind = info.Kind;
-            tile.MouseLeftButtonUp += (_, _) =>
-            {
-                if (!_focus.IsUnlocked(kind)) return;
-                _selectedKind = kind;
-                AppSettings.Current.LastTreeKind = kind.ToString();
-                AppSettings.Current.Save();
-                BigTree.Kind = kind;
-                BuildSpecies();
-            };
-
-            SpeciesPanel.Children.Add(tile);
-        }
-        SpeciesHint.Text = SelectedHint();
+        };
+        b.MouseLeftButtonUp += (_, _) => click();
+        return b;
     }
 
-    private string SelectedHint()
+    private void BuildFocusNav()
     {
-        var next = TreeCatalog.All.FirstOrDefault(i => !_focus.IsUnlocked(i.Kind));
-        var name = TreeCatalog.Get(_selectedKind).Name;
-        return next == null
-            ? $"{name} · đã mở khoá tất cả các loại cây"
-            : $"{name} · trồng thêm {next.UnlockAt - _focus.TotalTrees} cây để mở khoá {next.Name}";
+        FocusNav.Children.Clear();
+        foreach (var (key, label) in FocusViews) FocusNav.Children.Add(Segment(label, _focusView == key, () => ShowFocusView(key)));
+        PeriodNav.Children.Clear();
+        foreach (var (key, label) in Periods) PeriodNav.Children.Add(Segment(label, _period == key, () => { _period = key; BuildFocusNav(); BuildStats(); }));
+    }
+
+    private void ShowFocusView(string view)
+    {
+        if (_typing) EndTyping(collapse: false);
+        ContentCard.BeginAnimation(HeightProperty, null);
+        double from = ContentCard.ActualHeight;
+
+        _focusView = view;
+        FocusMain.Visibility    = view == "plant" ? Visibility.Visible : Visibility.Collapsed;
+        SpeciesPanel.Visibility = view == "pick"  ? Visibility.Visible : Visibility.Collapsed;
+        FocusStats.Visibility   = view == "stats" ? Visibility.Visible : Visibility.Collapsed;
+        DeepListView.Visibility = view == "deep"  ? Visibility.Visible : Visibility.Collapsed;
+        BuildFocusNav();
+        if (view == "pick") BuildSpecies();
+        if (view == "stats") BuildStats();
+        if (view == "deep") BuildDeepChips();
+        if (view == "plant") UpdateFocusUi();
+
+        if (Expanded.IsVisible && from > 0)
+        {
+            ContentCard.UpdateLayout();
+            double to = ContentCard.ActualHeight;
+            if (Math.Abs(to - from) > 1)
+                ContentCard.BeginAnimation(HeightProperty, new DoubleAnimation(from, to, TimeSpan.FromMilliseconds(220))
+                {
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }, FillBehavior = FillBehavior.Stop
+                });
+        }
+    }
+
+    private static string Clock(int minutes) => minutes >= 60 ? $"{minutes / 60}:{minutes % 60:00}:00" : $"{minutes:00}:00";
+
+    private static string Duration(int minutes) =>
+        minutes >= 60 ? $"{minutes / 60} giờ" + (minutes % 60 > 0 ? $" {minutes % 60} phút" : "") : $"{minutes} phút";
+
+    private void UpdateFocusUi()
+    {
+        bool running = _focus.IsRunning;
+        var kind = running ? _focus.CurrentKind : _selectedKind;
+
+        Ruler.Visibility         = running ? Visibility.Collapsed : Visibility.Visible;
+        FocusProgress.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
+        PlantBtn.Visibility      = running ? Visibility.Collapsed : Visibility.Visible;
+        GiveUpBtn.Visibility     = running ? Visibility.Visible : Visibility.Collapsed;
+        PickedTree.Opacity       = running ? 0.6 : 1;
+        PickedTree.Cursor        = running ? Cursors.Arrow : Cursors.Hand;
+
+        BigTree.Kind = kind;
+        PickedTreeIcon.Kind = kind;
+        PickedTreeText.Text = running ? TreeCatalog.Get(kind).Name : $"{TreeCatalog.Get(kind).Name} · đổi cây ›";
+
+        if (running) UpdateFocusTick();
+        else
+        {
+            BigTree.Set(1, dead: false);
+            FocusRemaining.Text = Clock(_selectedMinutes);
+            FocusSub.Text = $"{Duration(_selectedMinutes)} · kéo thước để đổi";
+            FocusWarn.Visibility = Visibility.Collapsed;
+            ResetGiveUp();
+        }
+
+        bool deep = DeepFocus.Enabled;
+        DeepSwitch.Background = deep ? Frozen(Green) : Frozen(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF));
+        DeepKnob.HorizontalAlignment = deep ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+        var list = AppSettings.Current.DeepFocusList;
+        DeepHint.Text = deep
+            ? $"Nhắc khi mở {string.Join(", ", list.Take(3))}{(list.Count > 3 ? "…" : "")} · sửa ›"
+            : "Đang tắt · sửa danh sách ›";
+
+        if (_focusView == "stats" && FocusStats.IsVisible) BuildStats();
+        UpdatePill();
+    }
+
+    private void UpdateFocusTick()
+    {
+        if (!_focus.IsRunning) return;
+        var left = _focus.Remaining;
+        FocusRemaining.Text   = left.TotalHours >= 1 ? left.ToString(@"h\:mm\:ss") : left.ToString(@"mm\:ss");
+        var done = TimeSpan.FromMinutes(_focus.Minutes) - left;
+        FocusSub.Text         = $"{TreeCatalog.Get(_focus.CurrentKind).Name} · đã học {(int)done.TotalMinutes} / {_focus.Minutes} phút";
+        FocusFillScale.ScaleX = _focus.Progress;
+        BigTree.Set(_focus.Progress, dead: false);
+    }
+
+    private void PickedTree_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (!_focus.IsRunning) ShowFocusView("pick");
     }
 
     private void Plant_Click(object sender, RoutedEventArgs e)
@@ -1497,67 +1560,246 @@ public partial class NotchWindow : Window
         GiveUpBtn.Content = "Bỏ cuộc";
     }
 
-    private void UpdateFocusUi()
+    // Pick a tree: 12 kinds, unlocked by trees grown
+    private void BuildSpecies()
     {
-        bool running = _focus.IsRunning;
-        FocusIdle.Visibility    = running ? Visibility.Collapsed : Visibility.Visible;
-        FocusRunning.Visibility = running ? Visibility.Visible   : Visibility.Collapsed;
-
-        if (running)
+        SpeciesPanel.Children.Clear();
+        int grown = _focus.TotalTrees;
+        foreach (var info in TreeCatalog.All)
         {
-            BigTree.Kind      = _focus.CurrentKind;
-            PillTreeLeft.Kind = _focus.CurrentKind;
-            UpdateFocusTick();
-        }
-        else
-        {
-            if (!_focus.IsUnlocked(_selectedKind)) _selectedKind = TreeKind.Oak;
-            BigTree.Kind = _selectedKind;
-            BigTree.Set(0.35, dead: false);   // a seedling waiting to be planted
-            BuildSpecies();
-            ResetGiveUp();
-        }
-        UpdateForest();
-        UpdatePill();
-    }
-
-    private void UpdateFocusTick()
-    {
-        if (!_focus.IsRunning) return;
-        var left = Format(_focus.Remaining);
-        FocusRemaining.Text   = left;
-        PillFocusText.Text    = left;
-        FocusSub.Text         = $"{TreeCatalog.Get(_focus.CurrentKind).Name} · {_focus.Minutes} phút";
-        FocusFillScale.ScaleX = _focus.Progress;
-        BigTree.Set(_focus.Progress, dead: false);
-        PillTreeLeft.Set(_focus.Progress, dead: false);
-    }
-
-    private void UpdateForest()
-    {
-        var today   = _focus.Today();
-        int grown   = today.Count(s => s.Success);
-        int minutes = today.Where(s => s.Success).Sum(s => s.Minutes);
-
-        ForestStats.Text = today.Count == 0
-            ? $"Hôm nay chưa trồng cây nào · Tổng {_focus.TotalTrees} cây"
-            : $"Hôm nay {grown} cây · {minutes} phút · Tổng {_focus.TotalTrees} cây";
-
-        // Today's forest: one tree per session (brown = gave up)
-        ForestRow.Children.Clear();
-        foreach (var session in today.Skip(Math.Max(0, today.Count - 12)))
-        {
+            bool unlocked = grown >= info.UnlockAt, selected = info.Kind == _selectedKind;
             var tree = new TreeShape
             {
-                Kind = session.TreeKind,
-                LayoutTransform = new ScaleTransform(0.2, 0.2),
-                Margin  = new Thickness(1, 0, 1, 0),
-                ToolTip = $"{TreeCatalog.Get(session.TreeKind).Name} · {session.StartUtc.ToLocalTime():HH:mm} · {session.Minutes} phút"
-                          + (session.Success ? "" : " · đã bỏ cuộc")
+                Animated = unlocked, Kind = info.Kind, Opacity = unlocked ? 1 : 0.3,
+                LayoutTransform = new ScaleTransform(0.56, 0.56), HorizontalAlignment = HorizontalAlignment.Center
             };
-            tree.Set(1, dead: !session.Success);
-            ForestRow.Children.Add(tree);
+            var body = new StackPanel();
+            body.Children.Add(tree);
+            body.Children.Add(new TextBlock
+            {
+                Text = info.Name, Foreground = Brushes.White, FontSize = 11, FontWeight = FontWeights.SemiBold, FontFamily = new FontFamily("Segoe UI"),
+                TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0)
+            });
+            body.Children.Add(new TextBlock
+            {
+                Text = unlocked ? (selected ? "Đang chọn" : "Đã mở") : $"🔒 thêm {info.UnlockAt - grown} cây",
+                Foreground = selected ? Frozen(Green) : Frozen(Color.FromArgb(0x99, 0xFF, 0xFF, 0xFF)),
+                FontSize = 10, FontFamily = new FontFamily("Segoe UI"), TextAlignment = TextAlignment.Center
+            });
+            var tile = new Border
+            {
+                Child = body, CornerRadius = new CornerRadius(12), Padding = new Thickness(2, 4, 2, 6), Margin = new Thickness(3),
+                Background = Frozen(selected ? Color.FromArgb(0x26, Green.R, Green.G, Green.B) : Color.FromArgb(0x16, 0xFF, 0xFF, 0xFF)),
+                BorderThickness = new Thickness(1.5), BorderBrush = selected ? Frozen(Green) : Brushes.Transparent,
+                Cursor = unlocked ? Cursors.Hand : Cursors.Arrow,
+                ToolTip = unlocked ? info.Name : $"{info.Name} · trồng thêm {info.UnlockAt - grown} cây để mở khoá"
+            };
+            var kind = info.Kind;
+            tile.MouseLeftButtonUp += (_, _) =>
+            {
+                if (!_focus.IsUnlocked(kind) || _focus.IsRunning) return;
+                _selectedKind = kind;
+                AppSettings.Current.LastTreeKind = kind.ToString();
+                AppSettings.Current.Save();
+                ShowFocusView("plant");
+            };
+            SpeciesPanel.Children.Add(tile);
         }
+    }
+
+    // Stats: day / week / month / year, with a patch of land growing those trees
+    private void BuildStats()
+    {
+        var today = DateTime.Today;
+        DateTime from; int buckets; Func<DateTime, int> bucket; Dictionary<int, string> labels; string unit;
+        switch (_period)
+        {
+            case "day":
+                from = today; buckets = 24; bucket = t => t.Hour; unit = "phút / giờ";
+                labels = new() { [0] = "0h", [6] = "6h", [12] = "12h", [18] = "18h" };
+                break;
+            case "month":
+                from = new DateTime(today.Year, today.Month, 1); buckets = DateTime.DaysInMonth(today.Year, today.Month);
+                bucket = t => t.Day - 1; unit = "phút / ngày";
+                labels = new() { [0] = "1", [9] = "10", [19] = "20", [buckets - 1] = buckets.ToString() };
+                break;
+            case "year":
+                from = new DateTime(today.Year, 1, 1); buckets = 12; bucket = t => t.Month - 1; unit = "phút / tháng";
+                labels = Enumerable.Range(0, 12).ToDictionary(i => i, i => $"T{i + 1}");
+                break;
+            default:
+                int back = ((int)today.DayOfWeek + 6) % 7;   // Monday first
+                from = today.AddDays(-back); buckets = 7; bucket = t => (t.Date - from).Days; unit = "phút / ngày";
+                labels = new() { [0] = "T2", [1] = "T3", [2] = "T4", [3] = "T5", [4] = "T6", [5] = "T7", [6] = "CN" };
+                break;
+        }
+        var to = _period switch { "day" => from.AddDays(1), "month" => from.AddMonths(1), "year" => from.AddYears(1), _ => from.AddDays(7) };
+        var sessions = _focus.Between(from, to);
+
+        var values = new int[buckets];
+        foreach (var s in sessions.Where(s => s.Success))
+        {
+            int i = bucket(s.StartUtc.ToLocalTime());
+            if (i >= 0 && i < buckets) values[i] += s.Minutes;
+        }
+        int total = values.Sum(), alive = sessions.Count(s => s.Success), dead = sessions.Count - alive;
+        WeekSummary.Text = $"{total / 60} giờ {total % 60} phút · 🌳 {alive}" + (dead > 0 ? $" · 🥀 {dead}" : "");
+        ChartUnit.Text = unit;
+        BuildBars(values, labels);
+        BuildLand(sessions);
+    }
+
+    private void BuildBars(int[] values, Dictionary<int, string> labels)
+    {
+        WeekChart.Children.Clear();
+        WeekChart.ColumnDefinitions.Clear();
+        double max = Math.Max(30, values.DefaultIfEmpty(0).Max());
+        const double area = 100;
+        for (int i = 0; i < values.Length; i++)
+        {
+            WeekChart.ColumnDefinitions.Add(new ColumnDefinition());
+            var col = new StackPanel { VerticalAlignment = VerticalAlignment.Bottom };
+            col.Children.Add(new Border
+            {
+                Height = values[i] > 0 ? Math.Max(3, area * values[i] / max) : 2,
+                Margin = new Thickness(values.Length > 12 ? 0.6 : 3, 0, values.Length > 12 ? 0.6 : 3, 0),
+                CornerRadius = new CornerRadius(values.Length > 12 ? 1.5 : 4, values.Length > 12 ? 1.5 : 4, 1, 1),
+                Background = values[i] > 0 ? Frozen(Green) : Frozen(Color.FromArgb(0x26, 0xFF, 0xFF, 0xFF)),
+                ToolTip = $"{values[i]} phút"
+            });
+            col.Children.Add(new TextBlock
+            {
+                Text = labels.TryGetValue(i, out var l) ? l : " ", FontSize = 9.5, FontFamily = new FontFamily("Segoe UI"),
+                Foreground = Frozen(Color.FromArgb(0x99, 0xFF, 0xFF, 0xFF)), HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(-10, 4, -10, 0), TextAlignment = TextAlignment.Center
+            });
+            Grid.SetColumn(col, i);
+            WeekChart.Children.Add(col);
+        }
+    }
+
+    /// <summary>An isometric patch of grass with one tree per session (withered ones for giving up).</summary>
+    private void BuildLand(IReadOnlyList<FocusSession> sessions)
+    {
+        Land.Children.Clear();
+        int count = sessions.Count;
+        int n = Math.Clamp((int)Math.Ceiling(Math.Sqrt(Math.Max(1, count) * 1.6)), 4, 12);
+        double tw = 200.0 / n, th = tw / 2, ox = 100, oy = 30;
+        Land.Height = oy + n * th + 14;
+
+        // grass, and its two visible sides
+        var left  = new Point(ox - n * tw / 2, oy + n * th / 2);
+        var bottom = new Point(ox, oy + n * th);
+        var right = new Point(ox + n * tw / 2, oy + n * th / 2);
+        Land.Children.Add(new Polygon { Points = { left, bottom, new Point(bottom.X, bottom.Y + 10), new Point(left.X, left.Y + 10) }, Fill = Frozen(Color.FromRgb(0x7A, 0x52, 0x33)) });
+        Land.Children.Add(new Polygon { Points = { bottom, right, new Point(right.X, right.Y + 10), new Point(bottom.X, bottom.Y + 10) }, Fill = Frozen(Color.FromRgb(0x5E, 0x3E, 0x26)) });
+        for (int r = 0; r < n; r++)
+            for (int c = 0; c < n; c++)
+            {
+                double x = ox + (c - r) * tw / 2, y = oy + (c + r) * th / 2;
+                Land.Children.Add(new Polygon
+                {
+                    Points = { new Point(x, y), new Point(x + tw / 2, y + th / 2), new Point(x, y + th), new Point(x - tw / 2, y + th / 2) },
+                    Fill = Frozen((r + c) % 2 == 0 ? Color.FromRgb(0x6F, 0xBF, 0x52) : Color.FromRgb(0x79, 0xC9, 0x5A))
+                });
+            }
+
+        // trees on spread-out tiles, drawn back to front
+        var spots = Enumerable.Range(0, n * n).OrderBy(i => (i * 7919) % 97).Take(Math.Min(count, n * n)).ToList();
+        var placed = new List<(double Y, UIElement Tree)>();
+        for (int i = 0; i < spots.Count; i++)
+        {
+            int r = spots[i] / n, c = spots[i] % n;
+            double x = ox + (c - r) * tw / 2, y = oy + (c + r) * th / 2 + th / 2, size = tw * 0.95;
+            var s = sessions[sessions.Count - 1 - i];   // newest first, if there are too many to show
+            var tree = new TreeShape { Animated = false, Kind = s.TreeKind, RenderTransform = new ScaleTransform(size / 100, size / 100) };
+            tree.Set(1, dead: !s.Success);
+            Canvas.SetLeft(tree, x - size / 2);
+            Canvas.SetTop(tree, y - size * 1.02);
+            placed.Add((y, tree));
+        }
+        foreach (var (_, tree) in placed.OrderBy(p => p.Y)) Land.Children.Add(tree);
+
+        if (count == 0)
+        {
+            var hint = new TextBlock { Text = "Chưa có cây nào", Foreground = Frozen(Color.FromArgb(0xCC, 0xFF, 0xFF, 0xFF)), FontSize = 11, FontFamily = new FontFamily("Segoe UI") };
+            Canvas.SetLeft(hint, 62);
+            Canvas.SetTop(hint, oy + n * th / 2 - 8);
+            Land.Children.Add(hint);
+        }
+    }
+
+    // Deep focus switch + list
+    private void DeepSwitch_Click(object sender, MouseButtonEventArgs e)
+    {
+        DeepFocus.Enabled = !DeepFocus.Enabled;
+        UpdateFocusUi();
+    }
+
+    private void DeepList_Click(object sender, MouseButtonEventArgs e) => ShowFocusView("deep");
+
+    private void BuildDeepChips()
+    {
+        DeepChips.Children.Clear();
+        foreach (var item in AppSettings.Current.DeepFocusList.ToList())
+        {
+            var row = new StackPanel { Orientation = Orientation.Horizontal };
+            row.Children.Add(new TextBlock { Text = item, Foreground = Brushes.White, FontSize = 12, FontFamily = new FontFamily("Segoe UI"), VerticalAlignment = VerticalAlignment.Center });
+            var x = new TextBlock
+            {
+                Text = "", FontFamily = (FontFamily)FindResource("IconFont"), FontSize = 9, Margin = new Thickness(8, 0, 0, 0),
+                Foreground = Frozen(Color.FromArgb(0xAA, 0xFF, 0xFF, 0xFF)), VerticalAlignment = VerticalAlignment.Center, Cursor = Cursors.Hand,
+                ToolTip = "Bỏ khỏi danh sách"
+            };
+            var name = item;
+            x.MouseLeftButtonUp += (_, _) =>
+            {
+                AppSettings.Current.DeepFocusList.Remove(name);
+                AppSettings.Current.Save();
+                BuildDeepChips();
+            };
+            row.Children.Add(x);
+            DeepChips.Children.Add(new Border
+            {
+                Child = row, CornerRadius = new CornerRadius(12), Padding = new Thickness(10, 4, 8, 4), Margin = new Thickness(0, 0, 6, 6),
+                Background = Frozen(Color.FromArgb(0x24, 0xFF, 0xFF, 0xFF))
+            });
+        }
+    }
+
+    private void DeepAdd_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (_typing) return;
+        BeginTyping(DeepAdd);
+        e.Handled = true;
+    }
+
+    private void DeepAdd_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            var text = DeepAdd.Text.Trim();
+            if (text.Length > 0 && !AppSettings.Current.DeepFocusList.Contains(text, StringComparer.CurrentCultureIgnoreCase))
+            {
+                AppSettings.Current.DeepFocusList.Add(text);
+                AppSettings.Current.Save();
+                BuildDeepChips();
+            }
+            DeepAdd.Text = "";
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape)
+        {
+            DeepAdd.Text = "";
+            EndTyping(collapse: false);
+            e.Handled = true;
+        }
+    }
+
+    private void DeepAdd_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (!_ready) return;
+        DeepAddPlaceholder.Visibility = DeepAdd.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     // ── Recent notifications ──────────────────────────────────────────
@@ -1872,69 +2114,6 @@ public partial class NotchWindow : Window
         HeadsetText.Text = devices.Count == 1 ? $"{first.Percent}%" : $"{first.Percent}% +{devices.Count - 1}";
         HeadsetPanel.ToolTip = string.Join("\n", devices.Select(d => $"{d.Name}: {d.Percent}%"));
         HeadsetPanel.Visibility = Visibility.Visible;
-    }
-
-    // ── Weekly focus stats ────────────────────────────────────────────
-    private void FocusViewToggle_Click(object sender, MouseButtonEventArgs e)
-    {
-        _showWeek = !_showWeek;
-        FocusMain.Visibility  = _showWeek ? Visibility.Collapsed : Visibility.Visible;
-        FocusStats.Visibility = _showWeek ? Visibility.Visible   : Visibility.Collapsed;
-        FocusViewToggle.Text  = _showWeek ? "‹ Trồng cây" : "Thống kê tuần ›";
-        if (_showWeek) BuildWeekChart();
-    }
-
-    /// <summary>One bar per day for the last 7 days (minutes of grown trees), today on the right.</summary>
-    private void BuildWeekChart()
-    {
-        var days = _focus.LastDays(7);
-        int total  = days.Sum(d => d.Minutes);
-        int trees  = days.Sum(d => d.Trees);
-        int streak = _focus.Streak();
-        WeekSummary.Text = $"{total} phút · {trees} cây · chuỗi {streak} ngày";
-
-        WeekChart.Children.Clear();
-        WeekChart.ColumnDefinitions.Clear();
-        double max = Math.Max(30, days.Max(d => d.Minutes));
-        const double barArea = 62;
-
-        for (int i = 0; i < days.Count; i++)
-        {
-            var (day, minutes, _) = days[i];
-            bool today = day == DateTime.Today;
-            WeekChart.ColumnDefinitions.Add(new ColumnDefinition());
-
-            var col = new StackPanel { VerticalAlignment = VerticalAlignment.Bottom };
-            col.Children.Add(new TextBlock
-            {
-                Text = minutes > 0 ? minutes.ToString() : "",
-                Foreground = Frozen(Color.FromArgb(0xAA, 0xFF, 0xFF, 0xFF)), FontSize = 10.5,
-                FontFamily = new FontFamily("Segoe UI"), HorizontalAlignment = HorizontalAlignment.Center,
-                Margin = new Thickness(0, 0, 0, 3)
-            });
-            col.Children.Add(new Border
-            {
-                Width  = 26,
-                Height = minutes > 0 ? Math.Max(4, barArea * minutes / max) : 3,
-                CornerRadius = new CornerRadius(5, 5, 2, 2),
-                Background   = minutes > 0
-                    ? Frozen(today ? Color.FromRgb(0x34, 0xC7, 0x59) : Color.FromRgb(0x24, 0x8A, 0x3E))
-                    : Frozen(Color.FromRgb(0x2A, 0x2A, 0x2C)),
-                ToolTip = $"{Weekdays[(int)day.DayOfWeek]} {day:dd/MM}: {minutes} phút",
-                HorizontalAlignment = HorizontalAlignment.Center
-            });
-            col.Children.Add(new TextBlock
-            {
-                Text = ShortDays[(int)day.DayOfWeek],
-                Foreground = today ? Brushes.White : Frozen(Color.FromArgb(0x88, 0xFF, 0xFF, 0xFF)),
-                FontWeight = today ? FontWeights.SemiBold : FontWeights.Normal,
-                FontSize = 11, FontFamily = new FontFamily("Segoe UI"),
-                HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 5, 0, 0)
-            });
-
-            Grid.SetColumn(col, i);
-            WeekChart.Children.Add(col);
-        }
     }
 
     // ── Clipboard history ─────────────────────────────────────────────
