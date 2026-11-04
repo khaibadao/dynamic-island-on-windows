@@ -69,7 +69,6 @@ public partial class NotchWindow : Window
     private TreeKind _selectedKind;
     private Color _accent = Colors.White;
     private bool _hasColour;
-    private bool _showWeek;
 
     // Lyrics
     private bool _lyricsOpen;
@@ -92,9 +91,9 @@ public partial class NotchWindow : Window
     /// <summary>"Mute this app" from a notification card.</summary>
     public event Action<NotificationData>? MuteRequested;
 
-    private static readonly string[] Tabs     = { "music", "focus", "notifications", "clipboard" };
-    private static readonly string[] TabNames = { "Nhạc", "Trồng cây", "Thông báo", "Copy" };
-    private static readonly string[] TabGlyphs = { "\uE8D6", "", "\uEA8F", "\uE77F" };   // tree is drawn
+    private static readonly string[] Tabs     = { "music", "focus", "notifications", "clipboard", "deadlines" };
+    private static readonly string[] TabNames = { "Nhạc", "Trồng cây", "Thông báo", "Copy", "Hạn chót" };
+    private static readonly string[] TabGlyphs = { "\uE8D6", "", "\uEA8F", "\uE77F", "\uE787" };   // tree is drawn
 
     /// <summary>Each tab's icon has its own colour (the tree draws its own).</summary>
     private static readonly Color[] TabColours =
@@ -755,6 +754,7 @@ public partial class NotchWindow : Window
         FocusTab.Visibility         = tab == "focus"         ? Visibility.Visible : Visibility.Collapsed;
         NotificationsTab.Visibility = tab == "notifications" ? Visibility.Visible : Visibility.Collapsed;
         ClipboardTab.Visibility     = tab == "clipboard"     ? Visibility.Visible : Visibility.Collapsed;
+        DeadlinesTab.Visibility     = tab == "deadlines"     ? Visibility.Visible : Visibility.Collapsed;
         UpdateSideBar();
 
         // Slide in from the side we're moving to, with a soft fade
@@ -788,6 +788,9 @@ public partial class NotchWindow : Window
                 var last = _clips.Items.OrderByDescending(i => i.Time).FirstOrDefault();
                 if (last != null) _clipMode = last.IsImage ? "images" : "texts";
                 RebuildClipboard();
+                break;
+            case "deadlines":
+                RebuildDeadlines();
                 break;
         }
         ApplyLyricsLayout(animateWidth);
@@ -1075,29 +1078,77 @@ public partial class NotchWindow : Window
 
     private System.Windows.Shapes.Rectangle[] Bars => new[] { Bar1, Bar2, Bar3, Bar4, Bar5, Bar6, Bar7 };
 
+    private readonly AudioMeter _meter = new();
+    private DispatcherTimer? _meterTimer;
+    private readonly double[] _barLevel = new double[7];
+    private static readonly double[] BarWeight = { 0.55, 0.8, 1.0, 0.9, 1.0, 0.75, 0.5 };
+    private readonly Random _barRandom = new();
+
+    /// <summary>
+    /// While music plays the bars follow the real sound (Windows' peak meter);
+    /// if that can't be read they fall back to a looping animation.
+    /// </summary>
     private void SetBarsPlaying(bool playing)
     {
-        var bars   = Bars;
-        var speeds = new[] { 420, 560, 360, 500, 440, 620, 380 };   // different speeds so they look lively
-        var rest   = new[] { 0.3, 0.55, 0.4, 0.7, 0.45, 0.6, 0.35 };
+        var bars = Bars;
+        var rest = new[] { 0.3, 0.55, 0.4, 0.7, 0.45, 0.6, 0.35 };
 
+        if (playing && _meter.Peak() != null)
+        {
+            foreach (var b in bars)
+                if (b.RenderTransform is ScaleTransform sc) sc.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+            if (_meterTimer == null)
+            {
+                _meterTimer = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(50) };
+                _meterTimer.Tick += (_, _) => MeterTick();
+            }
+            _meterTimer.Start();
+            return;
+        }
+
+        _meterTimer?.Stop();
+        if (playing) { AnimateBars(); return; }
         for (int i = 0; i < bars.Length; i++)
         {
             if (bars[i].RenderTransform is not ScaleTransform scale) continue;
-            if (playing)
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+            scale.ScaleY = rest[i];
+        }
+    }
+
+    private void MeterTick()
+    {
+        if (PillBars.Visibility != Visibility.Visible || !IsVisible) return;
+        var peak = _meter.Peak();
+        if (peak == null) { _meterTimer?.Stop(); AnimateBars(); return; }
+
+        // Peaks are small for quiet songs; a soft curve makes the bars readable.
+        double level = Math.Min(1, Math.Sqrt(peak.Value) * 1.15);
+        var bars = Bars;
+        for (int i = 0; i < bars.Length; i++)
+        {
+            if (bars[i].RenderTransform is not ScaleTransform scale) continue;
+            double target = 0.15 + 0.85 * level * BarWeight[i] * (0.7 + 0.3 * _barRandom.NextDouble());
+            // rise fast, fall slowly — like a real level meter
+            double k = target > _barLevel[i] ? 0.6 : 0.25;
+            _barLevel[i] += (target - _barLevel[i]) * k;
+            scale.ScaleY = Math.Clamp(_barLevel[i], 0.15, 1);
+        }
+    }
+
+    private void AnimateBars()
+    {
+        var bars   = Bars;
+        var speeds = new[] { 420, 560, 360, 500, 440, 620, 380 };   // different speeds so they look lively
+        for (int i = 0; i < bars.Length; i++)
+        {
+            if (bars[i].RenderTransform is not ScaleTransform scale) continue;
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(0.2, 1.0, TimeSpan.FromMilliseconds(speeds[i]))
             {
-                scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(0.2, 1.0, TimeSpan.FromMilliseconds(speeds[i]))
-                {
-                    AutoReverse    = true,
-                    RepeatBehavior = RepeatBehavior.Forever,
-                    EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
-                });
-            }
-            else
-            {
-                scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-                scale.ScaleY = rest[i];
-            }
+                AutoReverse    = true,
+                RepeatBehavior = RepeatBehavior.Forever,
+                EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
+            });
         }
     }
 
@@ -1800,6 +1851,135 @@ public partial class NotchWindow : Window
     {
         if (!_ready) return;
         DeepAddPlaceholder.Visibility = DeepAdd.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    // ── Hạn chót ──────────────────────────────────────────────────────
+    private DeadlineService? _deadlines;
+    private DispatcherTimer? _deadlineTick;
+
+    /// <summary>Called by the app once; the list refreshes each minute while it's open.</summary>
+    public void UseDeadlines(DeadlineService deadlines)
+    {
+        _deadlines = deadlines;
+        _deadlines.Changed += () => { if (_tab == "deadlines") RebuildDeadlines(); };
+        _deadlineTick = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
+        _deadlineTick.Tick += (_, _) => { if (_tab == "deadlines" && _expanded) RebuildDeadlines(); };
+        _deadlineTick.Start();
+    }
+
+    private void RebuildDeadlines()
+    {
+        DeadlineList.Children.Clear();
+        var items = _deadlines?.Items ?? Array.Empty<Deadline>();
+        NoDeadlinesText.Visibility = items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        var now = DateTime.Now;
+        foreach (var d in items)
+        {
+            var left = d.Due - now;
+            // red when late or < 1 h, orange < 24 h, purple later
+            var colour = left < TimeSpan.FromHours(1) ? Color.FromRgb(0xFF, 0x5C, 0x5C)
+                       : left < TimeSpan.FromHours(24) ? Color.FromRgb(0xFF, 0xB0, 0x20)
+                       : Color.FromRgb(0xB3, 0x8C, 0xFF);
+
+            var grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            grid.ColumnDefinitions.Add(new ColumnDefinition());
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var dot = new Border { Width = 4, Height = 26, CornerRadius = new CornerRadius(2), Background = Frozen(colour), Margin = new Thickness(0, 0, 10, 0) };
+            grid.Children.Add(dot);
+
+            var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+            text.Children.Add(new TextBlock
+            {
+                Text = d.Title, Foreground = Brushes.White, FontSize = 13, FontFamily = new FontFamily("Segoe UI"),
+                FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis,
+                TextDecorations = left < TimeSpan.Zero ? TextDecorations.Strikethrough : null
+            });
+            text.Children.Add(new TextBlock
+            {
+                Text = $"{Weekdays[(int)d.Due.DayOfWeek]}, {d.Due:dd/MM} · {d.Due:HH:mm}",
+                Foreground = Frozen(Color.FromArgb(0x99, 0xFF, 0xFF, 0xFF)), FontSize = 11, FontFamily = new FontFamily("Segoe UI")
+            });
+            Grid.SetColumn(text, 1);
+            grid.Children.Add(text);
+
+            var badge = new Border
+            {
+                CornerRadius = new CornerRadius(9), Padding = new Thickness(8, 2, 8, 3), VerticalAlignment = VerticalAlignment.Center,
+                Background = Frozen(Color.FromArgb(0x30, colour.R, colour.G, colour.B)), Margin = new Thickness(8, 0, 6, 0),
+                Child = new TextBlock { Text = DeadlineService.Left(d.Due, now), Foreground = Frozen(colour), FontSize = 11.5, FontFamily = new FontFamily("Segoe UI"), FontWeight = FontWeights.SemiBold }
+            };
+            Grid.SetColumn(badge, 2);
+            grid.Children.Add(badge);
+
+            var remove = new TextBlock
+            {
+                Text = "\uE711", FontFamily = (FontFamily)FindResource("IconFont"), FontSize = 10, Cursor = Cursors.Hand,
+                Foreground = Frozen(Color.FromArgb(0x88, 0xFF, 0xFF, 0xFF)), VerticalAlignment = VerticalAlignment.Center,
+                Padding = new Thickness(6), ToolTip = "Xoá"
+            };
+            var id = d.Id;
+            remove.MouseLeftButtonUp += (_, e) => { e.Handled = true; _deadlines?.Remove(id); };
+            Grid.SetColumn(remove, 3);
+            grid.Children.Add(remove);
+
+            DeadlineList.Children.Add(new Border
+            {
+                Child = grid, CornerRadius = new CornerRadius(10), Padding = new Thickness(8, 6, 4, 6), Margin = new Thickness(0, 0, 0, 5),
+                Background = Frozen(Color.FromArgb(0x16, 0xFF, 0xFF, 0xFF))
+            });
+        }
+    }
+
+    private void DeadlineAdd_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (_typing) return;
+        BeginTyping(DeadlineAdd);
+        e.Handled = true;
+    }
+
+    private void DeadlineAdd_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            var text = DeadlineAdd.Text.Trim();
+            if (text.Length > 0 && _deadlines != null)
+            {
+                var d = _deadlines.Add(text, out var problem);
+                if (d == null)
+                {
+                    DeadlineHint.Text = problem;
+                    DeadlineHint.Visibility = Visibility.Visible;
+                }
+                else
+                {
+                    DeadlineHint.Visibility = Visibility.Collapsed;
+                    DeadlineAdd.Text = "";
+                    RebuildDeadlines();
+                }
+            }
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape)
+        {
+            DeadlineAdd.Text = "";
+            DeadlineHint.Visibility = Visibility.Collapsed;
+            EndTyping(collapse: false);
+            e.Handled = true;
+        }
+    }
+
+    private void DeadlineAdd_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (!_ready) return;
+        DeadlineAddPlaceholder.Visibility = DeadlineAdd.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        if (DeadlineHint.Visibility == Visibility.Visible && DeadlineAdd.Text.Length > 0)
+        {
+            var p = DeadlineService.Parse(DeadlineAdd.Text, DateTime.Now);
+            if (p != null) DeadlineHint.Visibility = Visibility.Collapsed;
+        }
     }
 
     // ── Recent notifications ──────────────────────────────────────────

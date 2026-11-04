@@ -28,6 +28,7 @@
                             <MenuItem Header="…" IsEnabled="False"/>
                         </MenuItem>
                         <Separator/>
+                        <MenuItem Header="Kiểm tra cập nhật" Click="CheckUpdate_Click"/>
                         <MenuItem Header="Quit" Click="Quit_Click"/>
                     </ContextMenu>
                 </tb:TaskbarIcon.ContextMenu>

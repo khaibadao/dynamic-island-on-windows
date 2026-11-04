@@ -21,6 +21,7 @@ public partial class App : Application
     private FocusWidget? _focusWidget;
     private PresentationWatcher? _presenting;
     private UpdateChecker? _updates;
+    private DeadlineService? _deadlines;
     private bool _enabled = true;
     private static System.Threading.Mutex? _singleInstance;
     private BatteryWatcher? _battery;
@@ -91,6 +92,19 @@ public partial class App : Application
             _notch.SetPresenting(on);
             if (!on) ReleaseHeld("trong lúc bạn thuyết trình");
         };
+        // Hạn chót: reminders a day before, an hour before and when it's due (even with Do Not Disturb)
+        _deadlines = new DeadlineService();
+        _notch.UseDeadlines(_deadlines);
+        _deadlines.Remind += (d, kind) => ShowOnIsland(new NotificationData
+        {
+            AppName = "Hạn chót",
+            Title   = kind switch { "due" => $"Đến hạn: {d.Title}", "1h" => $"Còn 1 giờ: {d.Title}", _ => $"Còn 1 ngày: {d.Title}" },
+            Body    = $"{d.Due:HH:mm · dd/MM} · bấm để xem",
+            Glyph   = "\uE787",
+            GlyphColor = "#B38CFF",
+            OnClick = () => _notch?.Dispatcher.BeginInvoke(new Action(() => _notch.OpenTab("deadlines")))
+        }, keepInHistory: false, bypassDnd: true);
+
         _focusWidget = new FocusWidget(_focus);   // the small floating timer while a tree grows
         _ = _history.RestoreIconsAsync();   // site logos for notifications kept from last time
         _media.Changed += (state, newTrack) => _notch.Dispatcher.Invoke(() => _notch.UpdateMedia(state, newTrack));
@@ -116,6 +130,11 @@ public partial class App : Application
         UpdateNotchMenu();
 
         UpdateAutoStartMenu();
+
+        // New versions on GitHub: a notice on the island, one click installs it
+        _updates = new UpdateChecker();
+        _updates.Available += v => _island.Dispatcher.BeginInvoke(new Action(() => AnnounceUpdate(v)));
+        _updates.Start();
 
         await StartWithRetry("notifications", _listener.StartAsync);
         await StartWithRetry("music", _media.StartAsync);
@@ -392,6 +411,56 @@ public partial class App : Application
         var item = sender as MenuItem;
         if (item != null)
             item.Header = _enabled ? "Disable" : "Enable";
+    }
+
+    // ── Updates ───────────────────────────────────────────────────────
+    private bool _installing;
+
+    private void AnnounceUpdate(Version v)
+    {
+        ShowOnIsland(new NotificationData
+        {
+            AppName = "Dynamic Island",
+            Title   = $"Có bản mới v{v.ToString(3)}",
+            Body    = "Bấm để cập nhật (ứng dụng tự khởi động lại)",
+            Glyph   = "\uE896",
+            GlyphColor = "#4DA3FF",
+            OnClick = () => _ = Install(v)
+        }, keepInHistory: false, bypassDnd: false);
+    }
+
+    private async System.Threading.Tasks.Task Install(Version v)
+    {
+        if (_installing) return;
+        _installing = true;
+        ShowOnIsland(new NotificationData
+        {
+            AppName = "Dynamic Island", Title = $"Đang tải v{v.ToString(3)}…", Body = "Xong sẽ tự mở lại",
+            Glyph = "\uE896", GlyphColor = "#4DA3FF"
+        }, keepInHistory: false, bypassDnd: true);
+        if (await UpdateChecker.InstallAsync(v))
+        {
+            Current.Shutdown();
+            return;
+        }
+        _installing = false;
+        ShowOnIsland(new NotificationData
+        {
+            AppName = "Dynamic Island", Title = "Không cập nhật được", Body = "Thử lại sau, hoặc dùng lệnh cài",
+            Glyph = "\uE783", GlyphColor = "#FF5C7A"
+        }, keepInHistory: false, bypassDnd: true);
+    }
+
+    private async void CheckUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        if (_updates == null) return;
+        var v = await _updates.CheckAsync(manual: true);
+        if (v == null)
+            ShowOnIsland(new NotificationData
+            {
+                AppName = "Dynamic Island", Title = "Bạn đang dùng bản mới nhất",
+                Body = $"v{UpdateChecker.Current.ToString(3)}", Glyph = "\uE73E", GlyphColor = "#34C759"
+            }, keepInHistory: false, bypassDnd: true);
     }
 
     private void Quit_Click(object sender, RoutedEventArgs e)

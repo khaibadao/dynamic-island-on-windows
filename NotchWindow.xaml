@@ -951,6 +951,45 @@
                             </Grid>
                         </Grid>
                     </Grid>
+
+                    <!-- ── Hạn chót: deadlines with a countdown ── -->
+                    <Grid x:Name="DeadlinesTab" Visibility="Collapsed" Margin="10,8,10,8">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <Border Background="#1AFFFFFF" CornerRadius="10" Height="32" Padding="10,0">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="&#xE710;" FontFamily="{StaticResource IconFont}" FontSize="12" Foreground="#B38CFF"
+                                           VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <TextBlock x:Name="DeadlineAddPlaceholder" Grid.Column="1" IsHitTestVisible="False"
+                                           Text="Thêm hạn chót, vd: Nộp báo cáo PRO 15/11 17h · Thi mai 9h"
+                                           Foreground="#88FFFFFF" FontSize="12" FontFamily="Segoe UI" VerticalAlignment="Center"/>
+                                <TextBox x:Name="DeadlineAdd" Grid.Column="1" Background="Transparent" BorderThickness="0" Foreground="White"
+                                         CaretBrush="White" FontSize="12" FontFamily="Segoe UI" VerticalContentAlignment="Center"
+                                         PreviewMouseLeftButtonDown="DeadlineAdd_PreviewMouseLeftButtonDown"
+                                         KeyDown="DeadlineAdd_KeyDown" TextChanged="DeadlineAdd_TextChanged"/>
+                            </Grid>
+                        </Border>
+                        <TextBlock x:Name="DeadlineHint" Grid.Row="1" Foreground="#FFC05A" FontSize="11" FontFamily="Segoe UI"
+                                   Margin="4,4,0,0" Visibility="Collapsed"/>
+                        <ScrollViewer Grid.Row="2" MaxHeight="190" Margin="0,8,0,0" VerticalScrollBarVisibility="Hidden" Focusable="False">
+                            <StackPanel x:Name="DeadlineList"/>
+                        </ScrollViewer>
+                        <StackPanel x:Name="NoDeadlinesText" Grid.Row="2" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                    Visibility="Collapsed" Margin="0,14">
+                            <TextBlock Text="&#xE787;" FontFamily="{StaticResource IconFont}" FontSize="24"
+                                       Foreground="#55B38CFF" HorizontalAlignment="Center"/>
+                            <TextBlock Text="Chưa có hạn chót nào. Tai thỏ sẽ nhắc trước 1 ngày, 1 giờ và lúc đến hạn."
+                                       Foreground="#99FFFFFF" FontSize="12" FontFamily="Segoe UI" Margin="0,8,0,0"
+                                       TextWrapping="Wrap" TextAlignment="Center" MaxWidth="380"/>
+                        </StackPanel>
+                    </Grid>
                 </Grid>
                 </Border>
 
