@@ -1,6 +1,9 @@
 Bản chỉnh sửa từ [sadeeshasathsara/dynamic-island-on-windows](https://github.com/sadeeshasathsara/dynamic-island-on-windows) (MIT).
 
-### Mới trong v2.1.0
+### Sửa trong v2.1.1
+- Sửa lỗi **bảng bị phóng to hết khung** khi bật Loang màu (bản v2.1.0 đã gỡ). Lớp loang màu giờ chỉ phủ phía sau, không làm bảng to ra
+
+### Mới trong v2.1.1 (loang màu)
 - **Loang màu theo bài hát**: nền bảng là chính ảnh bìa được làm nhòe, các mảng màu trôi chậm, đổi bài thì màu chuyển dần. **Ánh màu tràn ra ngoài** ôm theo đúng hình bảng, bo tròn ở hai góc dưới. Viên tai thỏ vẫn giữ LED trắng
 - Menu khay → **Loang màu**: *Đầy đủ*, *Nhẹ* (ảnh nhòe đứng yên) hoặc *Tắt*
 - Tự giảm cho máy yếu: không có tăng tốc đồ họa → tắt; đang Tiết kiệm pin hoặc Windows tắt hiệu ứng hoạt ảnh → chuyển sang Nhẹ; chạy dưới 20 khung hình/giây vài giây liền → chuyển sang Nhẹ và báo một lần. Chỉ chạy khi bảng đang mở
