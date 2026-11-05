@@ -41,9 +41,10 @@ public sealed class ToastSuppressor
     {
         if (!Enabled || string.IsNullOrEmpty(appUserModelId)) return;
         var changed = AppSettings.Current.SuppressedBanners;
-        if (changed.ContainsKey(appUserModelId)) return;
+        lock (AppSettings.SaveLock)   // runs on the notification thread
         try
         {
+            if (changed.ContainsKey(appUserModelId)) return;
             using var key = Registry.CurrentUser.CreateSubKey(AppKey + appUserModelId);
             // What it was before, so it can be put back exactly. A 0 left by an older
             // version of this app (which never put it back) is treated as "not set".
@@ -59,6 +60,8 @@ public sealed class ToastSuppressor
     public void RestoreAll()
     {
         var changed = AppSettings.Current.SuppressedBanners;
+        lock (AppSettings.SaveLock)
+        {
         if (changed.Count == 0) return;
         foreach (var (aumid, before) in new List<KeyValuePair<string, int?>>(changed))
         {
@@ -73,6 +76,7 @@ public sealed class ToastSuppressor
                 changed.Remove(aumid);
             }
             catch { }
+        }
         }
         AppSettings.Current.Save();
         CrashLog.Write("Windows notification banners restored");

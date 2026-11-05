@@ -1,5 +1,17 @@
 Bản chỉnh sửa từ [sadeeshasathsara/dynamic-island-on-windows](https://github.com/sadeeshasathsara/dynamic-island-on-windows) (MIT).
 
+### Mới trong v2.3.0
+- **Cài đặt & quyền riêng tư** (menu khay): ghi rõ app xem gì trên máy và gửi gì ra mạng, mỗi thứ có công tắc riêng: đọc tên cửa sổ (Deep focus, thuyết trình), nghe âm thanh loa cho sóng nhạc, ẩn banner Windows trùng tai thỏ, nhắc hạn chót cả khi Không làm phiền, biểu tượng trang web (Google), lời bài hát từ NetEase
+- **Cập nhật an toàn hơn**: bấm thông báo có bản mới sẽ hiện **danh sách thay đổi** trước, rồi mới cài. File tải về được **kiểm tra mã SHA-256** (kèm theo mỗi bản phát hành) trong một thư mục tạm riêng; sai mã là huỷ
+- Lần đầu mở app sẽ báo rằng tai thỏ tự mở cùng Windows và chỉ chỗ tắt
+
+### Sửa trong v2.3.0
+- **Không để lại thay đổi trên Windows**: banner thông báo của các app được trả lại như cũ khi thoát app, khi đăng xuất / tắt máy, hoặc khi tắt mục "Ẩn banner Windows"
+- Không còn ép bật lại thông báo Windows mỗi lần mở (chỉ sửa một lần cho máy từng dùng bản rất cũ)
+- Tắt khởi động trong Task Manager thì app **tôn trọng lựa chọn đó** (trước đây tự bật lại)
+- **Lịch sử copy và lịch sử thông báo được mã hoá** (Windows DPAPI): chỉ tài khoản Windows của bạn đọc được. Dữ liệu cũ tự chuyển sang dạng mã hoá
+- Kiểm tra cập nhật **nhận đúng bản mới** cả trên mạng trường / công ty dùng chung, và báo "Không kiểm tra được" khi mất mạng thay vì báo nhầm là đã mới nhất
+
 ### Mới trong v2.2.0
 - **Nốt nhạc trôi**: thay cho ảnh bìa xoay, phía sau bảng giờ là 7 nốt nhạc (♪ ♫ ♬ 𝄞) mang màu chủ đạo của bài hát, nhòe như khói màu, trôi ngang thật chậm, nhấp nhô và nghiêng nhẹ. Nền giữ tông màu sáng, rõ như v2.1.1
 - **Bỏ ánh loang ra ngoài viền bảng**

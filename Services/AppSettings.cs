@@ -94,14 +94,22 @@ public sealed class AppSettings
         return new AppSettings();
     }
 
+    /// <summary>Held while saving (and by code that changes settings off the UI thread).</summary>
+    public static readonly object SaveLock = new();
+
     public void Save()
     {
-        try
+        lock (SaveLock)
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
-            File.WriteAllText(FilePath, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
+                var temp = FilePath + ".tmp";   // write fully, then swap: never a half-written file
+                File.WriteAllText(temp, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
+                File.Move(temp, FilePath, overwrite: true);
+            }
+            catch { }
         }
-        catch { }
     }
 }
 
