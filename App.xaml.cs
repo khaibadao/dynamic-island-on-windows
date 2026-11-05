@@ -22,6 +22,8 @@ public partial class App : Application
     private PresentationWatcher? _presenting;
     private UpdateChecker? _updates;
     private DeadlineService? _deadlines;
+    private ToastSuppressor? _suppressor;
+    private bool _firstRun;
     private bool _enabled = true;
     private static System.Threading.Mutex? _singleInstance;
     private BatteryWatcher? _battery;
@@ -49,7 +51,7 @@ public partial class App : Application
         System.Threading.Tasks.TaskScheduler.UnobservedTaskException += (_, ev) => { CrashLog.Error("task", ev.Exception); ev.SetObserved(); };
 
         // Register "start with Windows" first, so a later problem can't skip it
-        try { AutoStart.EnsureOnStartup(AppSettings.Current); } catch (Exception ex) { CrashLog.Error("autostart", ex); }
+        try { _firstRun = AutoStart.EnsureOnStartup(AppSettings.Current); } catch (Exception ex) { CrashLog.Error("autostart", ex); }
 
         // Right after sign-in Windows is still busy (notifications, media and
         // Bluetooth services may not answer yet), so give it a few seconds.
@@ -60,8 +62,11 @@ public partial class App : Application
         _island.Show();
 
         // Create services
-        var suppressor = new ToastSuppressor();
-        _listener = new NotificationListener(suppressor);
+        _suppressor = new ToastSuppressor();
+        _listener = new NotificationListener(_suppressor);
+        SettingsWindow.Changed += ApplySettings;
+        // Signing out / shutting down: put Windows' banners back first
+        SessionEnding += (_, _) => _suppressor?.RestoreAll();
 
         // Wire notification events to the UI
         _listener.OnNotificationReceived += data => _island.Dispatcher.Invoke(() => ShowOnIsland(data, keepInHistory: true));
@@ -107,7 +112,7 @@ public partial class App : Application
             Glyph   = "\uE787",
             GlyphColor = "#B38CFF",
             OnClick = () => _notch?.Dispatcher.BeginInvoke(new Action(() => _notch.OpenTab("deadlines")))
-        }, keepInHistory: false, bypassDnd: true);
+        }, keepInHistory: false, bypassDnd: AppSettings.Current.DeadlinesBypassDnd);
 
         _focusWidget = new FocusWidget(_focus);   // the small floating timer while a tree grows
         _ = _history.RestoreIconsAsync();   // site logos for notifications kept from last time
@@ -139,6 +144,23 @@ public partial class App : Application
         _updates = new UpdateChecker();
         _updates.Available += v => _island.Dispatcher.BeginInvoke(new Action(() => AnnounceUpdate(v)));
         _updates.Start();
+
+        // The very first time: say that it now starts with Windows, and where to turn that off
+        if (_firstRun)
+        {
+            var hello = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(4) };
+            hello.Tick += (_, _) =>
+            {
+                hello.Stop();
+                ShowOnIsland(new NotificationData
+                {
+                    AppName = "Dynamic Island", Title = "Tai thỏ sẽ tự mở cùng Windows",
+                    Body = "Tắt ở menu khay → Start with Windows · Cài đặt & quyền riêng tư cũng ở đó",
+                    Glyph = "\uE7E8", GlyphColor = "#4DA3FF", OnClick = SettingsWindow.ShowOnce
+                }, keepInHistory: false, bypassDnd: true);
+            };
+            hello.Start();
+        }
 
         await StartWithRetry("notifications", _listener.StartAsync);
         await StartWithRetry("music", _media.StartAsync);
@@ -395,8 +417,8 @@ public partial class App : Application
 
     private void AutoStartToggle_Click(object sender, RoutedEventArgs e)
     {
-        if (AutoStart.IsEnabled) AutoStart.Disable();
-        else                     AutoStart.Enable();
+        if (AutoStart.IsActive) AutoStart.Disable();
+        else                    AutoStart.EnableByUser();
         UpdateAutoStartMenu();
     }
 
@@ -406,7 +428,7 @@ public partial class App : Application
         if (tray?.ContextMenu == null) return;
         foreach (var obj in tray.ContextMenu.Items)
             if (obj is MenuItem { Tag: "autostart" } item)
-                item.IsChecked = AutoStart.IsEnabled;
+                item.IsChecked = AutoStart.IsActive;   // off when switched off in Task Manager (left as you chose)
     }
 
     private void UpdateMusicMenuHeader()
@@ -440,51 +462,59 @@ public partial class App : Application
     // ── Updates ───────────────────────────────────────────────────────
     private bool _installing;
 
+    /// <summary>A note on the island; clicking it shows what's new and the install button.</summary>
     private void AnnounceUpdate(Version v)
     {
         ShowOnIsland(new NotificationData
         {
             AppName = "Dynamic Island",
             Title   = $"Có bản mới v{v.ToString(3)}",
-            Body    = "Bấm để cập nhật (ứng dụng tự khởi động lại)",
+            Body    = "Bấm để xem có gì mới và cập nhật",
             Glyph   = "\uE896",
             GlyphColor = "#4DA3FF",
-            OnClick = () => _ = Install(v)
-        }, keepInHistory: false, bypassDnd: false);
+            OnClick = () => ShowUpdate(v)
+        }, keepInHistory: false, bypassDnd: true);
     }
 
-    private async System.Threading.Tasks.Task Install(Version v)
+    private void ShowUpdate(Version v)
     {
-        if (_installing) return;
-        _installing = true;
-        ShowOnIsland(new NotificationData
+        UpdateWindow? window = null;
+        window = UpdateWindow.ShowFor(v, async () =>
         {
-            AppName = "Dynamic Island", Title = $"Đang tải v{v.ToString(3)}…", Body = "Xong sẽ tự mở lại",
-            Glyph = "\uE896", GlyphColor = "#4DA3FF"
-        }, keepInHistory: false, bypassDnd: true);
-        if (await UpdateChecker.InstallAsync(v))
-        {
-            Current.Shutdown();
-            return;
-        }
-        _installing = false;
-        ShowOnIsland(new NotificationData
-        {
-            AppName = "Dynamic Island", Title = "Không cập nhật được", Body = "Thử lại sau, hoặc dùng lệnh cài",
-            Glyph = "\uE783", GlyphColor = "#FF5C7A"
-        }, keepInHistory: false, bypassDnd: true);
+            if (_installing) return;
+            _installing = true;
+            var error = await UpdateChecker.InstallAsync(v);
+            if (error == null) { Current.Shutdown(); return; }
+            _installing = false;
+            window?.Failed(error);
+        });
     }
 
     private async void CheckUpdate_Click(object sender, RoutedEventArgs e)
     {
         if (_updates == null) return;
-        var v = await _updates.CheckAsync(manual: true);
-        if (v == null)
+        var (status, _) = await _updates.CheckAsync(manual: true);
+        if (status == UpdateStatus.UpToDate)
             ShowOnIsland(new NotificationData
             {
                 AppName = "Dynamic Island", Title = "Bạn đang dùng bản mới nhất",
                 Body = $"v{UpdateChecker.Current.ToString(3)}", Glyph = "\uE73E", GlyphColor = "#34C759"
             }, keepInHistory: false, bypassDnd: true);
+        else if (status == UpdateStatus.Failed)
+            ShowOnIsland(new NotificationData
+            {
+                AppName = "Dynamic Island", Title = "Không kiểm tra được bản mới",
+                Body = "Kiểm tra mạng rồi thử lại sau", Glyph = "\uE783", GlyphColor = "#FFB020"
+            }, keepInHistory: false, bypassDnd: true);
+    }
+
+    // ── Settings & privacy ────────────────────────────────────────────
+    private void Settings_Click(object sender, RoutedEventArgs e) => SettingsWindow.ShowOnce();
+
+    private void ApplySettings()
+    {
+        if (!ToastSuppressor.Enabled) _suppressor?.RestoreAll();   // banners back to how Windows had them
+        _notch?.ApplySettings();
     }
 
     private void Quit_Click(object sender, RoutedEventArgs e)

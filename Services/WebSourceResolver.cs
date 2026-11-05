@@ -169,7 +169,7 @@ public static class WebSourceResolver
             {
                 bytes = await File.ReadAllBytesAsync(file);
             }
-            else
+            else if (AppSettings.Current.WebIcons)   // can be switched off in Cài đặt & quyền riêng tư
             {
                 var url = $"https://www.google.com/s2/favicons?domain={Uri.EscapeDataString(host)}&sz=64";
                 bytes = await Http.GetByteArrayAsync(url);

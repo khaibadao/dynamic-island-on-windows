@@ -59,7 +59,7 @@ public sealed class NotificationListener
         // Older versions switched off ALL Windows notifications while running and
         // only switched them back on at a clean Quit; after a crash or a forced
         // shutdown they stayed off, so nothing reached the island. Undo that.
-        _suppressor.DisableDND();
+        _suppressor.RepairOldVersionsOnce();
         _ = Task.Run(() => PollLoop(_cts.Token));
     }
 

@@ -3,21 +3,30 @@ namespace DynamicIslandNotifier.Services;
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows.Threading;
 
+/// <summary>What a check found: a newer version, nothing newer, or no answer.</summary>
+public enum UpdateStatus { UpToDate, Available, Failed }
+
 /// <summary>
-/// Looks for a newer release on GitHub (at start and every 6 hours) and,
-/// when you agree, downloads it and swaps it in: the app closes, a tiny
-/// script replaces the .exe and starts the new one.
+/// Looks for a newer release on GitHub (at start and every 6 hours). Installing
+/// shows what's new first; the download is checked against the release's
+/// SHA-256 fingerprints before anything is replaced, in a fresh private folder.
 /// </summary>
 public sealed class UpdateChecker
 {
     private const string Repo = "khaibadao/dynamic-island-on-windows";
-    private static readonly HttpClient Http = CreateClient();
+    private static readonly HttpClient Http = CreateClient(followRedirects: true);
+    private static readonly HttpClient NoRedirect = CreateClient(followRedirects: false);
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromHours(6) };
     private Version? _announced;
 
@@ -27,10 +36,11 @@ public sealed class UpdateChecker
     public static Version Current =>
         typeof(UpdateChecker).Assembly.GetName().Version is { } v ? new Version(v.Major, v.Minor, Math.Max(0, v.Build)) : new Version(0, 0, 0);
 
-    private static HttpClient CreateClient()
+    private static HttpClient CreateClient(bool followRedirects)
     {
-        var http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
+        var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = followRedirects }) { Timeout = TimeSpan.FromMinutes(5) };
         http.DefaultRequestHeaders.UserAgent.ParseAdd("DynamicIslandNotifier-updater");
+        http.DefaultRequestHeaders.CacheControl = new System.Net.Http.Headers.CacheControlHeaderValue { NoCache = true };
         return http;
     }
 
@@ -43,71 +53,172 @@ public sealed class UpdateChecker
         first.Start();
     }
 
-    /// <summary>Returns the newer version, or null when you're up to date (or offline).</summary>
-    public async Task<Version?> CheckAsync(bool manual)
+    public async Task<(UpdateStatus Status, Version? Latest)> CheckAsync(bool manual)
+    {
+        var latest = await LatestAsync();
+        if (latest == null) return (UpdateStatus.Failed, null);
+        if (latest <= Current) return (UpdateStatus.UpToDate, latest);
+        if (manual || _announced != latest)
+        {
+            _announced = latest;
+            Available?.Invoke(latest);
+        }
+        return (UpdateStatus.Available, latest);
+    }
+
+    /// <summary>
+    /// The newest version. First from the page github.com/…/releases/latest
+    /// (it points at the newest tag and has no hourly limit, which matters on a
+    /// shared school or office network); if that fails, from the GitHub API.
+    /// </summary>
+    private static async Task<Version?> LatestAsync()
     {
         try
         {
+            using var resp = await NoRedirect.GetAsync($"https://github.com/{Repo}/releases/latest", HttpCompletionOption.ResponseHeadersRead);
+            var location = resp.Headers.Location?.ToString();
+            var m = location == null ? null : Regex.Match(location, @"/tag/v?(\d+\.\d+\.\d+)");
+            if (m is { Success: true } && Version.TryParse(m.Groups[1].Value, out var v)) return v;
+            CrashLog.Write($"Update check: no redirect ({(int)resp.StatusCode})");
+        }
+        catch (Exception ex) { CrashLog.Write($"Update check (page) failed: {ex.Message}"); }
+
+        try
+        {
             using var resp = await Http.GetAsync($"https://api.github.com/repos/{Repo}/releases/latest");
-            if (!resp.IsSuccessStatusCode) return null;
+            if (!resp.IsSuccessStatusCode) { CrashLog.Write($"Update check (API): {(int)resp.StatusCode}"); return null; }
             using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
             var tag = doc.RootElement.GetProperty("tag_name").GetString()?.TrimStart('v', 'V');
-            if (!Version.TryParse(tag, out var latest) || latest <= Current) return null;
-            if (manual || _announced != latest)
-            {
-                _announced = latest;
-                Available?.Invoke(latest);
-            }
-            return latest;
+            return Version.TryParse(tag, out var v) ? v : null;
         }
         catch (Exception ex)
         {
-            CrashLog.Write($"Update check failed: {ex.Message}");
+            CrashLog.Write($"Update check (API) failed: {ex.Message}");
             return null;
         }
     }
 
-    /// <summary>Downloads the new .exe, then closes the app so a small script can swap it in and restart.</summary>
-    public static async Task<bool> InstallAsync(Version version)
+    /// <summary>"What's new" for every version after the one you have, from that release's notes.</summary>
+    public static async Task<string> ChangesAsync(Version version)
     {
         try
         {
-            string arch = RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "arm64" : "x64";
-            string url = $"https://github.com/{Repo}/releases/download/v{version}/DynamicIslandNotifier-{arch}.exe";
-            string exe = Environment.ProcessPath ?? throw new InvalidOperationException("no exe path");
-            string temp = Path.Combine(Path.GetTempPath(), $"DynamicIslandNotifier-{version}.exe");
+            var notes = await Http.GetStringAsync($"https://raw.githubusercontent.com/{Repo}/v{version.ToString(3)}/RELEASE_NOTES.md");
+            var keep = new StringBuilder();
+            bool on = false;
+            foreach (var line in notes.Split('\n'))
+            {
+                var heading = Regex.Match(line, @"^###\s.*?v(\d+\.\d+\.\d+)");
+                if (heading.Success)
+                {
+                    on = Version.TryParse(heading.Groups[1].Value, out var v) && v > Current;
+                    if (on) keep.AppendLine().AppendLine(line.TrimStart('#', ' ').Trim());
+                    continue;
+                }
+                if (on && line.Trim().Length > 0)
+                    keep.AppendLine(Regex.Replace(line.TrimEnd(), @"\*\*|`", "").Replace("- ", "• ", StringComparison.Ordinal));
+            }
+            var text = keep.ToString().Trim();
+            return text.Length > 0 ? text : "Không có ghi chú cho bản này.";
+        }
+        catch
+        {
+            return "Không tải được danh sách thay đổi. Bạn vẫn có thể cập nhật.";
+        }
+    }
 
-            using (var resp = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead))
+    /// <summary>
+    /// Downloads the new .exe into a new private folder, checks its SHA-256
+    /// against the release's fingerprints, then closes the app so a small
+    /// script can swap it in and start it again. Returns an error, or null.
+    /// </summary>
+    public static async Task<string?> InstallAsync(Version version)
+    {
+        string? folder = null;
+        try
+        {
+            string arch = RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "arm64" : "x64";
+            string name = $"DynamicIslandNotifier-{arch}.exe";
+            string tag = $"v{version.ToString(3)}";
+            string exe = Environment.ProcessPath ?? throw new InvalidOperationException("no exe path");
+
+            // A fresh folder with a random name, so nothing can be swapped in on the way
+            folder = Path.Combine(Path.GetTempPath(), "DynamicIsland-update-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(folder);
+            string temp = Path.Combine(folder, name);
+
+            string? expected = await ExpectedHashAsync(tag, name);
+            if (expected == null) return "Không lấy được mã kiểm tra của bản mới";
+
+            using (var resp = await Http.GetAsync($"https://github.com/{Repo}/releases/download/{tag}/{name}", HttpCompletionOption.ResponseHeadersRead))
             {
                 resp.EnsureSuccessStatusCode();
                 await using var fs = File.Create(temp);
                 await resp.Content.CopyToAsync(fs);
             }
-            if (new FileInfo(temp).Length < 1_000_000) throw new IOException("download too small");
 
-            // Wait for this app to close, replace the .exe, unblock it, start it again.
+            string actual;
+            await using (var fs = File.OpenRead(temp))
+                actual = Convert.ToHexString(await SHA256.HashDataAsync(fs)).ToLowerInvariant();
+            if (actual != expected)
+            {
+                CrashLog.Write($"Update {tag}: SHA-256 mismatch, not installed");
+                Directory.Delete(folder, recursive: true);
+                return "File tải về không khớp mã kiểm tra, đã huỷ";
+            }
+
+            // Wait for this app to close, replace the .exe, start it again, clean up.
             int pid = Environment.ProcessId;
-            string script = Path.Combine(Path.GetTempPath(), "DynamicIslandNotifier-update.cmd");
+            string script = Path.Combine(folder, "update.cmd");
             File.WriteAllText(script,
 $@"@echo off
 :wait
-tasklist /FI ""PID eq {pid}"" | find ""{pid}"" >nul && (timeout /t 1 /nobreak >nul & goto wait)
+tasklist /FI ""PID eq {pid}"" | find ""{pid}"" >nul && (ping -n 2 127.0.0.1 >nul & goto wait)
 move /y ""{temp}"" ""{exe}"" >nul
-powershell -NoProfile -WindowStyle Hidden -Command ""Unblock-File -Path '{exe}'""
 start """" ""{exe}""
-del ""%~f0""
+cd /d ""%TEMP%""
+rmdir /s /q ""{folder}""
 ");
             Process.Start(new ProcessStartInfo("cmd.exe", $"/c \"{script}\"")
             {
                 CreateNoWindow = true, UseShellExecute = false, WindowStyle = ProcessWindowStyle.Hidden
             });
-            CrashLog.Write($"Updating to v{version}");
-            return true;
+            CrashLog.Write($"Updating to {tag} (SHA-256 checked)");
+            return null;
         }
         catch (Exception ex)
         {
             CrashLog.Write($"Update failed: {ex.Message}");
-            return false;
+            try { if (folder != null) Directory.Delete(folder, recursive: true); } catch { }
+            return "Không tải được bản mới";
         }
+    }
+
+    /// <summary>The fingerprint from the release's SHA256SUMS.txt; else from the GitHub API.</summary>
+    private static async Task<string?> ExpectedHashAsync(string tag, string name)
+    {
+        try
+        {
+            var sums = await Http.GetStringAsync($"https://github.com/{Repo}/releases/download/{tag}/SHA256SUMS.txt");
+            foreach (var line in sums.Split('\n'))
+            {
+                var parts = line.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length == 2 && parts[1] == name && parts[0].Length == 64) return parts[0].ToLowerInvariant();
+            }
+        }
+        catch (HttpRequestException) { }
+
+        try
+        {
+            using var resp = await Http.GetAsync($"https://api.github.com/repos/{Repo}/releases/tags/{tag}");
+            if (!resp.IsSuccessStatusCode) return null;
+            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            foreach (var asset in doc.RootElement.GetProperty("assets").EnumerateArray())
+                if (asset.GetProperty("name").GetString() == name &&
+                    asset.TryGetProperty("digest", out var d) && d.GetString() is { } digest && digest.StartsWith("sha256:"))
+                    return digest[7..].ToLowerInvariant();
+        }
+        catch { }
+        return null;
     }
 }

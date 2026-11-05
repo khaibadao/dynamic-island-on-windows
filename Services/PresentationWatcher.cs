@@ -55,6 +55,8 @@ public sealed class PresentationWatcher
         try
         {
             if (SHQueryUserNotificationState(out int state) == 0 && state == QUNS_PRESENTATION_MODE) return true;
+            // Window classes and titles (Zoom / Meet / Teams sharing bars) only if allowed
+            if (!AppSettings.Current.ReadWindowTitles) return false;
             bool found = false;
             var cls = new StringBuilder(128);
             var title = new StringBuilder(256);

@@ -55,11 +55,15 @@ jobs:
           New-Item -ItemType Directory -Force release | Out-Null
           Copy-Item out/x64/DynamicIslandNotifier.exe   release/DynamicIslandNotifier-x64.exe
           Copy-Item out/arm64/DynamicIslandNotifier.exe release/DynamicIslandNotifier-arm64.exe
+          # Fingerprints the app's updater checks before installing a new version
+          Get-ChildItem release/*.exe | ForEach-Object { "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name } |
+            Set-Content release/SHA256SUMS.txt -Encoding ascii
+          Get-Content release/SHA256SUMS.txt
 
       - uses: actions/upload-artifact@v4
         with:
           name: DynamicIslandNotifier
-          path: release/*.exe
+          path: release/*
 
       - name: Publish release
         if: steps.ver.outputs.release == 'true'
@@ -69,4 +73,6 @@ jobs:
           target_commitish: ${{ github.sha }}
           name: Dynamic Island ${{ steps.ver.outputs.tag }}
           body_path: RELEASE_NOTES.md
-          files: release/*.exe
+          files: |
+            release/*.exe
+            release/SHA256SUMS.txt

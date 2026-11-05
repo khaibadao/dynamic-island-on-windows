@@ -10,7 +10,7 @@ using DynamicIslandNotifier.Core;
 
 /// <summary>
 /// The most recent notifications, kept between runs in
-/// %LOCALAPPDATA%\DynamicIslandNotifier\history.json (on this PC only).
+/// %LOCALAPPDATA%\DynamicIslandNotifier\history.dat (on this PC only, readable only by your Windows account).
 /// Use from the UI thread.
 /// </summary>
 public sealed class NotificationHistory
@@ -24,9 +24,10 @@ public sealed class NotificationHistory
     private sealed record Stored(DateTime Time, string AppName, string Title, string Body,
                                  string? AppUserModelId, string? SourceKey, string? SiteUrl);
 
-    private static readonly string FilePath = Path.Combine(
+    private static readonly string OldFilePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "DynamicIslandNotifier", "history.json");
+        "DynamicIslandNotifier", "history.json");   // before v2.3: plain text
+    private static readonly string FilePath = Path.ChangeExtension(OldFilePath, ".dat");   // only your account can read it
 
     private readonly List<Entry> _items = Load();
 
@@ -86,8 +87,9 @@ public sealed class NotificationHistory
     {
         try
         {
-            if (!File.Exists(FilePath)) return new();
-            var stored = JsonSerializer.Deserialize<List<Stored>>(File.ReadAllText(FilePath)) ?? new();
+            var json = SecureStore.ReadTextOrMigrate(FilePath, OldFilePath);
+            if (json == null) return new();
+            var stored = JsonSerializer.Deserialize<List<Stored>>(json) ?? new();
             return stored.Take(Max).Select(s => new Entry(s.Time, new NotificationData
             {
                 AppName        = s.AppName,
@@ -110,8 +112,7 @@ public sealed class NotificationHistory
         {
             var stored = _items.Select(e => new Stored(e.Time, e.Data.AppName, e.Data.Title, e.Data.Body,
                                                        e.Data.AppUserModelId, e.Data.SourceKey, e.Data.SiteUrl)).ToList();
-            Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
-            File.WriteAllText(FilePath, JsonSerializer.Serialize(stored));
+            SecureStore.WriteText(FilePath, JsonSerializer.Serialize(stored));
         }
         catch { }
     }

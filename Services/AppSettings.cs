@@ -56,6 +56,24 @@ public sealed class AppSettings
     /// <summary>True once "start with Windows" was set up on first run (the user may have turned it off since).</summary>
     public bool AutoStartConfigured { get; set; }
 
+    // ── Changes to Windows settings, always undone ──
+    /// <summary>Apps whose Windows banner is hidden while the app runs, with the value it had before (null: not set).</summary>
+    public Dictionary<string, int?> SuppressedBanners { get; set; } = new();
+    public bool HideWindowsBanners { get; set; } = true;
+    public bool GlobalToastsRepaired { get; set; }
+
+    // ── Privacy switches (Cài đặt & quyền riêng tư) ──
+    /// <summary>Read the title of the window in front (deep focus, presenting).</summary>
+    public bool ReadWindowTitles { get; set; } = true;
+    /// <summary>Listen to what the speakers play, for the sound bars.</summary>
+    public bool ListenToAudio { get; set; } = true;
+    /// <summary>Website logos for notifications, from Google's icon service.</summary>
+    public bool WebIcons { get; set; } = true;
+    /// <summary>Look lyrics up on NetEase too (LRCLIB is always used).</summary>
+    public bool NetEaseLyrics { get; set; } = true;
+    /// <summary>Deadline reminders show even with Do Not Disturb on.</summary>
+    public bool DeadlinesBypassDnd { get; set; } = true;
+
     /// <summary>Muted senders: source key → name to show in the menu.</summary>
     public Dictionary<string, string> MutedSources { get; set; } = new();
 

@@ -1135,6 +1135,9 @@ public partial class NotchWindow : Window
         return AmbientLevel.Full;
     }
 
+    /// <summary>A switch in Cài đặt & quyền riêng tư changed.</summary>
+    public void ApplySettings() => SetBarsPlaying(_playing);
+
     /// <summary>After the tray choice changes (choosing again also forgets "máy hơi yếu").</summary>
     public void ReapplyAmbient()
     {
@@ -1244,7 +1247,8 @@ public partial class NotchWindow : Window
         var bars = Bars;
         var rest = new[] { 0.3, 0.55, 0.4, 0.7, 0.45, 0.6, 0.35 };
 
-        if (playing && (_spectrum.Start() || _meter.Peak() != null))
+        bool listen = AppSettings.Current.ListenToAudio;   // can be switched off in Cài đặt & quyền riêng tư
+        if (playing && listen && (_spectrum.Start() || _meter.Peak() != null))
         {
             foreach (var b in bars)
                 if (b.RenderTransform is ScaleTransform sc) sc.BeginAnimation(ScaleTransform.ScaleYProperty, null);
@@ -1277,6 +1281,7 @@ public partial class NotchWindow : Window
             return;
         }
 
+        if (!AppSettings.Current.ListenToAudio) { _meterTimer?.Stop(); _spectrum.Stop(); AnimateBars(); return; }
         double[] target = new double[bars.Length];
         if (_spectrum.Start())
         {

@@ -59,8 +59,8 @@ public static class LyricsService
                 if (synced != null) { result = new Lyrics(ParseLrc(synced), true, "LRCLIB"); break; }
             }
 
-            // 2) NetEase, synced
-            if (result.Lines.Count == 0)
+            // 2) NetEase, synced (can be switched off in Cài đặt & quyền riêng tư)
+            if (result.Lines.Count == 0 && AppSettings.Current.NetEaseLyrics)
             {
                 foreach (var (t, a) in guesses.Take(4))
                 {

@@ -47,7 +47,7 @@ public sealed class DeepFocus
 
     private void Check()
     {
-        if (!Enabled || !_focus.IsRunning) { _current = null; return; }
+        if (!Enabled || !_focus.IsRunning || !AppSettings.Current.ReadWindowTitles) { _current = null; return; }
 
         string? hit = Match();
         if (hit == null)

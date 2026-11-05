@@ -35,6 +35,7 @@
                             <MenuItem Header="…" IsEnabled="False"/>
                         </MenuItem>
                         <Separator/>
+                        <MenuItem Header="Cài đặt &amp; quyền riêng tư…" Click="Settings_Click"/>
                         <MenuItem Header="Kiểm tra cập nhật" Click="CheckUpdate_Click"/>
                         <MenuItem Header="Quit" Click="Quit_Click"/>
                     </ContextMenu>

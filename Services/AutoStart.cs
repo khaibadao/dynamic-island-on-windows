@@ -50,34 +50,49 @@ public static class AutoStart
     }
 
     /// <summary>
-    /// Call at startup. Turns auto-start on the first time the app runs, and
-    /// keeps the saved path current if the .exe was moved or updated.
+    /// Call at startup. Turns auto-start on the first time the app runs (and
+    /// says so on the island), and keeps the saved path current if the .exe
+    /// was moved or updated. Returns true the very first time.
     /// </summary>
-    public static void EnsureOnStartup(AppSettings settings)
+    public static bool EnsureOnStartup(AppSettings settings)
     {
         if (!settings.AutoStartConfigured)
         {
             Enable();
             settings.AutoStartConfigured = true;
             settings.Save();
+            return true;
         }
-        else if (IsEnabled)
-        {
-            Enable();   // refresh the path
-        }
-        EnsureApproved();
+        if (IsEnabled) Enable();   // refresh the path
+        return false;
     }
 
     private const string ApprovedKey = @"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
 
     /// <summary>
-    /// Windows keeps a separate on/off switch per startup app (Task Manager →
-    /// Startup apps). If ours is switched off while the menu says on, the app
-    /// silently never starts with Windows, so switch it back on.
+    /// Switched off in Task Manager → Startup apps. That's your choice and is
+    /// left alone; the tray menu just shows "Start with Windows" as off.
     /// </summary>
-    private static void EnsureApproved()
+    public static bool IsBlockedInTaskManager
     {
-        if (!IsEnabled) return;
+        get
+        {
+            try
+            {
+                using var key = Registry.CurrentUser.OpenSubKey(ApprovedKey);
+                return key?.GetValue(ValueName) is byte[] state && state.Length > 0 && (state[0] & 1) == 1;
+            }
+            catch { return false; }
+        }
+    }
+
+    /// <summary>Starts with Windows for real: on in our list and not switched off in Task Manager.</summary>
+    public static bool IsActive => IsEnabled && !IsBlockedInTaskManager;
+
+    /// <summary>Turning it on from the tray menu is your choice too, so it also clears Task Manager's switch.</summary>
+    public static void EnableByUser()
+    {
+        Enable();
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(ApprovedKey, writable: true);
@@ -86,7 +101,6 @@ public static class AutoStart
                 var on = new byte[12];
                 on[0] = 0x02;
                 key.SetValue(ValueName, on, RegistryValueKind.Binary);
-                CrashLog.Write("Startup switch was off in Windows; turned it back on");
             }
         }
         catch (Exception ex) { CrashLog.Error("startup switch", ex); }

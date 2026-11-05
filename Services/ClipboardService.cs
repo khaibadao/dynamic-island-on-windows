@@ -72,7 +72,8 @@ public sealed class ClipboardService
     private static readonly string Folder = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "DynamicIslandNotifier", "clipboard");
-    private static readonly string IndexFile = Path.Combine(Folder, "index.json");
+    private static readonly string IndexFile = Path.Combine(Folder, "index.dat");        // only your account can read it
+    private static readonly string OldIndexFile = Path.Combine(Folder, "index.json");    // before v2.3
 
     private readonly List<ClipItem> _items = Load();
     private HwndSource? _source;
@@ -176,12 +177,13 @@ public sealed class ClipboardService
         }
 
         Directory.CreateDirectory(Folder);
-        var item = new ClipItem { ImageFile = $"{Guid.NewGuid():N}.png", Source = source, Hash = hash };
-        using (var fs = File.Create(ImagePath(item)))
+        var item = new ClipItem { ImageFile = $"{Guid.NewGuid():N}.bin", Source = source, Hash = hash };
+        using (var ms = new MemoryStream())
         {
             var enc = new PngBitmapEncoder();
             enc.Frames.Add(BitmapFrame.Create(image));
-            enc.Save(fs);
+            enc.Save(ms);
+            SecureStore.WriteBytes(ImagePath(item), ms.ToArray());   // protected like the text
         }
         _items.Add(item);
         Trim();
@@ -280,9 +282,11 @@ public sealed class ClipboardService
         {
             var path = ImagePath(item);
             if (!File.Exists(path)) return null;
+            var bytes = path.EndsWith(".bin", StringComparison.OrdinalIgnoreCase) ? SecureStore.ReadBytes(path) : File.ReadAllBytes(path);
+            if (bytes == null) return null;
             var bmp = new BitmapImage();
             bmp.BeginInit();
-            bmp.UriSource = new Uri(path);
+            bmp.StreamSource = new MemoryStream(bytes);
             bmp.CacheOption = BitmapCacheOption.OnLoad;   // don't keep the file locked
             if (height > 0) bmp.DecodePixelHeight = height;
             bmp.EndInit();
@@ -318,10 +322,27 @@ public sealed class ClipboardService
     {
         try
         {
-            if (File.Exists(IndexFile))
+            var json = SecureStore.ReadTextOrMigrate(IndexFile, OldIndexFile);
+            if (json != null)
             {
-                var items = JsonSerializer.Deserialize<List<ClipItem>>(File.ReadAllText(IndexFile)) ?? new();
-                return items.Where(i => !i.IsImage || File.Exists(ImagePath(i))).ToList();
+                var items = JsonSerializer.Deserialize<List<ClipItem>>(json) ?? new();
+                items = items.Where(i => !i.IsImage || File.Exists(ImagePath(i))).ToList();
+                // Pictures saved by older versions as plain .png: protect them too
+                bool changed = false;
+                foreach (var i in items.Where(i => i.IsImage && i.ImageFile!.EndsWith(".png", StringComparison.OrdinalIgnoreCase)))
+                {
+                    try
+                    {
+                        var old = ImagePath(i);
+                        i.ImageFile = Path.ChangeExtension(i.ImageFile, ".bin");
+                        SecureStore.WriteBytes(ImagePath(i), File.ReadAllBytes(old));
+                        File.Delete(old);
+                        changed = true;
+                    }
+                    catch { }
+                }
+                if (changed) SecureStore.WriteText(IndexFile, JsonSerializer.Serialize(items));
+                return items;
             }
         }
         catch { }
@@ -332,8 +353,7 @@ public sealed class ClipboardService
     {
         try
         {
-            Directory.CreateDirectory(Folder);
-            File.WriteAllText(IndexFile, JsonSerializer.Serialize(_items));
+            SecureStore.WriteText(IndexFile, JsonSerializer.Serialize(_items));
         }
         catch { }
     }
