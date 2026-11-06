@@ -37,6 +37,9 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      - name: Tests
+        run: dotnet test tests/DynamicIslandNotifier.Tests -c Release --nologo
+
       - name: Build x64
         run: >
           dotnet publish DynamicIslandNotifier.csproj -c Release -r win-x64
@@ -55,6 +58,13 @@ jobs:
           New-Item -ItemType Directory -Force release | Out-Null
           Copy-Item out/x64/DynamicIslandNotifier.exe   release/DynamicIslandNotifier-x64.exe
           Copy-Item out/arm64/DynamicIslandNotifier.exe release/DynamicIslandNotifier-arm64.exe
+          # Installers (per-user, no admin) made with Inno Setup
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress | Out-Null }
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          & $iscc /Qp "/DAppVersion=${{ steps.ver.outputs.version }}" /DArch=x64 installer.iss
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          & $iscc /Qp "/DAppVersion=${{ steps.ver.outputs.version }}" /DArch=arm64 installer.iss
+          if ($LASTEXITCODE -ne 0) { exit 1 }
           # Fingerprints the app's updater checks before installing a new version
           Get-ChildItem release/*.exe | ForEach-Object { "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name } |
             Set-Content release/SHA256SUMS.txt -Encoding ascii

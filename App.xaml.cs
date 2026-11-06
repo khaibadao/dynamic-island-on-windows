@@ -35,6 +35,14 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        // Run by the uninstaller: close the running copy, undo every change to Windows, leave.
+        if (e.Args.Contains("--uninstall"))
+        {
+            UninstallCleanup();
+            Shutdown();
+            return;
+        }
+
         // Only one copy at a time (e.g. started both by Windows and by hand)
         _singleInstance = new System.Threading.Mutex(true, @"Local\DynamicIslandNotifier.SingleInstance", out bool isFirst);
         if (!isFirst)
@@ -42,6 +50,7 @@ public partial class App : Application
             Shutdown();
             return;
         }
+        ListenForQuit();
 
         // Keep running if something goes wrong, and note it in startup.log
         bool atBoot = e.Args.Contains("--autostart");
@@ -69,13 +78,20 @@ public partial class App : Application
         SessionEnding += (_, _) => _suppressor?.RestoreAll();
 
         // Wire notification events to the UI
-        _listener.OnNotificationReceived += data => _island.Dispatcher.Invoke(() => ShowOnIsland(data, keepInHistory: true));
+        _listener.AccessDenied += () => _island.Dispatcher.BeginInvoke(new Action(() => ShowOnIsland(new NotificationData
+        {
+            AppName = "Dynamic Island", Title = "Chưa được phép đọc thông báo",
+            Body = "Bấm để mở Cài đặt → Quyền riêng tư → Thông báo, rồi cho phép Dynamic Island",
+            Glyph = "\uE7BA", GlyphColor = "#FFB020",
+            OnClick = () => { try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("ms-settings:privacy-notifications") { UseShellExecute = true }); } catch { } }
+        }, keepInHistory: false, bypassDnd: true)));
+        _listener.OnNotificationReceived += data => _island.Dispatcher.BeginInvoke(new Action(() => ShowOnIsland(data, keepInHistory: true)));
         _island.MuteRequested += Mute;
         _island.ActiveChanged += active => _notch?.SetIslandActive(active);
 
         // Battery: charger plugged in / out, low battery
         _battery = new BatteryWatcher();
-        _battery.Notify += data => _island.Dispatcher.Invoke(() => ShowOnIsland(data, keepInHistory: false));
+        _battery.Notify += data => _island.Dispatcher.BeginInvoke(new Action(() => ShowOnIsland(data, keepInHistory: false)));
         Try("battery", () => _battery.Start());
 
         // Rebuild the history / muted lists each time the tray menu opens
@@ -116,12 +132,12 @@ public partial class App : Application
 
         _focusWidget = new FocusWidget(_focus);   // the small floating timer while a tree grows
         _ = _history.RestoreIconsAsync();   // site logos for notifications kept from last time
-        _media.Changed += (state, newTrack) => _notch.Dispatcher.Invoke(() => _notch.UpdateMedia(state, newTrack));
-        _focus.Finished += session => _island.Dispatcher.Invoke(() =>
+        _media.Changed += (state, newTrack) => _notch.Dispatcher.BeginInvoke(new Action(() => _notch.UpdateMedia(state, newTrack)));
+        _focus.Finished += session => _island.Dispatcher.BeginInvoke(new Action(() =>
         {
             ShowOnIsland(MakeFocusNotification(session), keepInHistory: false);
             ReleaseHeld("trong lúc bạn tập trung");
-        });
+        }));
         _notch.Show();
         _notch.NotchEnabled = AppSettings.Current.NotchEnabled;
 
@@ -132,7 +148,7 @@ public partial class App : Application
         // Battery of connected Bluetooth headphones
         _headsets = new BluetoothBatteryWatcher();
         _headsets.Changed += () => _notch.Dispatcher.BeginInvoke(new Action(() => _notch.SetHeadsets(_headsets.Devices)));
-        _headsets.Notify  += data => _island.Dispatcher.Invoke(() => ShowOnIsland(data, keepInHistory: false));
+        _headsets.Notify  += data => _island.Dispatcher.BeginInvoke(new Action(() => ShowOnIsland(data, keepInHistory: false)));
         Try("bluetooth", () => _headsets.Start());
 
         UpdateMusicMenuHeader();
@@ -457,6 +473,44 @@ public partial class App : Application
         var item = sender as MenuItem;
         if (item != null)
             item.Header = _enabled ? "Disable" : "Enable";
+    }
+
+    // ── Uninstall ─────────────────────────────────────────────────────
+    private const string QuitSignal = @"Local\DynamicIslandNotifier.Quit";
+
+    /// <summary>The uninstaller (or another copy) can ask this one to quit cleanly.</summary>
+    private void ListenForQuit()
+    {
+        var signal = new System.Threading.EventWaitHandle(false, System.Threading.EventResetMode.AutoReset, QuitSignal);
+        var t = new System.Threading.Thread(() =>
+        {
+            signal.WaitOne();
+            Dispatcher.BeginInvoke(new Action(() => Current.Shutdown()));
+        }) { IsBackground = true, Name = "quit signal" };
+        t.Start();
+    }
+
+    /// <summary>
+    /// Before the app is removed: ask the running copy to quit (it puts Windows'
+    /// banners back as it closes), then make sure of that here too, and stop
+    /// starting with Windows. Your settings and history files are left alone.
+    /// </summary>
+    private static void UninstallCleanup()
+    {
+        try
+        {
+            if (System.Threading.EventWaitHandle.TryOpenExisting(QuitSignal, out var signal))
+            {
+                signal.Set();
+                using var running = new System.Threading.Mutex(false, @"Local\DynamicIslandNotifier.SingleInstance");
+                try { if (running.WaitOne(TimeSpan.FromSeconds(8))) running.ReleaseMutex(); }
+                catch (System.Threading.AbandonedMutexException) { }
+            }
+            new ToastSuppressor().RestoreAll();
+            AutoStart.Disable();
+            CrashLog.Write("Uninstall: Windows settings restored, start with Windows off");
+        }
+        catch (Exception ex) { CrashLog.Error("uninstall", ex); }
     }
 
     // ── Updates ───────────────────────────────────────────────────────

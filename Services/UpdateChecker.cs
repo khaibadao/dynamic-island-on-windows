@@ -76,9 +76,7 @@ public sealed class UpdateChecker
         try
         {
             using var resp = await NoRedirect.GetAsync($"https://github.com/{Repo}/releases/latest", HttpCompletionOption.ResponseHeadersRead);
-            var location = resp.Headers.Location?.ToString();
-            var m = location == null ? null : Regex.Match(location, @"/tag/v?(\d+\.\d+\.\d+)");
-            if (m is { Success: true } && Version.TryParse(m.Groups[1].Value, out var v)) return v;
+            if (VersionFromLink(resp.Headers.Location?.ToString()) is { } v) return v;
             CrashLog.Write($"Update check: no redirect ({(int)resp.StatusCode})");
         }
         catch (Exception ex) { CrashLog.Write($"Update check (page) failed: {ex.Message}"); }
@@ -98,27 +96,41 @@ public sealed class UpdateChecker
         }
     }
 
+    /// <summary>The version in a link like …/releases/tag/v2.3.0, or null.</summary>
+    internal static Version? VersionFromLink(string? link)
+    {
+        var m = link == null ? null : Regex.Match(link, @"/tag/v?(\d+\.\d+\.\d+)$");
+        return m is { Success: true } && Version.TryParse(m.Groups[1].Value, out var v) ? v : null;
+    }
+
+    /// <summary>From the release notes, the sections for versions newer than <paramref name="current"/>, as plain text.</summary>
+    internal static string ExtractChanges(string notes, Version current)
+    {
+        var keep = new StringBuilder();
+        bool on = false;
+        foreach (var raw in notes.Split('\n'))
+        {
+            var line = raw.TrimEnd('\r');
+            var heading = Regex.Match(line, @"^###\s.*?v(\d+\.\d+\.\d+)");
+            if (heading.Success)
+            {
+                on = Version.TryParse(heading.Groups[1].Value, out var v) && v > current;
+                if (on) keep.AppendLine().AppendLine(line.TrimStart('#', ' ').Trim());
+                continue;
+            }
+            if (on && line.Trim().Length > 0)
+                keep.AppendLine(Regex.Replace(line.TrimEnd(), @"\*\*|`", "").Replace("- ", "• ", StringComparison.Ordinal));
+        }
+        return keep.ToString().Trim();
+    }
+
     /// <summary>"What's new" for every version after the one you have, from that release's notes.</summary>
     public static async Task<string> ChangesAsync(Version version)
     {
         try
         {
             var notes = await Http.GetStringAsync($"https://raw.githubusercontent.com/{Repo}/v{version.ToString(3)}/RELEASE_NOTES.md");
-            var keep = new StringBuilder();
-            bool on = false;
-            foreach (var line in notes.Split('\n'))
-            {
-                var heading = Regex.Match(line, @"^###\s.*?v(\d+\.\d+\.\d+)");
-                if (heading.Success)
-                {
-                    on = Version.TryParse(heading.Groups[1].Value, out var v) && v > Current;
-                    if (on) keep.AppendLine().AppendLine(line.TrimStart('#', ' ').Trim());
-                    continue;
-                }
-                if (on && line.Trim().Length > 0)
-                    keep.AppendLine(Regex.Replace(line.TrimEnd(), @"\*\*|`", "").Replace("- ", "• ", StringComparison.Ordinal));
-            }
-            var text = keep.ToString().Trim();
+            var text = ExtractChanges(notes, Current);
             return text.Length > 0 ? text : "Không có ghi chú cho bản này.";
         }
         catch

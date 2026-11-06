@@ -10,25 +10,73 @@ A sleek, iOS-inspired Dynamic Island notification overlay for Windows 11. Replac
 
 ## 🇻🇳 Bản chỉnh sửa (fork)
 
-Đây là bản chỉnh sửa từ [sadeeshasathsara/dynamic-island-on-windows](https://github.com/sadeeshasathsara/dynamic-island-on-windows) (giấy phép MIT). Những gì đã thêm:
+Đây là bản chỉnh sửa từ [sadeeshasathsara/dynamic-island-on-windows](https://github.com/sadeeshasathsara/dynamic-island-on-windows) (giấy phép MIT), làm để chia sẻ với bạn bè. Danh sách thay đổi từng bản nằm trong [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
-- **Thông báo từ trang web** (Messenger, Claude, Gmail, Zalo…): hiện đúng tên và logo của trang thay vì logo trình duyệt
-- **Di chuột vào đảo** để xem toàn bộ nội dung thông báo
-- **Tai thỏ** ở giữa mép trên màn hình: di chuột vào để mở trình phát nhạc (đổi màu theo ảnh bìa, thanh tua, ⏮ ⏯ ⏭, âm lượng riêng từng app), **trồng cây tập trung** kiểu Forest, giờ & pin, thông báo gần đây; hiện thanh âm lượng khi chỉnh âm lượng
-- **Bấm vào đảo** để mở đúng tab/trang đã gửi thông báo
-- **Nút Mute** tắt thông báo theo từng app / trang (bật lại ở menu khay → *Muted*), **lịch sử thông báo** (*Recent notifications*)
-- **Đảo báo pin**: cắm / rút sạc, cảnh báo pin yếu 20% và 10%
-- **Tự chạy khi bật máy** (bật/tắt ở menu khay hệ thống: *Start with Windows*)
-- Sửa lỗi đảo không tự thu lại khi có thông báo mới đến lúc đang mở
+### Có gì
 
-### Cài đặt nhanh
+- **Đảo thông báo**: thông báo từ app và trang web (Messenger, Gmail, Zalo…) hiện trên một viên ở mép trên màn hình, đúng tên và logo của trang; di chuột để xem đủ nội dung, bấm để mở đúng trang; tắt tiếng theo từng app
+- **Tai thỏ**: viên nhỏ luôn ở giữa mép trên với đồng hồ LED và sóng nhạc theo âm thanh thật; di chuột vào để mở bảng:
+  - **Nhạc**: ảnh bìa, lời bài hát chạy theo nhạc (LRCLIB, NetEase), thanh tua, âm lượng từng app, nền **nốt nhạc trôi** theo màu bài hát
+  - **Trồng cây** tập trung 5 phút – 3 giờ, 12 loại cây, Deep focus nhắc khi mở YouTube / Facebook…, thống kê ngày / tuần / tháng / năm
+  - **Thông báo** gần đây, **Copy** (lịch sử văn bản và hình ảnh), **Hạn chót** (gõ "Nộp báo cáo 15/11 17h", nhắc trước 1 ngày / 1 giờ)
+- Mắt và chú mèo trên viên, chế độ thuyết trình (tự ẩn khi trình chiếu / chia sẻ màn hình), báo pin, tai nghe Bluetooth, tự cập nhật
 
-1. Vào trang **Releases** bên phải, tải `DynamicIslandNotifier-x64.exe` (máy chip Snapdragon: `-arm64.exe`) và chạy (không cần cài .NET)
-2. Windows báo *"Windows protected your PC"* → **More info** → **Run anyway** (file chưa được ký số)
-3. Cho phép đọc thông báo: **Settings → Privacy & Security → Notifications**
-4. Để thông báo web lên đảo: **Settings → System → Notifications → Microsoft Edge** → tick **Show notifications in notification center**
+### Cài đặt
 
-Yêu cầu: Windows 11 (build 22621+). App đọc thông báo ngay trên máy, không gửi nội dung đi đâu (chỉ gửi tên miền tới dịch vụ favicon của Google để tải logo). Thoát app bằng **Quit** ở khay hệ thống để bật lại thông báo kiểu cũ của Windows.
+**Cách 1: bộ cài.** Vào **Releases**, tải `DynamicIslandSetup-x64.exe` (máy chip Snapdragon: `-arm64`) và chạy. Không cần quyền quản trị. Gỡ ở **Settings → Apps**.
+
+**Cách 2: lệnh PowerShell** (cài vào cùng chỗ với bộ cài):
+
+```powershell
+Stop-Process -Name DynamicIslandNotifier -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 2
+$dir = "$env:LOCALAPPDATA\Programs\DynamicIsland"
+New-Item -ItemType Directory -Force -Path $dir | Out-Null
+Invoke-WebRequest -Uri "https://github.com/khaibadao/dynamic-island-on-windows/releases/latest/download/DynamicIslandNotifier-x64.exe" -OutFile "$dir\DynamicIslandNotifier.exe"
+Unblock-File -Path "$dir\DynamicIslandNotifier.exe"
+Start-Process -FilePath "$dir\DynamicIslandNotifier.exe"
+```
+
+Sau đó:
+1. Windows báo *"Windows protected your PC"* → **More info** → **Run anyway** (file chưa được ký số)
+2. Cho phép đọc thông báo: **Settings → Privacy & Security → Notifications**
+3. Để thông báo web lên đảo: **Settings → System → Notifications → Microsoft Edge** → bật **Show notifications in notification center**
+
+Yêu cầu: Windows 11 (build 22621+). Không cần cài .NET.
+
+### Quyền riêng tư
+
+Mọi thứ được xử lý trên máy bạn. Menu khay → **Cài đặt & quyền riêng tư…** có giải thích và công tắc cho từng mục.
+
+| Cái gì | Ở đâu | Gửi đi đâu |
+|---|---|---|
+| Nội dung thông báo, lịch sử copy | Chỉ trên máy, **mã hoá** (Windows DPAPI, chỉ tài khoản của bạn đọc được) | Không gửi |
+| Tên cửa sổ đang mở (Deep focus, thuyết trình) | Chỉ xem, không lưu | Không gửi · có công tắc |
+| Âm thanh loa (sóng nhạc) | Chỉ đo độ to theo dải, không ghi âm | Không gửi · có công tắc |
+| Tên miền trang web gửi thông báo | Logo lưu trên máy | Dịch vụ biểu tượng của Google · có công tắc |
+| Tên bài hát, ca sĩ | | LRCLIB; NetEase (có công tắc) |
+| Kiểm tra bản mới | | GitHub, khi mở app và mỗi 6 giờ |
+
+Khi app chạy, banner của Windows được ẩn cho những app đã hiện trên đảo (để không hiện hai lần). Thoát app, đăng xuất, tắt mục này trong Cài đặt, hoặc gỡ app là **trả lại như cũ**.
+
+### Cập nhật
+
+App tự báo khi có bản mới; bấm vào sẽ hiện danh sách thay đổi rồi mới cài. File tải về được kiểm tra mã **SHA-256** (`SHA256SUMS.txt` kèm theo mỗi bản phát hành) trước khi thay.
+
+### Báo lỗi
+
+Mở một mục ở tab **Issues**. Kèm theo file `%LOCALAPPDATA%\DynamicIslandNotifier\startup.log` nếu được (file này không chứa nội dung tin nhắn).
+
+### Cho người muốn build
+
+```bash
+dotnet test tests/DynamicIslandNotifier.Tests   # kiểm thử (phần đọc ngày hạn chót, phần cập nhật)
+dotnet publish DynamicIslandNotifier.csproj -c Release -r win-x64 --self-contained -p:PublishSingleFile=true
+```
+
+GitHub Actions build bản x64 và arm64, bộ cài Inno Setup và `SHA256SUMS.txt`, rồi phát hành khi số trong file `VERSION` đổi.
+
+---
 
 ## Features
 

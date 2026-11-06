@@ -24,4 +24,15 @@
     <Resource Include="Assets\island.ico" />
   </ItemGroup>
 
+  <!-- The tests live in their own project -->
+  <ItemGroup>
+    <Compile Remove="tests/**" />
+    <Page Remove="tests/**" />
+    <None Remove="tests/**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="DynamicIslandNotifier.Tests" />
+  </ItemGroup>
+
 </Project>

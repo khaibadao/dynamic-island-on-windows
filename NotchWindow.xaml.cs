@@ -1120,9 +1120,9 @@ public partial class NotchWindow : Window
             if (AppSettings.Current.Ambient == "off") return null;
             if ((RenderCapability.Tier >> 16) < 2) return "Máy không có tăng tốc đồ họa";
             if (AppSettings.Current.Ambient == "light") return null;
-            if (_energySaver) return "Đang bật Tiết kiệm pin";
-            if (!SystemParameters.ClientAreaAnimation) return "Windows đang tắt hiệu ứng hoạt ảnh";
+            if (AppSettings.Current.RespectWindowsAnimations && !SystemParameters.ClientAreaAnimation) return "Windows đang tắt hiệu ứng hoạt ảnh";
             if (_ambientSlow) return "Máy hơi yếu nên đã tự giảm";
+            if (_energySaver) return "Tiết kiệm pin: nốt trôi chậm hơn để đỡ tốn pin";
             return null;
         }
     }
@@ -1131,12 +1131,18 @@ public partial class NotchWindow : Window
     {
         var chosen = AppSettings.Current.Ambient;
         if (chosen == "off" || (RenderCapability.Tier >> 16) < 2) return AmbientLevel.Off;
-        if (chosen == "light" || _energySaver || !SystemParameters.ClientAreaAnimation || _ambientSlow) return AmbientLevel.Light;
+        // Windows' "Animation effects" switch only counts if you asked for that in Cài đặt
+        bool windowsSaysStill = AppSettings.Current.RespectWindowsAnimations && !SystemParameters.ClientAreaAnimation;
+        if (chosen == "light" || windowsSaysStill || _ambientSlow) return AmbientLevel.Light;
         return AmbientLevel.Full;
     }
 
     /// <summary>A switch in Cài đặt & quyền riêng tư changed.</summary>
-    public void ApplySettings() => SetBarsPlaying(_playing);
+    public void ApplySettings()
+    {
+        SetBarsPlaying(_playing);
+        ApplyAmbient();
+    }
 
     /// <summary>After the tray choice changes (choosing again also forgets "máy hơi yếu").</summary>
     public void ReapplyAmbient()
@@ -1147,6 +1153,7 @@ public partial class NotchWindow : Window
 
     private void ApplyAmbient()
     {
+        Ambient.FrameRate = _energySaver ? 15 : 30;   // battery saver: still drifting, just fewer frames
         Ambient.Level = AmbientLevelNow();
         Ambient.Play(_ambientOpen);
         WatchFps(_ambientOpen && Ambient.Level == AmbientLevel.Full && Ambient.HasArt);
@@ -1202,7 +1209,7 @@ public partial class NotchWindow : Window
         _frames = 0;
         _fpsStart = DateTime.UtcNow;
         if (_fpsSkip-- > 0) return;   // the opening animation isn't a fair test
-        _slowSeconds = fps < 20 ? _slowSeconds + 1 : 0;
+        _slowSeconds = fps < (_energySaver ? 10 : 20) ? _slowSeconds + 1 : 0;
         if (_slowSeconds < 3) return;
         _ambientSlow = true;
         CrashLog.Write($"Ambient: {fps:0} fps, switching to the still picture");

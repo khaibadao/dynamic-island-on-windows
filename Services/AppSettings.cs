@@ -71,6 +71,8 @@ public sealed class AppSettings
     public bool WebIcons { get; set; } = true;
     /// <summary>Look lyrics up on NetEase too (LRCLIB is always used).</summary>
     public bool NetEaseLyrics { get; set; } = true;
+    /// <summary>Stop the drifting notes when Windows' "Animation effects" is off (off by default).</summary>
+    public bool RespectWindowsAnimations { get; set; }
     /// <summary>Deadline reminders show even with Do Not Disturb on.</summary>
     public bool DeadlinesBypassDnd { get; set; } = true;
 

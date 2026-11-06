@@ -99,8 +99,16 @@ public sealed class AmbientBackdrop : Grid
         bool move = on && _level == AmbientLevel.Full;
         foreach (var layer in _layers)
             foreach (var (target, property, animation) in layer.Moves)
-                target.BeginAnimation(property, move ? animation : null);
+            {
+                if (!move) { target.BeginAnimation(property, null); continue; }
+                var a = animation.Clone();
+                Timeline.SetDesiredFrameRate(a, FrameRate);
+                target.BeginAnimation(property, a);
+            }
     }
+
+    /// <summary>30 normally; 15 on battery saver (the notes drift so slowly it barely shows).</summary>
+    public int FrameRate { get; set; } = 30;
 
     /// <summary>A new song's cover (null: no music, the wash fades away).</summary>
     public void SetArt(BitmapSource? art)

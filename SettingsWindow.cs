@@ -53,6 +53,9 @@ public sealed class SettingsWindow : Window
         stack.Children.Add(Switch("Ẩn banner Windows trùng với tai thỏ",
             "Khi tai thỏ hiện thông báo, banner của Windows được ẩn để không hiện hai lần. Thoát app (hoặc tắt mục này) là trả lại như cũ.",
             s.HideWindowsBanners, v => s.HideWindowsBanners = v));
+        stack.Children.Add(Switch("Dừng nốt nhạc trôi khi Windows tắt hiệu ứng hoạt ảnh",
+            "Mặc định nốt vẫn trôi dù Windows tắt \"Animation effects\". Bật mục này nếu bạn muốn hạn chế chuyển động trên màn hình.",
+            s.RespectWindowsAnimations, v => s.RespectWindowsAnimations = v));
         stack.Children.Add(Switch("Nhắc hạn chót cả khi Không làm phiền",
             "Nhắc trước 1 ngày, 1 giờ và lúc đến hạn vẫn hiện dù đang bật Không làm phiền.",
             s.DeadlinesBypassDnd, v => s.DeadlinesBypassDnd = v));

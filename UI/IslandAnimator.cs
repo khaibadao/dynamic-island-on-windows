@@ -119,7 +119,7 @@ public sealed class IslandAnimator
     public void SlideY(double from, double to, int ms, IEasingFunction ease, Action? onDone = null)
     {
         var anim = new DoubleAnimation(from, to, TimeSpan.FromMilliseconds(ms)) { EasingFunction = ease };
-        if (onDone != null) anim.Completed += (_, _) => _pill.Dispatcher.Invoke(onDone);
+        if (onDone != null) anim.Completed += (_, _) => onDone();   // already on the UI thread
         _pillTransform.BeginAnimation(TranslateTransform.YProperty, anim);
     }
 
@@ -128,7 +128,7 @@ public sealed class IslandAnimator
         var dur   = TimeSpan.FromMilliseconds(ms);
         var wAnim = new DoubleAnimation(_pill.Width,  toW, dur) { EasingFunction = ease };
         var hAnim = new DoubleAnimation(_pill.Height, toH, dur) { EasingFunction = ease };
-        if (onDone != null) hAnim.Completed += (_, _) => _pill.Dispatcher.Invoke(onDone);
+        if (onDone != null) hAnim.Completed += (_, _) => onDone();
         _pill.BeginAnimation(FrameworkElement.WidthProperty,  wAnim);
         _pill.BeginAnimation(FrameworkElement.HeightProperty, hAnim);
     }

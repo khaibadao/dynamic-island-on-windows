@@ -62,7 +62,11 @@ public partial class IslandWindow : Window
     // ── Public API ─────────────────────────────────────────────────────
     public void ShowNotification(NotificationData data)
     {
-        Dispatcher.Invoke(() =>
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.BeginInvoke(new Action(() => ShowNotification(data)));
+            return;
+        }
         {
             _current         = data;
             _currentAppId    = data.AppUserModelId;
@@ -129,7 +133,7 @@ public partial class IslandWindow : Window
                     StartHideTimer();
                 }
             }
-        });
+        }
     }
 
     // ── Animation Orchestration ───────────────────────────────────────

@@ -38,6 +38,9 @@ public sealed class NotificationListener
         _suppressor = suppressor;
     }
 
+    /// <summary>Windows won't let the app read notifications (switched off in Settings).</summary>
+    public event Action? AccessDenied;
+
     public async Task StartAsync()
     {
         var listener = UserNotificationListener.Current;
@@ -46,13 +49,7 @@ public sealed class NotificationListener
         CrashLog.Write($"Notification access: {accessStatus}");
         if (accessStatus != UserNotificationListenerAccessStatus.Allowed)
         {
-            System.Windows.MessageBox.Show(
-                "Dynamic Island Notifier needs access to your notifications.\n\n" +
-                "Please go to: Settings → Privacy & Security → Notifications → " +
-                "allow 'Dynamic Island Notifier'.",
-                "Permission Required",
-                System.Windows.MessageBoxButton.OK,
-                System.Windows.MessageBoxImage.Warning);
+            AccessDenied?.Invoke();   // the app says so on the island (no blocking pop-up)
             return;
         }
 
