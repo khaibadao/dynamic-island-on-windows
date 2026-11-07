@@ -159,6 +159,11 @@ public partial class App : Application
         _headsets = new BluetoothBatteryWatcher();
         _headsets.Changed += () => _notch.Dispatcher.BeginInvoke(new Action(() => _notch.SetHeadsets(_headsets.Devices)));
         _headsets.Notify  += data => _island.Dispatcher.BeginInvoke(new Action(() => ShowOnIsland(data, keepInHistory: false)));
+        // Earbuds connecting: on the notch itself (the pill widens); a normal notification if it can't
+        _headsets.Connected += (d, low) => _notch.Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (!_notch.ShowHeadset(d, low)) ShowOnIsland(BluetoothBatteryWatcher.MakeFor(d, low), keepInHistory: false);
+        }));
         Try("bluetooth", () => _headsets.Start());
 
         UpdateMusicMenuHeader();

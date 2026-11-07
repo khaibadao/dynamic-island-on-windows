@@ -20,7 +20,11 @@ public sealed class BluetoothBatteryWatcher
     // DEVPKEY_Bluetooth_Battery: the battery percentage Windows shows for the device.
     private const string BatteryKey = "{104EA319-6EE2-4701-BD47-8DDBF425BBE5} 2";
 
-    public sealed record Device(string Name, int Percent);
+    /// <summary>A connected headset. Parts: how many earbuds are connected, when Windows lists them apart (0 = not known).</summary>
+    public sealed record Device(string Name, int Percent, int Parts = 0);
+
+    /// <summary>A headset just connected (or is low): shown on the notch itself; Notify is the fallback.</summary>
+    public event Action<Device, bool>? Connected;
 
     private readonly Dictionary<string, int> _known = new();       // name → last percent
     private readonly HashSet<string> _warnedLow = new();
@@ -55,11 +59,13 @@ public sealed class BluetoothBatteryWatcher
             {
                 if (!_known.ContainsKey(d.Name) && !first)
                 {
-                    Notify?.Invoke(Make($"{d.Name} đã kết nối", $"Pin {d.Percent}%", d.Percent));
+                    if (Connected != null) Connected(d, false);
+                    else Notify?.Invoke(Make($"{d.Name} đã kết nối", $"Pin {d.Percent}%", d.Percent));
                 }
                 else if (d.Percent <= 20 && _warnedLow.Add(d.Name))
                 {
-                    Notify?.Invoke(Make($"Pin {d.Name} yếu", $"Còn {d.Percent}% · nhớ sạc nhé", d.Percent, low: true));
+                    if (Connected != null) Connected(d, true);
+                    else Notify?.Invoke(Make($"Pin {d.Name} yếu", $"Còn {d.Percent}% · nhớ sạc nhé", d.Percent, low: true));
                 }
                 if (d.Percent > 30) _warnedLow.Remove(d.Name);
             }
@@ -81,6 +87,14 @@ public sealed class BluetoothBatteryWatcher
             Interlocked.Exchange(ref _busy, 0);
         }
     }
+
+    private static readonly System.Text.RegularExpressions.Regex SideSuffix =
+        new(@"\s*[\(\[\-]?\s*(L|R|Left|Right|Trái|Phải)\s*[\)\]]?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    /// <summary>Public for the notch: a fallback notification for this headset.</summary>
+    public static NotificationData MakeFor(Device d, bool low) => low
+        ? Make($"Pin {d.Name} yếu", $"Còn {d.Percent}% · nhớ sạc nhé", d.Percent, low: true)
+        : Make($"{d.Name} đã kết nối", $"Pin {d.Percent}%", d.Percent);
 
     private const string ContainerKey = "System.Devices.ContainerId";
     private const string AepContainerKey = "System.Devices.Aep.ContainerId";
@@ -124,7 +138,14 @@ public sealed class BluetoothBatteryWatcher
 
             result[id] = new Device(name, percent);
         }
-        return result.Values.OrderBy(d => d.Name).ToList();
+        // Earbuds Windows lists one by one ("Buds (L)", "Buds (R)") become one headset:
+        // the lower battery of the two, and how many are connected.
+        return result.Values
+            .GroupBy(d => SideSuffix.Replace(d.Name, "").Trim())
+            .Select(g => g.Count() > 1 || g.Any(d => SideSuffix.IsMatch(d.Name))
+                ? new Device(g.Key, g.Min(d => d.Percent), g.Count())
+                : g.First())
+            .OrderBy(d => d.Name).ToList();
     }
 
     private static NotificationData Make(string title, string body, int percent, bool low = false) => new()

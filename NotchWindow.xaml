@@ -482,6 +482,49 @@
             </Grid>
         </Border>
 
+        <!-- ══════════ HEADSET: the pill widens for a few seconds when earbuds connect ══════════ -->
+        <Border x:Name="HeadsetView"
+                Visibility="Collapsed"
+                Background="#000000"
+                BorderThickness="2,0,2,2"
+                BorderBrush="#BFBFBF"
+                CornerRadius="0,0,18,18"
+                Height="36"
+                Width="330"
+                Padding="14,0,16,2"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Top"
+                RenderTransformOrigin="0.5,0">
+            <Border.RenderTransform>
+                <ScaleTransform x:Name="HeadsetScale" ScaleX="1" ScaleY="1"/>
+            </Border.RenderTransform>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="HeadsetGlyph" Text="&#xE7F6;" FontFamily="{StaticResource IconFont}" FontSize="17"
+                           Foreground="White" VerticalAlignment="Center"/>
+                <StackPanel Grid.Column="1" Margin="11,0,8,0" VerticalAlignment="Center">
+                    <TextBlock x:Name="HeadsetName" Foreground="White" FontSize="12.5" FontWeight="SemiBold" FontFamily="Segoe UI"
+                               TextTrimming="CharacterEllipsis"/>
+                    <TextBlock x:Name="HeadsetSub" Foreground="#AAFFFFFF" FontSize="10.5" FontFamily="Segoe UI"/>
+                </StackPanel>
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <!-- battery -->
+                    <Grid Width="24" Height="12" VerticalAlignment="Center">
+                        <Border BorderBrush="#CCFFFFFF" BorderThickness="1.2" CornerRadius="3" Margin="0,0,2,0"/>
+                        <Border Background="#CCFFFFFF" Width="2" Height="5" CornerRadius="0,1,1,0" HorizontalAlignment="Right"/>
+                        <Border x:Name="HeadsetFill" Background="#34C759" CornerRadius="1.5" Margin="2.4,2.4,4.4,2.4"
+                                HorizontalAlignment="Left" Width="16"/>
+                    </Grid>
+                    <TextBlock x:Name="HeadsetPercent" Foreground="White" FontSize="12" FontWeight="SemiBold" FontFamily="Segoe UI"
+                               Margin="7,0,0,0" VerticalAlignment="Center" MinWidth="30"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
         <!-- ══════════ EXPANDED ══════════ -->
         <!-- status row on top · icon sidebar on the left · the tab's content -->
         <Border x:Name="Expanded"

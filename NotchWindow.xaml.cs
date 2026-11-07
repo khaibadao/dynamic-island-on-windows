@@ -124,6 +124,7 @@ public partial class NotchWindow : Window
             if (!_seeking && !_typing && !NativeInterop.IsCursorOver(Expanded)) Collapse();
         };
         _volumeTimer.Tick += (_, _) => { _volumeTimer.Stop(); VolumeView.Visibility = Visibility.Collapsed; ShowRest(); };
+        _headsetTimer.Tick += (_, _) => HideHeadset();
         _giveUpTimer.Tick += (_, _) => { _giveUpTimer.Stop(); ResetGiveUp(); };
         _tickTimer.Tick   += (_, _) => OnTick();
         _fullscreenTimer.Tick += (_, _) => CheckFullscreen();
@@ -305,7 +306,7 @@ public partial class NotchWindow : Window
     /// <summary>Resting look: the slim pill while music plays or a tree grows, else the strip.</summary>
     private void ShowRest()
     {
-        if (_expanded || VolumeView.Visibility == Visibility.Visible) return;
+        if (_expanded || VolumeView.Visibility == Visibility.Visible || HeadsetView.Visibility == Visibility.Visible) return;
         bool pill = true;   // the LED clock pill is always there
         Pill.Visibility      = pill ? Visibility.Visible : Visibility.Collapsed;
         StripHost.Visibility = pill ? Visibility.Collapsed : Visibility.Visible;
@@ -553,6 +554,8 @@ public partial class NotchWindow : Window
         GrowForEyes(false);
         SetFaded(false);
         VolumeView.Visibility = Visibility.Collapsed;
+        _headsetTimer.Stop();
+        HeadsetView.Visibility = Visibility.Collapsed;
         RestArea.Visibility   = Visibility.Collapsed;
         CatRest.Visibility    = Visibility.Collapsed;
         Expanded.Visibility   = Visibility.Visible;
@@ -1602,6 +1605,7 @@ public partial class NotchWindow : Window
     public void ShowVolume(float level, bool muted)
     {
         if (!IsVisible || _expanded) return;
+        if (HeadsetView.Visibility == Visibility.Visible) { _headsetTimer.Stop(); HeadsetView.Visibility = Visibility.Collapsed; }
 
         VolGlyph.Text       = VolumeGlyph(level, muted);
         VolFillScale.ScaleX = muted ? 0 : Math.Clamp(level, 0f, 1f);
@@ -1615,6 +1619,54 @@ public partial class NotchWindow : Window
         VolumeView.Visibility = Visibility.Visible;
         _volumeTimer.Stop();
         _volumeTimer.Start();
+    }
+
+    private readonly DispatcherTimer _headsetTimer = new() { Interval = TimeSpan.FromSeconds(4) };
+
+    /// <summary>
+    /// Earbuds connected (or running low): the pill itself widens for a few
+    /// seconds with the name, how many earbuds and the battery. False when the
+    /// notch can't show it right now (hidden, open, full screen), so the app
+    /// uses a normal notification instead.
+    /// </summary>
+    public bool ShowHeadset(BluetoothBatteryWatcher.Device d, bool low)
+    {
+        if (!IsVisible || _expanded || !_enabled) return false;
+        var colour = d.Percent <= 20 ? Color.FromRgb(0xFF, 0x45, 0x3A) : d.Percent <= 50 ? Color.FromRgb(0xFF, 0xB0, 0x20) : Color.FromRgb(0x34, 0xC7, 0x59);
+        HeadsetName.Text = d.Name;
+        HeadsetSub.Text  = low ? "Pin yếu · nhớ sạc nhé"
+                         : d.Parts >= 2 ? $"Đã kết nối · {d.Parts} tai"
+                         : d.Parts == 1 ? "Đã kết nối · 1 tai"
+                         : "Đã kết nối";
+        HeadsetSub.Foreground = low ? Frozen(colour) : Frozen(Color.FromArgb(0xAA, 0xFF, 0xFF, 0xFF));
+        HeadsetPercent.Text = $"{d.Percent}%";
+        HeadsetFill.Width = Math.Max(1.5, 16 * d.Percent / 100.0);
+        HeadsetFill.Background = Frozen(colour);
+
+        EndWalk();
+        Eyes.Stop();
+        GrowForEyes(false);
+        VolumeView.Visibility = Visibility.Collapsed;
+        RestArea.Visibility   = Visibility.Collapsed;
+        CatRest.Visibility    = Visibility.Collapsed;
+        HeadsetView.Visibility = Visibility.Visible;
+        // grows out of the pill
+        var ease = new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.35 };
+        HeadsetScale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(0.45, 1, TimeSpan.FromMilliseconds(380)) { EasingFunction = ease });
+        HeadsetScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(0.7, 1, TimeSpan.FromMilliseconds(380)) { EasingFunction = ease });
+        _headsetTimer.Stop();
+        _headsetTimer.Start();
+        return true;
+    }
+
+    private void HideHeadset()
+    {
+        _headsetTimer.Stop();
+        if (HeadsetView.Visibility != Visibility.Visible) return;
+        var shrink = new DoubleAnimation(0.45, TimeSpan.FromMilliseconds(220)) { EasingFunction = new SineEase { EasingMode = EasingMode.EaseIn } };
+        shrink.Completed += (_, _) => { HeadsetView.Visibility = Visibility.Collapsed; ShowRest(); };
+        HeadsetScale.BeginAnimation(ScaleTransform.ScaleXProperty, shrink);
+        HeadsetScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(0.7, TimeSpan.FromMilliseconds(220)));
     }
 
     private static string VolumeGlyph(double level, bool muted) =>
