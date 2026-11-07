@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -25,6 +26,7 @@ public partial class IslandWindow : Window
 
     private IslandAnimator _animator = null!;
     private DispatcherTimer? _hideTimer;
+    private readonly Queue<NotificationData> _queue = new();
     private bool _isExpanded;
     private bool _isFullyOpen;
     private string? _currentAppId;
@@ -55,6 +57,9 @@ public partial class IslandWindow : Window
 
             CentreWindow();
             NativeInterop.MakeOverlay(this);
+            // screens added / removed, resolution or scale changed
+            Microsoft.Win32.SystemEvents.DisplaySettingsChanged += (_, _) => Dispatcher.BeginInvoke(new Action(CentreWindow));
+            DpiChanged += (_, _) => Dispatcher.BeginInvoke(new Action(CentreWindow));
             Visibility = Visibility.Hidden;
         };
     }
@@ -66,6 +71,21 @@ public partial class IslandWindow : Window
         {
             Dispatcher.BeginInvoke(new Action(() => ShowNotification(data)));
             return;
+        }
+
+        // Something is already on the island: wait for it, so every notification
+        // gets its own 2 seconds (several arriving together used to replace each
+        // other and only the last one was seen). A new message from the same
+        // sender, with nothing else waiting, just updates the one showing.
+        if (_isExpanded && _current != null)
+        {
+            bool sameSender = data.SourceKey != null && data.SourceKey == _current.SourceKey;
+            if (!(sameSender && _queue.Count == 0 && _isFullyOpen && !PillBorder.IsMouseOver))
+            {
+                _queue.Enqueue(data);
+                while (_queue.Count > 6) _queue.Dequeue();   // a flood: keep the newest (all are in the history)
+                return;
+            }
         }
         {
             _current         = data;
@@ -114,7 +134,7 @@ public partial class IslandWindow : Window
             MuteBtn.ToolTip   = data.SourceKey != null ? $"Tắt thông báo từ {data.AppName}" : null;
 
             _hideTimer?.Stop();
-            if (!IsVisible) ActiveChanged?.Invoke(true);
+            if (!IsVisible) { ActiveChanged?.Invoke(true); CentreWindow(); }
             Visibility = Visibility.Visible;
             NativeInterop.ForceTopMost(this);
 
@@ -160,6 +180,15 @@ public partial class IslandWindow : Window
 
         _animator.Collapse(onHidden: () =>
         {
+            if (_queue.Count > 0)
+            {
+                // the next one waiting drops down right after
+                var next = _queue.Dequeue();
+                var gap = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
+                gap.Tick += (_, _) => { gap.Stop(); ShowNotification(next); };
+                gap.Start();
+                return;
+            }
             Visibility = Visibility.Hidden;
             ActiveChanged?.Invoke(false);
         });
@@ -297,6 +326,7 @@ public partial class IslandWindow : Window
     {
         Left = (SystemParameters.PrimaryScreenWidth - WIN_W) / 2;
         Top  = 8;
+        NativeInterop.PlaceTopCenter(this, 8);   // exact, in real pixels (any display scale)
     }
 
     protected override void OnSourceInitialized(EventArgs e)

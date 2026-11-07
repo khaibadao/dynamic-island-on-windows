@@ -51,6 +51,44 @@ public static class NativeInterop
     private struct POINT { public int X, Y; }
 
     [DllImport("user32.dll")] private static extern bool GetCursorPos(out POINT point);
+    [DllImport("user32.dll")] private static extern IntPtr MonitorFromPoint(POINT pt, uint flags);
+    [DllImport("user32.dll")] private static extern uint GetDpiForWindow(IntPtr hWnd);
+    private const uint MONITOR_DEFAULTTOPRIMARY = 1;
+    private const uint SWP_NOZORDER = 0x0004;
+
+    /// <summary>How far below the window's top edge the pointer is, in WPF units (any display scale).</summary>
+    public static double CursorBelowTop(Window window)
+    {
+        var hwnd = new WindowInteropHelper(window).Handle;
+        if (hwnd == IntPtr.Zero || !GetCursorPos(out var p) || !GetWindowRect(hwnd, out var r)) return double.MaxValue;
+        double scale = Math.Max(1, GetDpiForWindow(hwnd)) / 96.0;
+        return (p.Y - r.Top) / scale;
+    }
+
+    /// <summary>
+    /// Puts the window at the top centre of the main screen, worked out in real
+    /// screen pixels. Going through WPF's own screen size can put it off-centre
+    /// (or partly off the top) when the display scale isn't 100%, when it was
+    /// changed while the app ran, or when there are screens with different scales.
+    /// </summary>
+    public static void PlaceTopCenter(Window window, double topDip)
+    {
+        var hwnd = new WindowInteropHelper(window).Handle;
+        if (hwnd == IntPtr.Zero) return;
+        try
+        {
+            var monitor = MonitorFromPoint(new POINT { X = 0, Y = 0 }, MONITOR_DEFAULTTOPRIMARY);
+            var info = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+            if (!GetMonitorInfo(monitor, ref info)) return;
+            double scale = Math.Max(1, GetDpiForWindow(hwnd)) / 96.0;
+            int width = (int)Math.Round(window.Width * scale);
+            int screenW = info.rcMonitor.Right - info.rcMonitor.Left;
+            int x = info.rcMonitor.Left + (screenW - width) / 2;
+            int y = info.rcMonitor.Top + (int)Math.Round(topDip * scale);
+            SetWindowPos(hwnd, IntPtr.Zero, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+        catch { }
+    }
 
     /// <summary>
     /// Whether the mouse pointer is inside the window right now, asked from

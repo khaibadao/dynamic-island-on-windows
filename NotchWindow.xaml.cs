@@ -186,6 +186,8 @@ public partial class NotchWindow : Window
         {
             if (e.PropertyName == nameof(SystemParameters.PrimaryScreenWidth)) Recenter();
         };
+        Microsoft.Win32.SystemEvents.DisplaySettingsChanged += (_, _) => Dispatcher.BeginInvoke(new Action(Recenter));
+        DpiChanged += (_, _) => Dispatcher.BeginInvoke(new Action(Recenter));
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -253,6 +255,7 @@ public partial class NotchWindow : Window
     {
         Left = (SystemParameters.PrimaryScreenWidth - Width) / 2;
         Top  = 0;
+        NativeInterop.PlaceTopCenter(this, 0);   // exact, in real pixels (any display scale)
     }
 
     // ── Resting: watch the pointer (the window lets clicks through) ──
@@ -265,17 +268,20 @@ public partial class NotchWindow : Window
         FrameworkElement? target = Pill.IsVisible ? Pill : StripHost.IsVisible ? StripHost : null;
         if (target == null) { _dwellStart = null; SetFaded(false); return; }
 
-        // Pointer right on the notch: fade, so the tab underneath shows through.
+        // Only the very top of the notch (the screen's edge) opens it. Lower down, on
+        // the pill, you're usually aiming at a browser tab under it: the pill all but
+        // disappears and clicks go straight through to the tab.
         bool over = NativeInterop.IsCursorOver(target);
-        SetFaded(over && target == Pill);
+        bool atTop = over && NativeInterop.CursorBelowTop(this) <= TopEdgeZone;
+        SetFaded(over && target == Pill && !atTop);
 
         // Pointer in the area around it (≈ the tab bar): the eyes come out and watch it.
         if (target == Pill) WatchWithEyes(over);
 
-        if (!over) { _dwellStart = null; return; }
+        if (!atTop) { _dwellStart = null; return; }
 
         _dwellStart ??= DateTime.UtcNow;
-        double need = target == Pill ? 400 : 150;   // the strip is so thin that touching it is enough
+        double need = target == Pill ? 250 : 150;
         if ((DateTime.UtcNow - _dwellStart.Value).TotalMilliseconds >= need)
         {
             _dwellStart = null;
@@ -283,12 +289,15 @@ public partial class NotchWindow : Window
         }
     }
 
+    /// <summary>The top strip of the notch (WPF units) where the pointer opens it.</summary>
+    private const double TopEdgeZone = 7;
+
     private void SetFaded(bool faded)
     {
         if (faded == _faded) return;
         _faded = faded;
         if (faded) EndWalk();
-        var anim = new DoubleAnimation(faded ? 0.3 : 1, TimeSpan.FromMilliseconds(160));
+        var anim = new DoubleAnimation(faded ? 0.07 : 1, TimeSpan.FromMilliseconds(140));   // nearly invisible
         RestArea.BeginAnimation(OpacityProperty, anim);
         CatRest.BeginAnimation(OpacityProperty, anim);
     }
@@ -1789,14 +1798,24 @@ public partial class NotchWindow : Window
         GiveUpBtn.Content = "Bỏ cuộc";
     }
 
-    // Pick a tree: 12 kinds, unlocked by trees grown
+    /// <summary>"3 giờ 20 phút", "45 phút".</summary>
+    private static string HoursLeft(double hours)
+    {
+        var t = TimeSpan.FromHours(Math.Max(0, hours));
+        int h = (int)t.TotalHours, m = (int)Math.Ceiling(t.TotalMinutes - h * 60);
+        if (m == 60) { h++; m = 0; }
+        return h == 0 ? $"{Math.Max(1, m)} phút" : m == 0 ? $"{h} giờ" : $"{h} giờ {m} phút";
+    }
+
+    // Pick a tree: 12 kinds, unlocked by hours of focus
     private void BuildSpecies()
     {
         SpeciesPanel.Children.Clear();
-        int grown = _focus.TotalTrees;
+        double hours = _focus.FocusedHours;
         foreach (var info in TreeCatalog.All)
         {
-            bool unlocked = grown >= info.UnlockAt, selected = info.Kind == _selectedKind;
+            bool unlocked = hours >= info.UnlockHours, selected = info.Kind == _selectedKind;
+            string left = HoursLeft(info.UnlockHours - hours);
             var tree = new TreeShape
             {
                 Animated = unlocked, Kind = info.Kind, Opacity = unlocked ? 1 : 0.3,
@@ -1811,7 +1830,7 @@ public partial class NotchWindow : Window
             });
             body.Children.Add(new TextBlock
             {
-                Text = unlocked ? (selected ? "Đang chọn" : "Đã mở") : $"🔒 thêm {info.UnlockAt - grown} cây",
+                Text = unlocked ? (selected ? "Đang chọn" : "Đã mở") : $"🔒 còn {left}",
                 Foreground = selected ? Frozen(Green) : Frozen(Color.FromArgb(0x99, 0xFF, 0xFF, 0xFF)),
                 FontSize = 10, FontFamily = new FontFamily("Segoe UI"), TextAlignment = TextAlignment.Center
             });
@@ -1821,7 +1840,7 @@ public partial class NotchWindow : Window
                 Background = Frozen(selected ? Color.FromArgb(0x26, Green.R, Green.G, Green.B) : Color.FromArgb(0x16, 0xFF, 0xFF, 0xFF)),
                 BorderThickness = new Thickness(1.5), BorderBrush = selected ? Frozen(Green) : Brushes.Transparent,
                 Cursor = unlocked ? Cursors.Hand : Cursors.Arrow,
-                ToolTip = unlocked ? info.Name : $"{info.Name} · trồng thêm {info.UnlockAt - grown} cây để mở khoá"
+                ToolTip = unlocked ? info.Name : $"{info.Name} · mở khoá khi đủ {info.UnlockHours} giờ tập trung (còn {left})"
             };
             var kind = info.Kind;
             tile.MouseLeftButtonUp += (_, _) =>
@@ -1920,8 +1939,8 @@ public partial class NotchWindow : Window
         var left  = new Point(ox - n * tw / 2, oy + n * th / 2);
         var bottom = new Point(ox, oy + n * th);
         var right = new Point(ox + n * tw / 2, oy + n * th / 2);
-        Land.Children.Add(new System.Windows.Shapes.Polygon { Points = { left, bottom, new Point(bottom.X, bottom.Y + 10), new Point(left.X, left.Y + 10) }, Fill = Frozen(Color.FromRgb(0x7A, 0x52, 0x33)) });
-        Land.Children.Add(new System.Windows.Shapes.Polygon { Points = { bottom, right, new Point(right.X, right.Y + 10), new Point(bottom.X, bottom.Y + 10) }, Fill = Frozen(Color.FromRgb(0x5E, 0x3E, 0x26)) });
+        Land.Children.Add(new System.Windows.Shapes.Polygon { Points = { left, bottom, new Point(bottom.X, bottom.Y + 10), new Point(left.X, left.Y + 10) }, Fill = Frozen(Color.FromRgb(0x4A, 0x31, 0x22)) });
+        Land.Children.Add(new System.Windows.Shapes.Polygon { Points = { bottom, right, new Point(right.X, right.Y + 10), new Point(bottom.X, bottom.Y + 10) }, Fill = Frozen(Color.FromRgb(0x36, 0x24, 0x19)) });
         for (int r = 0; r < n; r++)
             for (int c = 0; c < n; c++)
             {
@@ -1929,7 +1948,7 @@ public partial class NotchWindow : Window
                 Land.Children.Add(new System.Windows.Shapes.Polygon
                 {
                     Points = { new Point(x, y), new Point(x + tw / 2, y + th / 2), new Point(x, y + th), new Point(x - tw / 2, y + th / 2) },
-                    Fill = Frozen((r + c) % 2 == 0 ? Color.FromRgb(0x6F, 0xBF, 0x52) : Color.FromRgb(0x79, 0xC9, 0x5A))
+                    Fill = Frozen((r + c) % 2 == 0 ? Color.FromRgb(0x2F, 0x5A, 0x34) : Color.FromRgb(0x35, 0x63, 0x39))   // deep moss green: the trees stand out
                 });
             }
 
@@ -2103,11 +2122,15 @@ public partial class NotchWindow : Window
             Grid.SetColumn(remove, 3);
             grid.Children.Add(remove);
 
-            DeadlineList.Children.Add(new Border
+            var row = new Border
             {
                 Child = grid, CornerRadius = new CornerRadius(10), Padding = new Thickness(8, 6, 4, 6), Margin = new Thickness(0, 0, 0, 5),
-                Background = Frozen(Color.FromArgb(0x16, 0xFF, 0xFF, 0xFF))
-            });
+                Background = Frozen(d.Id == _editingDeadline ? Color.FromArgb(0x30, 0xB3, 0x8C, 0xFF) : Color.FromArgb(0x16, 0xFF, 0xFF, 0xFF)),
+                Cursor = Cursors.Hand, ToolTip = "Bấm để sửa"
+            };
+            var editing = d;
+            row.MouseLeftButtonUp += (_, e) => { e.Handled = true; BeginEditDeadline(editing); };
+            DeadlineList.Children.Add(row);
         }
     }
 
@@ -2118,6 +2141,29 @@ public partial class NotchWindow : Window
         e.Handled = true;
     }
 
+    private Guid? _editingDeadline;
+
+    /// <summary>Click a deadline: its name and time go back into the box to fix; Enter saves.</summary>
+    private void BeginEditDeadline(Deadline d)
+    {
+        _editingDeadline = d.Id;
+        if (!_typing) BeginTyping(DeadlineAdd);
+        DeadlineAdd.Text = DeadlineService.EditText(d);
+        DeadlineAdd.CaretIndex = d.Title.Length;
+        DeadlineAdd.Focus();
+        DeadlineHint.Text = "Đang sửa · Enter để lưu · Esc để huỷ";
+        DeadlineHint.Foreground = Frozen(Color.FromRgb(0xB3, 0x8C, 0xFF));
+        DeadlineHint.Visibility = Visibility.Visible;
+        RebuildDeadlines();
+    }
+
+    private void EndEditDeadline()
+    {
+        _editingDeadline = null;
+        DeadlineHint.Foreground = Frozen(Color.FromRgb(0xFF, 0xC0, 0x5A));
+        DeadlineHint.Visibility = Visibility.Collapsed;
+    }
+
     private void DeadlineAdd_KeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter)
@@ -2125,15 +2171,19 @@ public partial class NotchWindow : Window
             var text = DeadlineAdd.Text.Trim();
             if (text.Length > 0 && _deadlines != null)
             {
-                var d = _deadlines.Add(text, out var problem);
-                if (d == null)
+                string? problem;
+                bool ok = _editingDeadline is { } id
+                    ? _deadlines.Update(id, text, out problem)
+                    : _deadlines.Add(text, out problem) != null;
+                if (!ok)
                 {
                     DeadlineHint.Text = problem;
+                    DeadlineHint.Foreground = Frozen(Color.FromRgb(0xFF, 0xC0, 0x5A));
                     DeadlineHint.Visibility = Visibility.Visible;
                 }
                 else
                 {
-                    DeadlineHint.Visibility = Visibility.Collapsed;
+                    EndEditDeadline();
                     DeadlineAdd.Text = "";
                     RebuildDeadlines();
                 }
@@ -2143,7 +2193,8 @@ public partial class NotchWindow : Window
         else if (e.Key == Key.Escape)
         {
             DeadlineAdd.Text = "";
-            DeadlineHint.Visibility = Visibility.Collapsed;
+            EndEditDeadline();
+            RebuildDeadlines();
             EndTyping(collapse: false);
             e.Handled = true;
         }
@@ -2153,7 +2204,7 @@ public partial class NotchWindow : Window
     {
         if (!_ready) return;
         DeadlineAddPlaceholder.Visibility = DeadlineAdd.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
-        if (DeadlineHint.Visibility == Visibility.Visible && DeadlineAdd.Text.Length > 0)
+        if (_editingDeadline == null && DeadlineHint.Visibility == Visibility.Visible && DeadlineAdd.Text.Length > 0)
         {
             var p = DeadlineService.Parse(DeadlineAdd.Text, DateTime.Now);
             if (p != null) DeadlineHint.Visibility = Visibility.Collapsed;

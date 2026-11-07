@@ -82,8 +82,14 @@ public sealed class FocusService
         }
     }
 
-    /// <summary>Whether this kind of tree has been unlocked (enough trees grown).</summary>
-    public bool IsUnlocked(TreeKind kind) => TotalTrees >= TreeCatalog.Get(kind).UnlockAt;
+    /// <summary>Whether this kind of tree has been unlocked (enough hours of focus).</summary>
+    public bool IsUnlocked(TreeKind kind) => FocusedHours >= TreeCatalog.Get(kind).UnlockHours;
+
+    /// <summary>Hours of focus in trees that grew to the end (given-up ones don't count).</summary>
+    public double FocusedHours
+    {
+        get { lock (_gate) return _log.Where(s => s.Success).Sum(s => s.Minutes) / 60.0; }
+    }
 
     public void Start(int minutes, TreeKind kind)
     {

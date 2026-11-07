@@ -130,6 +130,16 @@ public partial class App : Application
             OnClick = () => _notch?.Dispatcher.BeginInvoke(new Action(() => _notch.OpenTab("deadlines")))
         }, keepInHistory: false, bypassDnd: AppSettings.Current.DeadlinesBypassDnd);
 
+        _deadlines.Summary += next => ShowOnIsland(new NotificationData
+        {
+            AppName = "Hạn chót",
+            Title   = next.Count == 1 ? $"Sắp tới: {next[0].Title}" : $"{next.Count} hạn chót sắp tới",
+            Body    = string.Join("  ·  ", next.Select(d => $"{d.Title} ({DeadlineService.Left(d.Due, DateTime.Now)})")),
+            Glyph   = "\uE787",
+            GlyphColor = "#B38CFF",
+            OnClick = () => _notch?.Dispatcher.BeginInvoke(new Action(() => _notch.OpenTab("deadlines")))
+        }, keepInHistory: false, bypassDnd: AppSettings.Current.DeadlinesBypassDnd);
+
         _focusWidget = new FocusWidget(_focus);   // the small floating timer while a tree grows
         _ = _history.RestoreIconsAsync();   // site logos for notifications kept from last time
         _media.Changed += (state, newTrack) => _notch.Dispatcher.BeginInvoke(new Action(() => _notch.UpdateMedia(state, newTrack)));

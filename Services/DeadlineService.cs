@@ -18,6 +18,11 @@ public sealed class DeadlineService
 
     /// <summary>A deadline and how soon: "24h", "1h" or "due".</summary>
     public event Action<Deadline, string>? Remind;
+
+    /// <summary>About once an hour (8:00–22:00), the nearest deadlines, so none are forgotten.</summary>
+    public event Action<IReadOnlyList<Deadline>>? Summary;
+    private int _lastSummaryHour = -1;
+    private DateTime _lastReminder;
     public event Action? Changed;
 
     public DeadlineService()
@@ -54,6 +59,32 @@ public sealed class DeadlineService
         return d;
     }
 
+    /// <summary>Changes a deadline (name and time) from text like when adding one.</summary>
+    public bool Update(Guid id, string text, out string? problem)
+    {
+        var d = AppSettings.Current.Deadlines.FirstOrDefault(x => x.Id == id);
+        var parsed = Parse(text, DateTime.Now);
+        if (d == null) { problem = "Hạn chót này không còn nữa"; return false; }
+        if (parsed == null) { problem = "Thêm ngày nhé, vd: 15/11 17h · mai 9h · thứ 6"; return false; }
+        if (parsed.Value.Title.Length == 0) { problem = "Thêm tên công việc nhé"; return false; }
+        d.Title = parsed.Value.Title;
+        if (d.Due != parsed.Value.Due)
+        {
+            d.Due = parsed.Value.Due;
+            var left = d.Due - DateTime.Now;
+            d.Warned24h = left <= TimeSpan.FromHours(24);
+            d.Warned1h  = left <= TimeSpan.FromHours(1);
+            d.WarnedDue = left <= TimeSpan.Zero;
+        }
+        AppSettings.Current.Save();
+        problem = null;
+        Changed?.Invoke();
+        return true;
+    }
+
+    /// <summary>The text that puts a deadline back in the box for editing: "Nộp báo cáo 15/11/2026 17:00".</summary>
+    public static string EditText(Deadline d) => $"{d.Title} {d.Due:dd/MM/yyyy} {d.Due:HH:mm}";
+
     public void Remove(Guid id)
     {
         AppSettings.Current.Deadlines.RemoveAll(d => d.Id == id);
@@ -81,8 +112,18 @@ public sealed class DeadlineService
             if (kind != null)
             {
                 dirty = true;
+                _lastReminder = now;
                 Remind?.Invoke(d, kind);
             }
+        }
+
+        // The hourly round-up: on the hour from 8 to 22 (15 a day), skipped when
+        // a reminder just showed or there's nothing coming up.
+        if (now.Hour is >= 8 and <= 22 && now.Hour != _lastSummaryHour && now.Minute < 10)
+        {
+            _lastSummaryHour = now.Hour;
+            var next = AppSettings.Current.Deadlines.Where(d => d.Due > now.AddHours(-12)).OrderBy(d => d.Due).Take(3).ToList();
+            if (next.Count > 0 && (now - _lastReminder).TotalMinutes > 15) Summary?.Invoke(next);
         }
         if (dirty)
         {
@@ -108,6 +149,8 @@ public sealed class DeadlineService
     private static readonly Regex TimeRx = new(@"(?<![\d/])(\d{1,2})(?:\s*(?:h|g|giờ|:)\s*(\d{2})?)(?:\s*(sáng|chiều|tối|trưa|pm|am))?(?![\p{L}\d])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex WordRx = new(@"(?<!\p{L})(hôm nay|nay|ngày mai|mai|ngày mốt|mốt|tuần sau|thứ\s*([2-7]|hai|ba|tư|năm|sáu|bảy)|chủ nhật|cn)(?!\p{L})", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex Filler = new(@"(?<!\p{L})(lúc|vào|ngày|hạn|deadline|trước)(?!\p{L})\s*$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    // Words that only said when (taken out of the name): "sáng mai 9h đi cà phê" → "Đi cà phê"
+    private static readonly Regex WhenWords = new(@"(?<!\p{L})(buổi\s+)?(sáng|trưa|chiều|tối|đêm|khuya)(?!\p{L})|(?<!\p{L})(lúc|vào lúc|vào|hạn chót|hạn|deadline)(?=\s|$)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     public static (string Title, DateTime Due)? Parse(string text, DateTime now)
     {
@@ -172,8 +215,17 @@ public sealed class DeadlineService
         }
         else due = date.Value + (time ?? new TimeSpan(23, 59, 0));
 
-        string title = Regex.Replace(rest, @"\s+", " ").Trim(' ', ',', '-', '·', ':');
+        // "sáng/chiều/tối" next to the time also sets the part of the day when no time-of-day word was matched
+        if (time is { } tm && tm.Hours < 12 && Regex.IsMatch(rest, @"(?<!\p{L})(chiều|tối)(?!\p{L})", RegexOptions.IgnoreCase))
+        {
+            time = tm.Add(TimeSpan.FromHours(12));
+            due = (date ?? due.Date) + time.Value;
+            if (date == null && due <= now) due = due.AddDays(1);
+        }
+        string title = WhenWords.Replace(rest, " ");
+        title = Regex.Replace(title, @"\s+", " ").Trim(' ', ',', '-', '·', ':');
         title = Filler.Replace(title, "").Trim(' ', ',', '-', '·', ':');
+        if (title.Length > 0) title = char.ToUpper(title[0], CultureInfo.GetCultureInfo("vi-VN")) + title[1..];
         return (title, due);
     }
 

@@ -57,6 +57,7 @@ public sealed class NotificationListener
         // only switched them back on at a clean Quit; after a crash or a forced
         // shutdown they stayed off, so nothing reached the island. Undo that.
         _suppressor.RepairOldVersionsOnce();
+        _suppressor.HideKnownApps();
         _ = Task.Run(() => PollLoop(_cts.Token));
     }
 
@@ -110,7 +111,10 @@ public sealed class NotificationListener
                         }
                         catch (Exception ex)
                         {
-                            DebugLog.Note($"notification {n.Id} failed: {ex}");
+                            // Reading the details failed (e.g. Windows' notification database was busy):
+                            // still show what we have instead of losing it.
+                            CrashLog.Write($"Notification details failed ({ex.GetType().Name}), shown plain");
+                            try { OnNotificationReceived?.Invoke(PlainData(n)); } catch { }
                         }
                     }
 
@@ -132,7 +136,37 @@ public sealed class NotificationListener
         }
     }
 
-    private static string KeyOf(UserNotification n) => $"{n.Id}|{n.CreationTime.UtcTicks}";
+    // Messenger and others replace a notification under the same id when a new message
+    // comes in; the text changes, so it's part of the key (otherwise the new message is missed).
+    private static string KeyOf(UserNotification n)
+    {
+        string text = "";
+        try
+        {
+            var b = n.Notification?.Visual?.GetBinding(KnownNotificationBindings.ToastGeneric);
+            if (b != null) text = string.Join("|", b.GetTextElements().Select(e => e.Text));
+        }
+        catch { }
+        return $"{n.Id}|{n.CreationTime.UtcTicks}|{text.GetHashCode()}";
+    }
+
+    /// <summary>The app's name and the toast's own lines, when the fuller details can't be read.</summary>
+    private static AppNotification PlainData(UserNotification n)
+    {
+        var texts = new List<string>();
+        try
+        {
+            var b = n.Notification?.Visual?.GetBinding(KnownNotificationBindings.ToastGeneric);
+            if (b != null) texts.AddRange(b.GetTextElements().Select(e => e.Text ?? ""));
+        }
+        catch { }
+        var name = n.AppInfo?.DisplayInfo?.DisplayName ?? "Thông báo";
+        return new AppNotification
+        {
+            AppName = name, Title = texts.ElementAtOrDefault(0) ?? name, Body = texts.ElementAtOrDefault(1) ?? "",
+            AppUserModelId = n.AppInfo?.AppUserModelId, SourceKey = n.AppInfo?.AppUserModelId is { } id ? $"app:{id}" : null
+        };
+    }
 
     private static async Task<AppNotification> ExtractNotificationData(UserNotification n)
     {

@@ -984,7 +984,7 @@
                                 <TextBlock Text="&#xE710;" FontFamily="{StaticResource IconFont}" FontSize="12" Foreground="#B38CFF"
                                            VerticalAlignment="Center" Margin="0,0,8,0"/>
                                 <TextBlock x:Name="DeadlineAddPlaceholder" Grid.Column="1" IsHitTestVisible="False"
-                                           Text="Thêm hạn chót, vd: Nộp báo cáo PRO 15/11 17h · Thi mai 9h"
+                                           Text="Thêm hạn chót, vd: Nộp báo cáo PRO 15/11 17h · bấm một hạn để sửa"
                                            Foreground="#88FFFFFF" FontSize="12" FontFamily="Segoe UI" VerticalAlignment="Center"/>
                                 <TextBox x:Name="DeadlineAdd" Grid.Column="1" Background="Transparent" BorderThickness="0" Foreground="White"
                                          CaretBrush="White" FontSize="12" FontFamily="Segoe UI" VerticalContentAlignment="Center"

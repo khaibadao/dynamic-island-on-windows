@@ -2,6 +2,7 @@ namespace DynamicIslandNotifier.Services;
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Microsoft.Win32;
 
 /// <summary>
@@ -44,6 +45,7 @@ public sealed class ToastSuppressor
         lock (AppSettings.SaveLock)   // runs on the notification thread
         try
         {
+            if (!AppSettings.Current.BannerApps.Contains(appUserModelId)) AppSettings.Current.BannerApps.Add(appUserModelId);
             if (changed.ContainsKey(appUserModelId)) return;
             using var key = Registry.CurrentUser.CreateSubKey(AppKey + appUserModelId);
             // What it was before, so it can be put back exactly. A 0 left by an older
@@ -54,6 +56,16 @@ public sealed class ToastSuppressor
             key.SetValue("ShowBanner", 0, RegistryValueKind.DWord);
         }
         catch { }
+    }
+
+    /// <summary>
+    /// At start: hide the banner again for every app seen before, so the first
+    /// notification after a restart doesn't pop up twice (island + Windows).
+    /// </summary>
+    public void HideKnownApps()
+    {
+        if (!Enabled) return;
+        foreach (var aumid in AppSettings.Current.BannerApps.ToArray()) SuppressApp(aumid);
     }
 
     /// <summary>Puts every app's banner setting back the way it was.</summary>

@@ -60,6 +60,8 @@ public sealed class AppSettings
     /// <summary>Apps whose Windows banner is hidden while the app runs, with the value it had before (null: not set).</summary>
     public Dictionary<string, int?> SuppressedBanners { get; set; } = new();
     public bool HideWindowsBanners { get; set; } = true;
+    /// <summary>Apps that have shown on the island before: their banner is hidden again as soon as the app starts.</summary>
+    public List<string> BannerApps { get; set; } = new();
     public bool GlobalToastsRepaired { get; set; }
 
     // ── Privacy switches (Cài đặt & quyền riêng tư) ──

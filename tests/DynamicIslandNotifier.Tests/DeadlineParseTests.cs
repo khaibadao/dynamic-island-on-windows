@@ -19,6 +19,9 @@ public class DeadlineParseTests
     [InlineData("Gặp thầy 3h chiều mốt", "Gặp thầy", 2026, 11, 7, 15, 0)]
     [InlineData("Thi cuối kỳ 3/1/2027", "Thi cuối kỳ", 2027, 1, 3, 23, 59)]
     [InlineData("Ôn MAD 2/1", "Ôn MAD", 2027, 1, 2, 23, 59)]       // a date already gone this year → next year
+    [InlineData("Sáng mai đi Coffee học bài 7h", "Đi Coffee học bài", 2026, 11, 6, 7, 0)]   // "sáng" isn't part of the name
+    [InlineData("chiều nay 3h họp nhóm", "Họp nhóm", 2026, 11, 5, 15, 0)]                   // "chiều" makes it 15:00
+    [InlineData("Nộp lab vào lúc 21h tối mai", "Nộp lab", 2026, 11, 6, 21, 0)]
     public void Reads_title_and_due(string text, string title, int y, int mo, int d, int h, int mi)
     {
         var parsed = DeadlineService.Parse(text, Now);
@@ -32,6 +35,15 @@ public class DeadlineParseTests
     {
         var parsed = DeadlineService.Parse("Gọi mẹ 9h", Now);
         Assert.Equal(new DateTime(2026, 11, 6, 9, 0, 0), parsed!.Value.Due);
+    }
+
+    [Fact]
+    public void Editing_text_reads_back_the_same()
+    {
+        var d = new Deadline { Title = "Nộp báo cáo PRO", Due = new DateTime(2026, 11, 15, 17, 0, 0) };
+        var parsed = DeadlineService.Parse(DeadlineService.EditText(d), Now);
+        Assert.Equal(d.Title, parsed!.Value.Title);
+        Assert.Equal(d.Due, parsed.Value.Due);
     }
 
     [Fact]
