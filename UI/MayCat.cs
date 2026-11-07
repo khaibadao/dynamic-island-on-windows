@@ -1,6 +1,7 @@
 namespace DynamicIslandNotifier.UI;
 
 using System;
+using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -10,6 +11,43 @@ using System.Windows.Threading;
 
 /// <summary>What Mây is doing.</summary>
 public enum CatMood { Idle, Dance, Focus, Happy, Sad, Sleep }
+
+/// <summary>Which pet is chosen (tray menu → Thú cưng). Every drawing of the pet follows it.</summary>
+public static class PetChoice
+{
+    private static PetKind _current = Parse(DynamicIslandNotifier.Services.AppSettings.Current.Pet);
+    public static event Action? Changed;
+
+    public static PetKind Current
+    {
+        get => _current;
+        set
+        {
+            if (_current == value) return;
+            _current = value;
+            DynamicIslandNotifier.Services.AppSettings.Current.Pet = value.ToString();
+            DynamicIslandNotifier.Services.AppSettings.Current.Save();
+            Changed?.Invoke();
+        }
+    }
+
+    public static PetKind Parse(string? s) => Enum.TryParse<PetKind>(s, true, out var k) ? k : PetKind.Cat;
+
+    public static string Name(PetKind k) => k switch
+    {
+        PetKind.Dog => "Cún", PetKind.Rabbit => "Thỏ", PetKind.Hamster => "Hamster",
+        PetKind.Penguin => "Chim cánh cụt", PetKind.Fox => "Cáo", _ => "Mèo cam"
+    };
+
+    /// <summary>What the other pets do for each of the cat's moods.</summary>
+    public static PetState From(CatMood mood) => mood switch
+    {
+        CatMood.Sleep => PetState.Sleep,
+        CatMood.Happy or CatMood.Dance => PetState.Happy,
+        CatMood.Sad => PetState.Sad,
+        _ => PetState.Sit
+    };
+}
 
 /// <summary>Shapes and colours shared by both drawings of Mây.</summary>
 internal static class CatParts
@@ -134,6 +172,9 @@ public sealed class MayCat : Canvas
     private readonly Canvas _belly;
     private readonly Path _heart;
     private bool _bellyUp;
+    private readonly PetShape _pet = new() { Visibility = Visibility.Collapsed };
+
+    private bool IsCat => PetChoice.Current == PetKind.Cat;
 
     public MayCat()
     {
@@ -177,8 +218,22 @@ public sealed class MayCat : Canvas
         Children.Add(_belly);
 
         _blinkTimer.Tick += (_, _) => Blink(_openEyes);
+        Children.Add(_pet);
+        PetChoice.Changed += ShowPet;
         ApplySize();
         Mood = CatMood.Idle;
+        ShowPet();
+    }
+
+    /// <summary>The cat drawing, or the chosen other pet in its place.</summary>
+    private void ShowPet()
+    {
+        _pet.Kind = IsCat ? PetKind.Dog : PetChoice.Current;
+        _pet.State = _bellyUp ? PetState.Near : PetChoice.From(_mood);
+        _pet.Visibility   = IsCat ? Visibility.Collapsed : Visibility.Visible;
+        _root.Visibility  = IsCat && !_bellyUp ? Visibility.Visible : Visibility.Collapsed;
+        _belly.Visibility = IsCat && _bellyUp ? Visibility.Visible : Visibility.Collapsed;
+        if (!IsCat) _zzz.Visibility = Visibility.Collapsed;
     }
 
     /// <summary>Rolls onto her back, paws up, a heart floating (when the pointer comes close).</summary>
@@ -189,9 +244,8 @@ public sealed class MayCat : Canvas
         {
             if (value == _bellyUp) return;
             _bellyUp = value;
-            _root.Visibility  = value ? Visibility.Collapsed : Visibility.Visible;
-            _belly.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
-            _zzz.Visibility   = !value && _mood == CatMood.Sleep ? Visibility.Visible : Visibility.Collapsed;
+            ShowPet();
+            _zzz.Visibility   = IsCat && !value && _mood == CatMood.Sleep ? Visibility.Visible : Visibility.Collapsed;
             var t = (TranslateTransform)_heart.RenderTransform;
             if (value)
             {
@@ -226,6 +280,8 @@ public sealed class MayCat : Canvas
         _scale.ScaleX = _scale.ScaleY = s;
         Width  = 40 * s;
         Height = 40 * s;
+        double ps = 40 * s / 44;   // the pets' 48-box, ground at 44, fitted to the same height
+        _pet.RenderTransform = new MatrixTransform(ps, 0, 0, ps, (Width - 48 * ps) / 2, Height - 44 * ps);
         SetLeft(_zzz, 34 * s);
         SetTop(_zzz, -2);
     }
@@ -238,6 +294,7 @@ public sealed class MayCat : Canvas
             if (_mood == value) return;
             _mood = value;
             Animate();
+            ShowPet();
         }
     }
 
@@ -339,12 +396,17 @@ public sealed class MayPeek : Canvas
     private CatMood _mood = (CatMood)(-1);
 
     public const double HiddenPart = 12;   // px tucked behind the pill
+    private readonly PetShape _pet = new() { State = PetState.Head, Visibility = Visibility.Collapsed };
+    private readonly List<UIElement> _catParts = new();
 
     public MayPeek()
     {
         Width = 26;
         Height = 38;
         ClipToBounds = false;
+        // the other pets: just the head, the same size as the cat's
+        _pet.RenderTransform = new MatrixTransform(1.05, 0, 0, 1.05, -12.5, -1.5);
+        PetChoice.Changed += ShowPet;
 
         var tail = CatParts.P("M8,20 C8,29 15,29 13,36", null, CatParts.Tail, 2.2);
         tail.RenderTransform = _tail;
@@ -359,7 +421,18 @@ public sealed class MayPeek : Canvas
         Children.Add(head);
 
         _blinkTimer.Tick += (_, _) => MayCat.Blink(_openEyes);
+        foreach (UIElement c in Children) _catParts.Add(c);
+        Children.Add(_pet);
         Mood = CatMood.Idle;
+        ShowPet();
+    }
+
+    private void ShowPet()
+    {
+        bool cat = PetChoice.Current == PetKind.Cat;
+        if (!cat) _pet.Kind = PetChoice.Current;
+        foreach (var c in _catParts) c.Visibility = cat ? Visibility.Visible : Visibility.Collapsed;
+        _pet.Visibility = cat ? Visibility.Collapsed : Visibility.Visible;
     }
 
     public CatMood Mood
@@ -464,7 +537,20 @@ public sealed class MayWalker : Canvas
         _root.Children.Add(CatParts.P("M3,12.6 L4.4,12.6 L3.7,13.5 Z", CatParts.Nose));
 
         _step.Tick += (_, _) => Step();
+        Children.Add(_pet);
+        PetChoice.Changed += ShowPet;
         Size = 18;
+        ShowPet();
+    }
+
+    private readonly PetShape _pet = new() { State = PetState.Sit, Visibility = Visibility.Collapsed };
+
+    private void ShowPet()
+    {
+        bool cat = PetChoice.Current == PetKind.Cat;
+        if (!cat) _pet.Kind = PetChoice.Current;
+        _root.Visibility = cat ? Visibility.Visible : Visibility.Collapsed;
+        _pet.Visibility  = cat ? Visibility.Collapsed : Visibility.Visible;
     }
 
     /// <summary>Width in px.</summary>
@@ -477,6 +563,8 @@ public sealed class MayWalker : Canvas
             _scale.ScaleX = _scale.ScaleY = s;
             Width  = 40 * s;
             Height = 30 * s;
+            double ps = Height * 1.2 / 44;   // the other pets walk front-on, a bit taller than the cat side-on
+            _pet.RenderTransform = new MatrixTransform(ps, 0, 0, ps, (Width - 48 * ps) / 2, Height - 44 * ps);
         }
     }
 
@@ -489,12 +577,14 @@ public sealed class MayWalker : Canvas
 
     public void StartWalking()
     {
+        _pet.State = PetState.Walk;
         _tail.BeginAnimation(RotateTransform.AngleProperty, CatParts.Swing(-10, 10, 300));
         _step.Start();
     }
 
     public void StopWalking()
     {
+        _pet.State = PetState.Sit;
         _step.Stop();
         _tail.BeginAnimation(RotateTransform.AngleProperty, null);
         foreach (var l in _legs) l.Angle = 0;

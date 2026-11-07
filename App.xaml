@@ -17,7 +17,15 @@
                         <MenuItem Header="Notch bar" Tag="notch" IsCheckable="True" Click="NotchToggle_Click"/>
                         <MenuItem Header="Music: On" Tag="music" Click="MusicToggle_Click"/>
                         <MenuItem Header="Start with Windows" Tag="autostart" IsCheckable="True" Click="AutoStartToggle_Click"/>
-                        <MenuItem Header="Mây đi dạo" Tag="maywalk" IsCheckable="True" Click="MayWalkToggle_Click"/>
+                        <MenuItem Header="Thú cưng" Tag="pet">
+                            <MenuItem Header="🐱 Mèo cam" Tag="Cat" IsCheckable="True" Click="Pet_Click"/>
+                            <MenuItem Header="🐶 Cún" Tag="Dog" IsCheckable="True" Click="Pet_Click"/>
+                            <MenuItem Header="🐰 Thỏ" Tag="Rabbit" IsCheckable="True" Click="Pet_Click"/>
+                            <MenuItem Header="🐹 Hamster" Tag="Hamster" IsCheckable="True" Click="Pet_Click"/>
+                            <MenuItem Header="🐧 Chim cánh cụt" Tag="Penguin" IsCheckable="True" Click="Pet_Click"/>
+                            <MenuItem Header="🦊 Cáo" Tag="Fox" IsCheckable="True" Click="Pet_Click"/>
+                        </MenuItem>
+                        <MenuItem Header="Thú cưng đi dạo" Tag="maywalk" IsCheckable="True" Click="MayWalkToggle_Click"/>
                         <MenuItem Header="Ẩn khi toàn màn hình" Tag="fullscreen" IsCheckable="True" Click="FullscreenToggle_Click"/>
                         <MenuItem Header="Loang màu" Tag="ambient">
                             <MenuItem Header="Đầy đủ (nốt nhạc trôi)" Tag="full" IsCheckable="True" Click="Ambient_Click"/>

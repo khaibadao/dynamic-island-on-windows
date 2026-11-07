@@ -2956,6 +2956,9 @@ public partial class NotchWindow : Window
     private IEnumerable<MayCat> Cats => new[] { CatPanel };
 
     /// <summary>A short reaction: happy hops, or sad after giving up.</summary>
+    /// <summary>The pet was changed in the tray: its tooltip says the new name.</summary>
+    public void RefreshPetTip() => UpdateCat();
+
     private void CatReact(CatMood mood, double seconds)
     {
         _catOverride      = mood;
@@ -2998,7 +3001,7 @@ public partial class NotchWindow : Window
             CatMood.Sleep => "đang ngủ",
             _             => "đang ngồi chơi"
         };
-        CatPanel.ToolTip = $"Mây {doing} · đã được ăn {food} phần (mỗi cây trồng xong là 1 phần)";
+        CatPanel.ToolTip = $"{PetChoice.Name(PetChoice.Current)} {doing} · đã được ăn {food} phần (mỗi cây trồng xong là 1 phần)";
     }
 
     // ── Helpers ───────────────────────────────────────────────────────

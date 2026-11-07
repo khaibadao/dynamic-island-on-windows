@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using DynamicIslandNotifier.Core;
 using DynamicIslandNotifier.Services;
+using DynamicIslandNotifier.UI;
 
 namespace DynamicIslandNotifier;
 
@@ -397,6 +398,9 @@ public partial class App : Application
         {
             if (obj is MenuItem { Tag: "notch" } item)   item.IsChecked = _notch?.NotchEnabled == true;
             if (obj is MenuItem { Tag: "maywalk" } walk) walk.IsChecked = AppSettings.Current.MayWalks;
+            if (obj is MenuItem { Tag: "pet" } pets)
+                foreach (var sub in pets.Items)
+                    if (sub is MenuItem { Tag: string kind } choice) choice.IsChecked = PetChoice.Current.ToString() == kind;
             if (obj is MenuItem { Tag: "fullscreen" } fs) fs.IsChecked = AppSettings.Current.HideInFullscreen;
             if (obj is MenuItem { Tag: "ambient" } amb)
             {
@@ -416,6 +420,15 @@ public partial class App : Application
     {
         AppSettings.Current.HideInFullscreen = !AppSettings.Current.HideInFullscreen;
         AppSettings.Current.Save();
+        UpdateNotchMenu();
+    }
+
+    /// <summary>Which pet lives on the notch.</summary>
+    private void Pet_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { Tag: string kind }) return;
+        PetChoice.Current = PetChoice.Parse(kind);
+        _notch?.RefreshPetTip();
         UpdateNotchMenu();
     }
 
