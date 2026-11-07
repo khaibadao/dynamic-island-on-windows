@@ -35,19 +35,19 @@ public sealed class PetShape : Canvas
     private readonly Canvas _all = new(), _tail = new(), _body = new(), _head = new(), _earL = new(), _earR = new();
     private readonly Canvas _eyesOpen = new(), _zzz = new();
     private Path _eyesHappy = null!, _eyesClosed = null!, _brow = null!;
-    private Canvas? _hands, _seed, _cheeks, _wingL, _wingR;
+    private Canvas? _hands, _seedBox, _cheeks, _wingL, _wingR;
     private Path? _tongue, _nose, _whiskers;
     private UIElement? _seedGrain, _seedLine, _handL, _handR;
 
     private readonly DispatcherTimer _tick = new(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(33) };
     private readonly DateTime _start = DateTime.UtcNow;
-    private readonly double _seed;
+    private readonly double _phase;
     private PetKind _kind = PetKind.Dog;
     private PetState _state = PetState.Sit;
 
     public PetShape(double seed = 0)
     {
-        _seed = seed;
+        _phase = seed;
         Width = 48;
         Height = 48;
         IsHitTestVisible = false;
@@ -98,7 +98,7 @@ public sealed class PetShape : Canvas
     {
         Children.Clear();
         foreach (var c in new[] { _all, _tail, _body, _head, _earL, _earR, _eyesOpen, _zzz }) c.Children.Clear();
-        _hands = _seed = _cheeks = _wingL = _wingR = null;
+        _hands = _seedBox = _cheeks = _wingL = _wingR = null;
         _tongue = _nose = _whiskers = null;
 
         var c = Of(_kind);
@@ -142,13 +142,13 @@ public sealed class PetShape : Canvas
                 E(_body, 24, 37.6, 7, 6, c.Light);
                 E(_body, 19, 44, 2.2, 1.3, "#F7A9B4");
                 E(_body, 29, 44, 2.2, 1.3, "#F7A9B4");
-                _seed = Sub(_body);
-                var grainBox = Sub(_seed);
+                _seedBox = Sub(_body);
+                var grainBox = Sub(_seedBox);
                 var grain = E(grainBox, 24, 31, 1.8, 3, "#4A4A52"); grain.RenderTransform = new RotateTransform(20, 1.8, 3);
                 _seedGrain = grainBox;
-                _seedLine = P(_seed, "M23.3 29.2 L24.8 32.6", null, "#DDDDDD", .5);
-                _handL = E(_seed, 21.6, 31.4, 1.4, 1.2, "#F7A9B4");
-                _handR = E(_seed, 26.4, 31.4, 1.4, 1.2, "#F7A9B4");
+                _seedLine = P(_seedBox, "M23.3 29.2 L24.8 32.6", null, "#DDDDDD", .5);
+                _handL = E(_seedBox, 21.6, 31.4, 1.4, 1.2, "#F7A9B4");
+                _handR = E(_seedBox, 26.4, 31.4, 1.4, 1.2, "#F7A9B4");
                 E(_head, 24, 20.6, 11.4, 9.6, c.Fur, d);
                 _cheeks = Sub(_head);
                 E(_cheeks, 16.6, 23.6, 3.6, 3, c.Light);
@@ -242,15 +242,15 @@ public sealed class PetShape : Canvas
 
     private void Frame()
     {
-        double t = (DateTime.UtcNow - _start).TotalSeconds + _seed;
+        double t = (DateTime.UtcNow - _start).TotalSeconds + _phase;
         double k = t * Math.PI * 2;
         static double s(double v) => Math.Sin(v);
         var kind = _kind;
         X? A = null, H = null, T = null, L = null, R = null, Bd = null;
-        string eyes = ((t + _seed) % 3.6) < .14 ? "closed" : "open";
+        string eyes = ((t + _phase) % 3.6) < .14 ? "closed" : "open";
         bool brow = false, zzz = false;
         Show(_hands, false); Set(_hands, null);
-        Show(_seed, true); Set(_cheeks, null); Set(_wingL, null); Set(_wingR, null); Set(_tongue, null); Set(_nose, null); Set(_whiskers, null);
+        Show(_seedBox, true); Set(_cheeks, null); Set(_wingL, null); Set(_wingR, null); Set(_tongue, null); Set(_nose, null); Set(_whiskers, null);
         Show(_body, true); Show(_tail, true);
 
         switch (_state)
@@ -329,7 +329,7 @@ public sealed class PetShape : Canvas
                 if (kind == PetKind.Dog) H = new X().T(0, 6);
                 if (kind == PetKind.Penguin) { A = new X().S(1, breathe); H = new X().T(0, 4).R(8, 24, 28); }
                 if (kind == PetKind.Fox) T = new X().T(-20, -2).R(-35, 33, 40);
-                Show(_seed, false);
+                Show(_seedBox, false);
                 break;
             }
 
@@ -376,8 +376,8 @@ public sealed class PetShape : Canvas
 
     private void HandsUp(double k)
     {
-        if (_seed == null) return;
-        Show(_seed, true);
+        if (_seedBox == null) return;
+        Show(_seedBox, true);
         Show(_seedGrain, false); Show(_seedLine, false);
         double wave = Math.Sin(k * 4) * 1.6;
         Set(_handL, new X().T(-1.4, .2 + wave).SAt(1.35, 1.35, 21.6, 31.4));
@@ -386,7 +386,7 @@ public sealed class PetShape : Canvas
 
     private void HandsDown()
     {
-        if (_seed == null) return;
+        if (_seedBox == null) return;
         Show(_seedGrain, true); Show(_seedLine, true);
         Set(_handL, null); Set(_handR, null);
     }
