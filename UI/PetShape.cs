@@ -97,7 +97,7 @@ public sealed class PetShape : Canvas
     private void Build()
     {
         Children.Clear();
-        foreach (var c in new[] { _all, _tail, _body, _head, _earL, _earR, _eyesOpen, _zzz }) c.Children.Clear();
+        foreach (var part in new[] { _all, _tail, _body, _head, _earL, _earR, _eyesOpen, _zzz }) part.Children.Clear();
         _hands = _seedBox = _cheeks = _wingL = _wingR = null;
         _tongue = _nose = _whiskers = null;
 
