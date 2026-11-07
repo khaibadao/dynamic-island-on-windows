@@ -1,5 +1,23 @@
 Bản chỉnh sửa từ [sadeeshasathsara/dynamic-island-on-windows](https://github.com/sadeeshasathsara/dynamic-island-on-windows) (MIT).
 
+### Mới trong v2.4.0
+- **Thú cưng**: menu khay → **Thú cưng** để chọn mèo cam, cún, thỏ, hamster, chim cánh cụt hoặc cáo. Con nào cũng đi dạo trên viên, ló đầu, ngồi góc bảng, phản ứng khi chuột lại gần, ngủ, vui, buồn
+- **12 cây vẽ lại** cho bớt "nhựa": tán nhiều chùm lá có sáng tối, thân có cành và vân gỗ, thông tuyết dáng thon nhiều tầng phủ sương
+- **Mở khoá cây theo giờ tập trung** (3 cây có sẵn, rồi 4 · 10 · 20 · 30 · 50 · 80 · 120 · 180 · 240 giờ)
+- **Tai nghe Bluetooth hiện ngay trên viên**: viên giãn ra vài giây với tên, số tai đang kết nối (nếu Windows cho biết) và pin
+- **Hạn chót**: bấm vào một hạn để **sửa**; khoảng mỗi giờ (8h–22h) có một thông báo tóm tắt 2–3 hạn gần nhất
+- **Bộ cài** `DynamicIslandSetup-x64.exe` (không cần quyền admin, gỡ trong Settings → Apps; gỡ là trả lại banner thông báo Windows)
+- Mảnh đất trồng cây màu tối hơn để cây nổi bật
+
+### Sửa trong v2.4.0
+- **Viên không còn che tab trình duyệt**: chỉ khi đưa chuột lên **sát mép trên màn hình** mới mở bảng; chuột ở phần dưới của viên thì viên gần như trong suốt và **bấm xuyên qua** xuống tab bên dưới
+- **Thông báo đến dồn dập không còn bị mất**: mỗi thông báo được hiện đủ 2 giây, lần lượt; tin mới cùng người gửi thì cập nhật luôn. Messenger gửi tin mới thay tin cũ cũng được nhận ra; thông báo đọc lỗi chi tiết vẫn được hiện
+- **Banner Windows không còn hiện trùng** sau khi khởi động lại máy
+- **Tên hạn chót gọn**: "Sáng mai đi cà phê 7h" → "Đi cà phê"; "chiều/tối" cũng tính đúng giờ chiều
+- **Đặt đúng giữa mép trên** ở mọi mức Scale (125%, 150%…) và khi có nhiều màn hình
+- Nốt nhạc vẫn trôi khi Tiết kiệm pin hoặc khi Windows tắt hiệu ứng hoạt ảnh (có công tắc riêng nếu muốn dừng)
+- Không còn hộp thoại chặn màn hình khi chưa có quyền đọc thông báo
+
 ### Mới trong v2.3.0
 - **Cài đặt & quyền riêng tư** (menu khay): ghi rõ app xem gì trên máy và gửi gì ra mạng, mỗi thứ có công tắc riêng: đọc tên cửa sổ (Deep focus, thuyết trình), nghe âm thanh loa cho sóng nhạc, ẩn banner Windows trùng tai thỏ, nhắc hạn chót cả khi Không làm phiền, biểu tượng trang web (Google), lời bài hát từ NetEase
 - **Cập nhật an toàn hơn**: bấm thông báo có bản mới sẽ hiện **danh sách thay đổi** trước, rồi mới cài. File tải về được **kiểm tra mã SHA-256** (kèm theo mỗi bản phát hành) trong một thư mục tạm riêng; sai mã là huỷ
