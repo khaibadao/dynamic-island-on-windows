@@ -65,7 +65,7 @@ public sealed class TreeShape : Canvas
         _stage = stage;
 
         _plant.Children.Clear();
-        _plant.Children.Add(Soil());
+        if (stage != 1) _plant.Children.Add(Soil());   // grown trees bring their own soft shadow
         if (stage == 0) Sprout();
         else if (stage == 2) Withered();
         else Draw(_kind);
@@ -209,149 +209,362 @@ public sealed class TreeShape : Canvas
     }
 
     // ── The twelve trees ──────────────────────────────────────────────
+    // Drawn like an illustration rather than plastic balls: crowns are many small
+    // leaf clumps painted in three flat tones (shade down-right, mid, sunlit
+    // up-left), trunks taper with bark shading and branches, a soft shadow below.
+    // Shapes come from a seeded random, so a kind always looks the same.
+
+    private static string F(double v) => v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>The same little random sequence as the design preview, so trees match it.</summary>
+    private sealed class Seeded
+    {
+        private long _s;
+        public Seeded(long seed) => _s = seed;
+        public double Next() { _s = (_s * 16807) % 2147483647; return _s / 2147483647.0; }
+    }
+
+    private sealed record Palette(string Light, string Base, string Dark, string Deep);
+
+    private static Color C(string hex) => (Color)ColorConverter.ConvertFromString(hex);
+
+    private static Brush Across(params string[] colors)   // left → right (bark, stalks, shards)
+    {
+        var g = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(1, 0) };
+        for (int i = 0; i < colors.Length; i++) g.GradientStops.Add(new GradientStop(C(colors[i]), i / (double)(colors.Length - 1)));
+        g.Freeze();
+        return g;
+    }
+
+    private static Brush Lit(params (double Offset, string Color)[] stops)   // round, lit from the top-left
+    {
+        var g = new RadialGradientBrush { GradientOrigin = new Point(0.3, 0.28), Center = new Point(0.5, 0.5), RadiusX = 0.75, RadiusY = 0.75 };
+        foreach (var (o, c) in stops) g.GradientStops.Add(new GradientStop(C(c), o));
+        g.Freeze();
+        return g;
+    }
+
+    private static UIElement GroundShadow(double w)
+    {
+        var g = new RadialGradientBrush();
+        g.GradientStops.Add(new GradientStop(Color.FromArgb(0x73, 0, 0, 0), 0));
+        g.GradientStops.Add(new GradientStop(Color.FromArgb(0, 0, 0, 0), 1));
+        g.Freeze();
+        return E(50, 100, w, 5, g);
+    }
+
+    private static Path Shape(Geometry g, Brush fill, double opacity = 1) => new() { Data = g, Fill = fill, Opacity = opacity };
+
+    private static UIElement Trunk(string dark, string mid, string light, double x = 50, double top = 52, double bottom = 100,
+                                   double w = 9, double lean = 0, int branches = 2, long seed = 3)
+    {
+        var r = new Seeded(seed);
+        double tx = x + lean;
+        var group = new Canvas { Width = 100, Height = 110 };
+        group.Children.Add(P($"M{F(x - w / 2)},{F(bottom)} C{F(x - w / 2)},{F(bottom - 18)} {F(tx - w / 4)},{F(top + 14)} {F(tx - w / 5)},{F(top)} " +
+                             $"L{F(tx + w / 5)},{F(top)} C{F(tx + w / 4)},{F(top + 14)} {F(x + w / 2)},{F(bottom - 18)} {F(x + w / 2)},{F(bottom)} " +
+                             $"Q{F(x + w * .9)},{F(bottom + 1.5)} {F(x + w * 1.1)},{F(bottom + 1)} L{F(x - w * 1.1)},{F(bottom + 1)} Q{F(x - w * .9)},{F(bottom + 1.5)} {F(x - w / 2)},{F(bottom)} Z",
+                             Across(dark, mid, light)));
+        for (int i = 0; i < branches; i++)
+        {
+            int side = i % 2 == 1 ? 1 : -1;
+            double y = top + 8 + i * 6 + r.Next() * 4, len = 9 + r.Next() * 6;
+            group.Children.Add(P($"M{F(tx + side * 1.5)},{F(y + 3)} Q{F(tx + side * len * .5)},{F(y - 2)} {F(tx + side * len)},{F(y - 7 - r.Next() * 4)}",
+                                 null, Hex(mid), 2.4 - i * .4));
+        }
+        var lines = P($"M{F(x - 1.5)},{F(bottom - 4)} q1,-10 0,-20 M{F(x + 1.8)},{F(bottom - 6)} q-1,-8 .5,-16", null, Hex(dark), .6);
+        lines.Opacity = .55;
+        group.Children.Add(lines);
+        return group;
+    }
+
+    private static readonly (string Dark, string Mid, string Light) Wood = ("#3B2416", "#6B4428", "#8E6340");
+
+    /// <summary>A crown: shade, mid and light tones of many small clumps, plus a few leaf flecks.</summary>
+    private static UIElement Crown(double cx, double cy, double w, double h, Palette pal, int n = 9, long seed = 1,
+                                   bool flecks = true, string? fleckColor = null)
+    {
+        var r = new Seeded(seed);
+        int count = (int)Math.Round(n * 2.2);
+        var clumps = new (double X, double Y, double R)[count];
+        for (int i = 0; i < count; i++)
+        {
+            double a = r.Next() * Math.PI * 2, d = Math.Pow(r.Next(), .6);
+            double x = cx + Math.Cos(a) * d * w * .44, y = cy + Math.Sin(a) * d * h * .4;
+            clumps[i] = (x, y, (w + h) / 4 * (.27 + (1 - d) * .16 + r.Next() * .08));
+        }
+        Array.Sort(clumps, (p, q) => p.Y.CompareTo(q.Y));
+
+        var shade = new GeometryGroup { FillRule = FillRule.Nonzero };
+        var mid   = new GeometryGroup { FillRule = FillRule.Nonzero };
+        var light = new GeometryGroup { FillRule = FillRule.Nonzero };
+        foreach (var c in clumps)
+        {
+            shade.Children.Add(new EllipseGeometry(new Point(c.X + c.R * .28, c.Y + c.R * .34), c.R, c.R));
+            mid.Children.Add(new EllipseGeometry(new Point(c.X, c.Y), c.R * .9, c.R * .9));
+            bool lit = (cx - c.X) * .6 + (cy - c.Y) > -h * .05;   // the upper-left side faces the sun
+            if (lit) light.Children.Add(new EllipseGeometry(new Point(c.X - c.R * .28, c.Y - c.R * .3), c.R * .52, c.R * .52));
+        }
+        var group = new Canvas { Width = 100, Height = 110 };
+        group.Children.Add(E(cx + w * .04, cy + h * .14, w * .44, h * .36, Hex(pal.Deep)));
+        group.Children.Add(Shape(shade, Hex(pal.Dark)));
+        group.Children.Add(Shape(mid, Hex(pal.Base)));
+        group.Children.Add(Shape(light, Hex(pal.Light), .85));
+        if (flecks)
+        {
+            var pale = new GeometryGroup();
+            var dark = new GeometryGroup();
+            for (int i = 0; i < 16; i++)
+            {
+                var c = clumps[(int)(r.Next() * clumps.Length)];
+                double x = c.X + (r.Next() - .6) * c.R, y = c.Y + (r.Next() - .7) * c.R;
+                var leaf = new EllipseGeometry(new Point(x + 1.3, y), 1.3, .55) { Transform = new RotateTransform(-40 + r.Next() * 80, x, y) };
+                (r.Next() > .4 ? pale : dark).Children.Add(leaf);
+                r.Next();   // keeps the sequence in step with the preview (opacity there)
+            }
+            group.Children.Add(Shape(pale, Hex(fleckColor ?? pal.Light), .75));
+            group.Children.Add(Shape(dark, Hex(pal.Dark), .7));
+        }
+        return group;
+    }
+
+    private UIElement Twinkle(double x, double y, double size, double seconds, double delay)
+    {
+        double a = size, b = size * .25;
+        var star = P($"M{F(x)},{F(y - a)} L{F(x + b)},{F(y - b)} L{F(x + a)},{F(y)} L{F(x + b)},{F(y + b)} L{F(x)},{F(y + a)} L{F(x - b)},{F(y + b)} L{F(x - a)},{F(y)} L{F(x - b)},{F(y - b)} Z", Hex("#F2FDFF"));
+        if (_animated) star.BeginAnimation(OpacityProperty, Swing(0, 1, seconds / 2, delay));
+        else star.Opacity = .8;
+        return star;
+    }
+
     private void Draw(TreeKind kind)
     {
+        var plant = _plant.Children;
         switch (kind)
         {
             case TreeKind.Oak:
-            {
-                var c = Radial("#A8F07A", "#4FBF4A", "#2A7D34");
-                _plant.Children.Add(Sway(Group(
-                    P("M46,100 C47,85 46,72 44,62 L56,62 C54,72 53,85 54,100 Z", Linear("#8A5A36", "#5E3A20")),
-                    P("M50,70 C44,66 40,64 36,58 M50,72 C56,66 60,64 64,60", null, Hex("#6B4428"), 2.5),
-                    E(50, 42, 24, 24, c), E(32, 54, 15, 15, c), E(68, 54, 15, 15, c), E(44, 34, 7, 7, Hex("#D4FFB0"), 0.35))));
+                plant.Add(GroundShadow(32));
+                plant.Add(Trunk(Wood.Dark, Wood.Mid, Wood.Light, w: 11, top: 56, branches: 3, seed: 5));
+                plant.Add(Sway(Crown(50, 42, 66, 50, new("#8CCB5E", "#4E9A3F", "#2F6A31", "#1D4423"), n: 11, seed: 7), seconds: 5));
                 break;
-            }
+
             case TreeKind.Pine:
             {
-                var c = Linear("#4FAE7A", "#1E5C42");
-                var snow = Hex("#F4FBFF");
-                _plant.Children.Add(Sway(Group(
-                    Rect(46.5, 84, 7, 16, 2, Hex("#6B4428")),
-                    P("M50,58 L74,88 L26,88 Z", c), P("M50,38 L70,68 L30,68 Z", c), P("M50,16 L65,48 L35,48 Z", c),
-                    P("M50,16 L57,31 L53,29 L50,33 L46,29 L43,31 Z M50,38 L58,50 L54,49 L50,52 L46,49 L42,50 Z M50,58 L60,71 L55,70 L50,73 L45,70 L40,71 Z", snow))));
-                Falling("#FFFFFF", false, 7, 20, 80, 10, 2);
+                // a slim blue-green spruce: five neat tiers with jagged, drooping hems,
+                // lit half on the left, frost on the points, a pale tip that twinkles
+                var r = new Seeded(5);
+                plant.Add(GroundShadow(20));
+                plant.Add(Trunk(Wood.Dark, Wood.Mid, Wood.Light, w: 6, top: 86, branches: 0, seed: 2));
+                var tree = new Canvas { Width = 100, Height = 110 };
+                var tiers = new (double Top, double Bottom, double Half)[] { (11, 34, 9), (22, 50, 14), (34, 64, 18), (47, 77, 21), (60, 89, 23) };
+                for (int i = tiers.Length - 1; i >= 0; i--)
+                {
+                    var (top, bottom, hw) = tiers[i];
+                    int teeth = 4 + i;
+                    var hem = new (double X, double Y)[teeth + 1];
+                    for (int k = 0; k <= teeth; k++)
+                        hem[k] = (50 - hw + 2 * hw * k / teeth, bottom + (k % 2 == 1 ? -3.2 : 0) + (r.Next() - .5) * .8);
+                    string Outline((double X, double Y)[] pts) => $"M50,{F(top)} " + string.Join(" ", Array.ConvertAll(pts, p => $"L{F(p.X)},{F(p.Y)}")) + " Z";
+                    var left = Array.FindAll(hem, p => p.X <= 50.01);
+                    var leftWithCentre = new (double X, double Y)[left.Length + 1];
+                    left.CopyTo(leftWithCentre, 0);
+                    leftWithCentre[^1] = (50, bottom - 3);
+                    tree.Children.Add(P(Outline(hem), Hex("#1A5F6B")));
+                    tree.Children.Add(P(Outline(leftWithCentre), Hex(i < 2 ? "#4FB0B9" : "#2A8592")));
+                    for (int k = 2; k < teeth; k += 2)
+                    {
+                        var (x, y) = hem[k]; var (px, py) = hem[k - 1]; var (nx, ny) = hem[k + 1];
+                        const double f = .55;
+                        var frost = P($"M{F(x)},{F(y)} L{F(x + (px - x) * f)},{F(y + (py - y) * f)} L{F(x + (nx - x) * f)},{F(y + (ny - y) * f)} Z", Hex("#DDF6F9"));
+                        frost.Opacity = x < 50 ? .8 : .4;
+                        tree.Children.Add(frost);
+                    }
+                    if (i > 1) tree.Children.Add(E(50 + (r.Next() - .3) * hw, bottom - 6, 1, 1.5, Hex("#8A5A2E")));
+                }
+                tree.Children.Add(P("M50,8 L53,17 L47,17 Z", Hex("#9FE3EA")));
+                tree.Children.Add(Twinkle(50, 7, 2.2, 2.4, 0));
+                tree.Children.Add(Twinkle(42, 42, 2.2, 3.1, 1));
+                tree.Children.Add(Twinkle(58, 60, 2.2, 2.8, 2));
+                plant.Add(Sway(tree, angle: 1, seconds: 6.5));
                 break;
             }
+
             case TreeKind.Cherry:
-            {
-                var c = Radial("#FFE1EF", "#FF9DC6", "#E0679F");
-                _plant.Children.Add(Sway(Group(
-                    P("M48,100 C49,86 46,74 41,64 M50,80 C55,70 60,64 66,58 M50,100 C51,86 51,76 50,66", null, Hex("#5A3626"), 5),
-                    E(40, 44, 18, 18, c), E(62, 42, 19, 19, c), E(51, 28, 16, 16, c), E(68, 58, 11, 11, c), E(46, 24, 5, 5, Hex("#FFFFFF"), 0.45))));
-                Falling("#FFB6D3", true, 9, 25, 78, 45, 2.4);
+                plant.Add(GroundShadow(30));
+                plant.Add(Trunk("#2E1B18", "#5A3A33", "#7A5248", w: 9, top: 54, lean: 4, branches: 3, seed: 9));
+                plant.Add(Sway(Crown(50, 40, 68, 46, new("#FFD6E5", "#F4A3C0", "#D27499", "#8E4463"), n: 12, seed: 11, fleckColor: "#FFFFFF"), angle: 1.5, seconds: 5.5));
+                Falling("#FFC2D8", leaf: true, 6, 22, 78, 50, 1.6);
                 break;
-            }
-            case TreeKind.Maple:
-            {
-                var c = Radial("#FFCF6B", "#FF7A2F", "#C3321F");
-                _plant.Children.Add(Sway(Group(
-                    P("M46,100 C47,84 46,70 45,60 L55,60 C54,70 53,84 54,100 Z", Hex("#5E3A20")),
-                    E(50, 40, 27, 24, c), E(33, 56, 13, 11, c), E(67, 55, 13, 11, c), E(42, 30, 6, 6, Hex("#FFF2B0"), 0.35))));
-                Falling("#FF6A2A", true, 8, 26, 76, 50, 2.6);
-                break;
-            }
+
             case TreeKind.Cactus:
             {
-                var c = Linear("#7FE08A", "#2F9A52");
-                _plant.Children.Clear();   // sits in a pot instead of on grass
-                var flower = Group(E(50, 37, 6, 6, Hex("#FF5C9A")), E(50, 37, 2.4, 2.4, Hex("#FFE36B")));
-                Pulse(flower, 50, 37);
-                _plant.Children.Add(Group(P("M30,92 L70,92 L66,104 L34,104 Z", Hex("#D9844E")), Rect(28, 88, 44, 6, 2, Hex("#E99A63"))));
-                _plant.Children.Add(Sway(Group(
-                    Rect(42, 40, 16, 50, 8, c),
-                    P("M42,66 L34,66 C30,66 28,63 28,59 L28,50", null, c, 9),
-                    P("M58,60 L65,60 C69,60 71,57 71,53 L71,46", null, c, 8),
-                    P("M46,48 l-2,-1 M54,56 l2,-1 M47,70 l-2,-1 M53,78 l2,-1", null, Hex("#E8FFE9"), 1),
-                    flower), cy: 90, angle: 3, seconds: 3.2));
+                var body = Across("#2F6B3A", "#4E9A4C", "#6DB65A", "#2F6B3A");
+                plant.Add(E(50, 99, 26, 5, Hex("#C8A26A")));
+                plant.Add(E(50, 98, 20, 3.4, Hex("#DDBB82")));
+                plant.Add(GroundShadow(18));
+                plant.Add(P("M44,98 L44,40 Q44,30 50,30 Q56,30 56,40 L56,98 Z", body));
+                plant.Add(P("M44,66 L37,66 Q32,66 32,60 L32,48 Q32,44 35.5,44 Q39,44 39,48 L39,59 L44,59 Z", body));
+                plant.Add(P("M56,74 L63,74 Q68,74 68,68 L68,54 Q68,50 64.5,50 Q61,50 61,54 L61,67 L56,67 Z", body));
+                var ribs = P("M47.5,96 L47.5,36 M50,96 L50,31 M52.5,96 L52.5,36 M35.5,46 L35.5,64 M64.5,52 L64.5,72", null, Hex("#255A2E"), .7);
+                ribs.Opacity = .6;
+                plant.Add(ribs);
+                var r = new Seeded(8);
+                var spines = new GeometryGroup();
+                for (int i = 0; i < 26; i++) spines.Children.Add(new EllipseGeometry(new Point(44.6 + r.Next() * 10.8, 36 + r.Next() * 58), .45, .45));
+                plant.Add(Shape(spines, Hex("#F3F0D8"), .85));
+                var flower = new Canvas { Width = 100, Height = 110 };
+                for (int i = 0; i < 6; i++)
+                {
+                    var petal = E(50, 24.5, 2.6, 5, Hex(i % 2 == 1 ? "#FF6FA0" : "#FF8FB6"));
+                    petal.RenderTransform = new RotateTransform(i * 60, 2.6, 9.5);   // around the flower's middle (50, 29)
+                    flower.Children.Add(petal);
+                }
+                flower.Children.Add(E(50, 29, 2.4, 2.4, Hex("#FFD45C")));
+                plant.Add(Sway(flower, 50, 31, 4, 3.5));
                 break;
             }
+
             case TreeKind.Orange:
             {
-                var c = Radial("#9BE27A", "#2F8A3E");
-                var f = Radial("#FFE08A", "#FF8A1C");
-                var fruits = Group(E(38, 44, 4.6, 4.6, f), E(60, 36, 4.6, 4.6, f), E(56, 56, 4.6, 4.6, f), E(44, 28, 4.2, 4.2, f));
-                Bob(fruits);
-                _plant.Children.Add(Sway(Group(
-                    P("M46,100 C47,86 46,74 45,64 L55,64 C54,74 53,86 54,100 Z", Hex("#6B4428")),
-                    E(50, 44, 26, 26, c), fruits)));
+                var crown = (Canvas)Crown(50, 42, 64, 50, new("#5FAE4E", "#2F7F3A", "#1D5A2B", "#11381B"), n: 11, seed: 21);
+                var r = new Seeded(13);
+                var fruit = Lit((0, "#FFE29A"), (.35, "#FFA51F"), (1, "#D9650A"));
+                for (int i = 0; i < 8; i++)
+                {
+                    double x = 30 + r.Next() * 40, y = 26 + r.Next() * 34, R = 2.8 + r.Next() * .9;
+                    crown.Children.Add(E(x, y, R, R, fruit));
+                    crown.Children.Add(P($"M{F(x)},{F(y - R)} l.8,-1.2", null, Hex("#2F6B2A"), .7));
+                }
+                plant.Add(GroundShadow(30));
+                plant.Add(Trunk(Wood.Dark, Wood.Mid, Wood.Light, w: 9, top: 58, branches: 2, seed: 17));
+                plant.Add(Sway(crown, angle: 1.4, seconds: 5.2));
                 break;
             }
+
             case TreeKind.Bamboo:
             {
-                (double x, double top, double d)[] stalks = { (38, 22, 0), (50, 10, 0.8), (62, 26, 1.6) };
-                foreach (var (x, top, d) in stalks)
+                plant.Add(GroundShadow(22));
+                var stalks = new (double X, double Top, double W)[] { (40, 14, 4), (50, 6, 4.6), (59, 18, 3.8), (33, 30, 3.2), (66, 28, 3.2) };
+                for (int i = 0; i < stalks.Length; i++)
                 {
-                    var g = Group(Rect(x - 3, top, 6, 100 - top, 3, Hex("#6CC06A")),
-                        P($"M{x},{top + 10} q10,-6 16,-2 q-8,4 -16,2 M{x},{top + 30} q-10,-6 -16,-2 q8,4 16,2", Hex("#4FAE55")));
-                    for (int i = 0; i < 5; i++) g.Children.Add(Rect(x - 3.6, top + 12 + i * 14, 7.2, 2, 1, Hex("#3F8F45")));
-                    _plant.Children.Add(Sway(g, x, 100, 3, 3.2, d));
+                    var (x, top, w) = stalks[i];
+                    var stalk = new Canvas { Width = 100, Height = 110 };
+                    stalk.Children.Add(Rect(x - w / 2, top, w, 100 - top, w / 2, Across("#3E7A2E", "#7CB342", "#A4CF5E", "#4C8A33")));
+                    for (double y = top + 10; y < 98; y += 11) stalk.Children.Add(Rect(x - w / 2 - .4, y, w + .8, 1.3, .6, Hex("#2F5E22")));
+                    var lr = new Seeded(30 + i);
+                    for (int k = 0; k < 4; k++)
+                    {
+                        double y = top + 4 + lr.Next() * 30, side = lr.Next() > .5 ? 1 : -1, len = 9 + lr.Next() * 6;
+                        stalk.Children.Add(P($"M{F(x)},{F(y)} q{F(side * len * .6)},-3 {F(side * len)},2 q{F(-side * len * .5)},1.5 {F(-side * len)},-2 Z",
+                                             Hex(lr.Next() > .5 ? "#5FA83C" : "#8CC152")));
+                    }
+                    plant.Add(Sway(stalk, x, 100, 1 + i * .3, 4 + i * .7));
                 }
                 break;
             }
+
+            case TreeKind.Maple:
+                plant.Add(GroundShadow(30));
+                plant.Add(Trunk(Wood.Dark, Wood.Mid, Wood.Light, w: 9, top: 56, branches: 3, seed: 23));
+                plant.Add(Sway(Crown(50, 40, 68, 48, new("#F8A05A", "#DD5630", "#A3331E", "#651C13"), n: 12, seed: 31, fleckColor: "#FFD08A"), angle: 1.5, seconds: 5));
+                Falling("#F2793A", leaf: true, 5, 24, 76, 50, 2);
+                break;
+
             case TreeKind.Willow:
             {
-                var g = Group(P("M47,100 C48,84 46,70 49,52 L53,52 C54,70 53,84 54,100 Z", Hex("#5E3A20")), E(50, 34, 28, 16, Hex("#5CAE5A")));
-                for (int i = 0; i < 11; i++)
+                var crown = (Canvas)Crown(50, 34, 60, 30, new("#C7E58A", "#8DBF4E", "#5C8E34", "#3B6223"), n: 9, seed: 41);
+                var r = new Seeded(19);
+                for (int i = 0; i < 18; i++)
                 {
-                    double x = 24 + i * 5.2, len = 30 + _rng.NextDouble() * 16;
-                    g.Children.Add(Sway(P($"M{x},36 C{x - 2},{36 + len / 2} {x + 2},{36 + len * 0.8} {x},{36 + len}", null, Hex("#7FD06E"), 2.2), x, 36, 3, 3.2, i * 0.3));
+                    double x = 24 + i * 3 + r.Next() * 2, y0 = 30 + r.Next() * 10, len = 30 + r.Next() * 26;
+                    var strand = P($"M{F(x)},{F(y0)} q{F(-2 + r.Next() * 4)},{F(len * .5)} {F(-1 + r.Next() * 2)},{F(len)}",
+                                   null, Hex(r.Next() > .5 ? "#7DB043" : "#A3CC62"), 1.3 + r.Next());
+                    strand.StrokeDashArray = new DoubleCollection { 2.4 / strand.StrokeThickness, 1.2 / strand.StrokeThickness };
+                    crown.Children.Add(strand);
                 }
-                _plant.Children.Add(Sway(g));
+                plant.Add(GroundShadow(32));
+                plant.Add(Trunk(Wood.Dark, Wood.Mid, Wood.Light, w: 9, top: 52, lean: -2, branches: 2, seed: 29));
+                plant.Add(Sway(crown, 50, 50, 2.4, 6));
                 break;
             }
+
             case TreeKind.Wisteria:
             {
-                var c = Linear("#E6D4FF", "#9B6CFF");
-                var g = Group(P("M46,100 C48,80 42,62 50,46 C58,62 52,80 54,100 Z", Hex("#5E3A20")), E(50, 32, 32, 14, Hex("#5F9E56")));
-                double[] xs = { 22, 32, 42, 52, 62, 72, 78 };
-                for (int i = 0; i < xs.Length; i++)
-                    g.Children.Add(Sway(P($"M{xs[i] - 4},34 Q{xs[i]},{66 + (i % 3) * 6} {xs[i] + 4},34 Z", c), xs[i], 34, 3, 3.2, i * 0.4));
-                _plant.Children.Add(Sway(g));
-                Falling("#C9A8FF", true, 6, 24, 76, 55, 2);
+                var crown = (Canvas)Crown(50, 34, 64, 34, new("#A5D78A", "#5F9E4E", "#3C6E35", "#264A24"), n: 9, seed: 51, flecks: false);
+                var r = new Seeded(27);
+                var bloom = new LinearGradientBrush(C("#C9B6FF"), C("#6E4DC4"), 90);
+                bloom.GradientStops.Insert(1, new GradientStop(C("#9B7BEA"), .6));
+                bloom.Freeze();
+                for (int i = 0; i < 9; i++)
+                {
+                    double x = 24 + i * 6.4 + r.Next() * 2, y = 38 + r.Next() * 6, len = 14 + r.Next() * 12;
+                    crown.Children.Add(P($"M{F(x - 3.4)},{F(y)} Q{F(x - 3)},{F(y + len * .6)} {F(x)},{F(y + len)} Q{F(x + 3)},{F(y + len * .6)} {F(x + 3.4)},{F(y)} Z", bloom));
+                    for (int k = 1; k < 5; k++) crown.Children.Add(E(x + (k % 2 == 1 ? -1 : 1), y + k * len / 5.5, 1, 1, Hex("#E5DAFF"), .55));
+                }
+                plant.Add(GroundShadow(30));
+                plant.Add(Trunk("#3A2A22", "#5E463A", "#7C6050", w: 9, top: 50, lean: 3, branches: 3, seed: 33));
+                plant.Add(Sway(crown, angle: 1.8, seconds: 6));
                 break;
             }
+
             case TreeKind.Firefly:
             {
-                var c = Radial("#3F8F8A", "#163D44");
-                _plant.Children.Add(Sway(Group(
-                    P("M46,100 C47,86 46,74 45,62 L55,62 C54,74 53,86 54,100 Z", Hex("#4A3322")),
-                    E(50, 44, 27, 27, c), E(31, 58, 13, 13, c), E(69, 58, 13, 13, c))));
-                for (int i = 0; i < 10; i++)
+                plant.Add(GroundShadow(30));
+                plant.Add(Trunk("#1E1A18", "#3A322C", "#544A40", w: 9, top: 58, branches: 2, seed: 41));
+                plant.Add(Sway(Crown(50, 42, 64, 50, new("#3F8F7A", "#1F5E54", "#143F3A", "#0B2826"), n: 11, seed: 61, fleckColor: "#6CC1A6"), angle: 1.2, seconds: 6));
+                var r = new Seeded(37);
+                var glow = new RadialGradientBrush();
+                glow.GradientStops.Add(new GradientStop(C("#FFF6A8"), 0));
+                glow.GradientStops.Add(new GradientStop(Color.FromArgb(0xBF, 0xFF, 0xE6, 0x5A), .35));
+                glow.GradientStops.Add(new GradientStop(Color.FromArgb(0, 0xFF, 0xDC, 0x50), 1));
+                glow.Freeze();
+                for (int i = 0; i < 12; i++)
                 {
-                    var dot = E(22 + _rng.NextDouble() * 56, 22 + _rng.NextDouble() * 44, 1.6, 1.6, Hex("#FFF47A"));
-                    Blink(dot, i * 0.37);
-                    _plant.Children.Add(dot);
+                    double x = 22 + r.Next() * 56, y = 18 + r.Next() * 60, d = 1.6 + r.Next() * 2;
+                    var fly = E(x, y, 2.6, 2.6, glow);
+                    if (_animated) fly.BeginAnimation(OpacityProperty, Swing(.15, 1, d / 2, r.Next() * d));
+                    plant.Add(fly);
                 }
                 break;
             }
+
             case TreeKind.Crystal:
             {
-                _plant.Children.Add(Sway(Group(
-                    P("M47,100 L48,62 L52,62 L53,100 Z", Hex("#7D8CC4")),
-                    P("M50,12 L72,40 L62,68 L38,68 L28,40 Z", Linear("#E9F6FF", "#8FC8FF", "#6A6CFF")),
-                    P("M50,12 L50,68 M28,40 L72,40 M50,12 L38,68 M50,12 L62,68", null, Hex("#99FFFFFF"), 0.7))));
-                (double x, double y)[] spots = { (30, 26), (70, 30), (64, 62), (36, 60), (50, 8) };
-                for (int i = 0; i < spots.Length; i++)
+                plant.Add(GroundShadow(22));
+                plant.Add(E(50, 97, 24, 4, Hex("#3A4A6A")));
+                var shards = new (double X, double Top, double W, double H)[] { (50, 20, 9, 76), (38, 46, 7, 52), (62, 40, 7, 58), (30, 66, 5, 32), (70, 62, 5, 36), (45, 58, 4.5, 40), (56, 62, 4.5, 36) };
+                var ice = Across("#E4F6FF", "#9FDCFF", "#5BA8F0", "#3B6FD0");
+                foreach (var (x, top, w, h) in shards)
                 {
-                    var (x, y) = spots[i];
-                    var star = P($"M{x},{y - 4} L{x + 1.2},{y - 1.2} L{x + 4},{y} L{x + 1.2},{y + 1.2} L{x},{y + 4} L{x - 1.2},{y + 1.2} L{x - 4},{y} L{x - 1.2},{y - 1.2} Z", Hex("#FFFFFF"));
-                    Blink(star, i * 0.5);
-                    _plant.Children.Add(star);
+                    double bottom = top + h;
+                    var body = P($"M{F(x)},{F(top)} L{F(x + w)},{F(top + w * 1.4)} L{F(x + w * .8)},{F(bottom)} L{F(x - w * .8)},{F(bottom)} L{F(x - w)},{F(top + w * 1.4)} Z", ice);
+                    body.Opacity = .95;
+                    plant.Add(body);
+                    var face = P($"M{F(x)},{F(top)} L{F(x - w)},{F(top + w * 1.4)} L{F(x - w * .8)},{F(bottom)} L{F(x - w * .2)},{F(bottom)} Z", Hex("#FFFFFF"));
+                    face.Opacity = .22;
+                    plant.Add(face);
+                    var edge = P($"M{F(x)},{F(top)} L{F(x + w * .25)},{F(bottom)}", null, Hex("#FFFFFF"), .5);
+                    edge.Opacity = .5;
+                    plant.Add(edge);
                 }
+                plant.Add(Twinkle(50, 33, 3, 2.6, 0));
+                plant.Add(Twinkle(64, 52, 2.2, 3.1, 1.2));
                 break;
             }
+
             case TreeKind.Bonsai:
             {
-                _plant.Children.Clear();   // in a pot
-                var c = Radial("#9FE07C", "#2F8A3E");
-                _plant.Children.Add(Group(P("M26,92 L74,92 L70,104 L30,104 Z", Hex("#3B4A6B")), Rect(24, 88, 52, 6, 2, Hex("#4C5D84"))));
-                var pads = new[] { E(58, 38, 18, 8, c), E(72, 54, 12, 6, c), E(28, 63, 12, 6, c) };
-                for (int i = 0; i < pads.Length; i++) Bob(pads[i], i * 0.9);
-                var g = Group(P("M48,90 C40,80 58,72 50,62 C44,55 52,48 58,44", null, Hex("#6B4428"), 6),
-                              P("M52,66 C60,64 66,60 70,56 M48,76 C40,74 34,70 30,66", null, Hex("#6B4428"), 3));
-                foreach (var p in pads) g.Children.Add(p);
-                _plant.Children.Add(Sway(g, cy: 90, angle: 1.2));
+                plant.Add(P("M24,86 L76,86 L71,99 L29,99 Z", Across("#5A3424", "#8A5236", "#4A2A1C")));
+                plant.Add(Rect(21, 83, 58, 4, 2, Hex("#9A5E3E")));
+                plant.Add(GroundShadow(28));
+                plant.Add(P("M44,84 C42,74 54,70 50,60 C47,52 36,52 36,44 L41,44 C42,50 52,50 55,57 C59,66 50,74 54,84 Z", Across("#2E1E16", "#5C4030", "#7A5A44")));
+                plant.Add(P("M50,60 C58,56 64,52 68,44", null, Hex("#5C4030"), 3));
+                var pal = new Palette("#8FD06A", "#3E8A3A", "#255E28", "#163E1A");
+                var pads = new Canvas { Width = 100, Height = 110 };
+                pads.Children.Add(Crown(37, 38, 34, 16, pal, n: 7, seed: 71));
+                pads.Children.Add(Crown(68, 40, 28, 13, pal, n: 6, seed: 73));
+                pads.Children.Add(Crown(54, 24, 26, 13, pal, n: 6, seed: 75));
+                plant.Add(Sway(pads, 50, 84, 1, 6.5));
                 break;
             }
         }
