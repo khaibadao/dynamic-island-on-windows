@@ -55,7 +55,8 @@ public partial class App : Application
 
         // Keep running if something goes wrong, and note it in startup.log
         bool atBoot = e.Args.Contains("--autostart");
-        CrashLog.Write($"Started v{typeof(App).Assembly.GetName().Version} {(atBoot ? "(with Windows)" : "(by hand)")}");
+        CrashLog.Write($"Started v{typeof(App).Assembly.GetName().Version} {(atBoot ? "(with Windows)" : "(by hand)")}, " +
+                       $"{TimeSpan.FromMilliseconds(Environment.TickCount64):h\\:mm\\:ss} after the PC started");
         DispatcherUnhandledException += (_, ev) => { CrashLog.Error("UI", ev.Exception); ev.Handled = true; };
         AppDomain.CurrentDomain.UnhandledException += (_, ev) => { if (ev.ExceptionObject is Exception ex) CrashLog.Error("app", ex); };
         System.Threading.Tasks.TaskScheduler.UnobservedTaskException += (_, ev) => { CrashLog.Error("task", ev.Exception); ev.SetObserved(); };
@@ -398,9 +399,8 @@ public partial class App : Application
         {
             if (obj is MenuItem { Tag: "notch" } item)   item.IsChecked = _notch?.NotchEnabled == true;
             if (obj is MenuItem { Tag: "maywalk" } walk) walk.IsChecked = AppSettings.Current.MayWalks;
-            if (obj is MenuItem { Tag: "pet" } pets)
-                foreach (var sub in pets.Items)
-                    if (sub is MenuItem { Tag: string kind } choice) choice.IsChecked = PetChoice.Current.ToString() == kind;
+            if (obj is MenuItem { Tag: "showcat" } cat) cat.IsChecked = AppSettings.Current.ShowCat;
+            if (obj is MenuItem { Tag: "maywalk" } walk2) walk2.IsEnabled = AppSettings.Current.ShowCat;
             if (obj is MenuItem { Tag: "fullscreen" } fs) fs.IsChecked = AppSettings.Current.HideInFullscreen;
             if (obj is MenuItem { Tag: "ambient" } amb)
             {
@@ -423,12 +423,12 @@ public partial class App : Application
         UpdateNotchMenu();
     }
 
-    /// <summary>Which pet lives on the notch.</summary>
-    private void Pet_Click(object sender, RoutedEventArgs e)
+    /// <summary>Show or hide the cat everywhere (hidden, she costs nothing).</summary>
+    private void ShowCat_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not MenuItem { Tag: string kind }) return;
-        PetChoice.Current = PetChoice.Parse(kind);
-        _notch?.RefreshPetTip();
+        AppSettings.Current.ShowCat = !AppSettings.Current.ShowCat;
+        AppSettings.Current.Save();
+        _notch?.ApplyCatVisibility();
         UpdateNotchMenu();
     }
 

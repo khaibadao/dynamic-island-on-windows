@@ -108,7 +108,7 @@ public sealed class AmbientBackdrop : Grid
     }
 
     /// <summary>30 normally; 15 on battery saver (the notes drift so slowly it barely shows).</summary>
-    public int FrameRate { get; set; } = 30;
+    public int FrameRate { get; set; } = 20;
 
     /// <summary>A new song's cover (null: no music, the wash fades away).</summary>
     public void SetArt(BitmapSource? art)
@@ -246,7 +246,7 @@ public sealed class AmbientBackdrop : Grid
     /// <summary>A steady 30 frames a second: smooth enough for slow drifting, and even.</summary>
     private static AnimationTimeline Smooth(AnimationTimeline a)
     {
-        Timeline.SetDesiredFrameRate(a, 30);
+        Timeline.SetDesiredFrameRate(a, 20);
         return a;
     }
 

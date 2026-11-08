@@ -78,7 +78,11 @@ public sealed class NotificationListener
                 if (Enabled)
                 {
                     var notifications = await listener.GetNotificationsAsync(NotificationKinds.Toast);
+                    // only the newest few are re-read each time (a message replacing the last one);
+                    // the rest use what was read the first time: cheap even with a full notification center
+                    _fresh = notifications.OrderByDescending(x => x.CreationTime).Take(3).Select(x => x.Id).ToHashSet();
                     var current = notifications.Select(KeyOf).ToHashSet();
+                    foreach (var gone in _textHash.Keys.Where(id => notifications.All(x => x.Id != id)).ToList()) _textHash.Remove(gone);
 
                     // At startup, whatever is already in the notification center is
                     // old news: remember it without popping it all up again.
@@ -90,7 +94,7 @@ public sealed class NotificationListener
 
                     foreach (var n in notifications.OrderBy(n => n.CreationTime))
                     {
-                        if (!_seen.Add(KeyOf(n))) continue;
+                        if (!_seen.Add(KeyOf(n))) continue;   // same key as above: the hash is cached
 
                         // One bad notification must not stop the rest from showing.
                         try
@@ -138,16 +142,24 @@ public sealed class NotificationListener
 
     // Messenger and others replace a notification under the same id when a new message
     // comes in; the text changes, so it's part of the key (otherwise the new message is missed).
-    private static string KeyOf(UserNotification n)
+    private HashSet<uint> _fresh = new();
+    private readonly Dictionary<uint, int> _textHash = new();
+
+    private string KeyOf(UserNotification n)
     {
-        string text = "";
-        try
+        if (_fresh.Contains(n.Id) || !_textHash.TryGetValue(n.Id, out int hash))
         {
-            var b = n.Notification?.Visual?.GetBinding(KnownNotificationBindings.ToastGeneric);
-            if (b != null) text = string.Join("|", b.GetTextElements().Select(e => e.Text));
+            string text = "";
+            try
+            {
+                var b = n.Notification?.Visual?.GetBinding(KnownNotificationBindings.ToastGeneric);
+                if (b != null) text = string.Join("|", b.GetTextElements().Select(e => e.Text));
+            }
+            catch { }
+            hash = text.GetHashCode();
+            _textHash[n.Id] = hash;
         }
-        catch { }
-        return $"{n.Id}|{n.CreationTime.UtcTicks}|{text.GetHashCode()}";
+        return $"{n.Id}|{n.CreationTime.UtcTicks}|{hash}";
     }
 
     /// <summary>The app's name and the toast's own lines, when the fuller details can't be read.</summary>

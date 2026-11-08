@@ -19,6 +19,10 @@ public sealed class WavySeekBar : FrameworkElement
     private double _phase;
     private double _amp;            // current amplitude: eases to Amplitude when playing, 0 when paused
     private TimeSpan _lastFrame;
+    // 30 frames a second from a plain timer: hooking every screen frame instead made
+    // WPF redraw the whole (large, see-through) notch window non-stop while music played.
+    private readonly System.Windows.Threading.DispatcherTimer _frameTimer = new(System.Windows.Threading.DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(33) };
+    private readonly System.Diagnostics.Stopwatch _frameClock = new();
     private bool _animating;
     private bool _dragging;
 
@@ -27,6 +31,7 @@ public sealed class WavySeekBar : FrameworkElement
         Height = 18;
         Cursor = Cursors.Hand;
         Focusable = false;
+        _frameTimer.Tick += (s, e) => OnFrame(s, e);
         IsVisibleChanged += (_, _) => UpdateAnimation();
     }
 
@@ -110,19 +115,20 @@ public sealed class WavySeekBar : FrameworkElement
         {
             _animating = true;
             _lastFrame = TimeSpan.Zero;
-            CompositionTarget.Rendering += OnFrame;
+            _frameClock.Restart();
+            _frameTimer.Start();
         }
         else if (!want && _animating)
         {
             _animating = false;
-            CompositionTarget.Rendering -= OnFrame;
+            _frameTimer.Stop();
             InvalidateVisual();
         }
     }
 
     private void OnFrame(object? sender, EventArgs e)
     {
-        var now = ((RenderingEventArgs)e).RenderingTime;
+        var now = _frameClock.Elapsed;
         double dt = _lastFrame == TimeSpan.Zero ? 0 : (now - _lastFrame).TotalSeconds;
         _lastFrame = now;
         if (dt <= 0 || dt > 0.25) dt = 1.0 / 60;

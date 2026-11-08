@@ -209,24 +209,38 @@ public sealed class NotchEyes : FrameworkElement
     }
 
     // ── Animation loop ────────────────────────────────────────────────
+    // A plain 30-a-second timer (hooking every screen frame made WPF redraw the
+    // whole see-through notch window non-stop while the eyes were out).
+    private readonly System.Windows.Threading.DispatcherTimer _frames = new(System.Windows.Threading.DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(33) };
+    private readonly System.Diagnostics.Stopwatch _clock = new();
+    private bool _framesHooked;
+
+    private void HookFrames()
+    {
+        if (_framesHooked) return;
+        _framesHooked = true;
+        _frames.Tick += (s, e) => OnFrame(s, e);
+    }
     private void StartRendering()
     {
+        HookFrames();
         if (_rendering) return;
         _rendering = true;
-        CompositionTarget.Rendering += OnFrame;
+        if (!_clock.IsRunning) _clock.Start();
+        _frames.Start();
     }
 
     private void StopRendering()
     {
         if (!_rendering) return;
         _rendering = false;
-        CompositionTarget.Rendering -= OnFrame;
+        _frames.Stop();
     }
 
     private void OnFrame(object? sender, EventArgs e)
     {
-        var t = ((RenderingEventArgs)e).RenderingTime;
-        double dt = _now == TimeSpan.Zero ? 1.0 / 60 : Math.Clamp((t - _now).TotalSeconds, 0, 0.1);
+        var t = _clock.Elapsed;
+        double dt = _now == TimeSpan.Zero ? 1.0 / 30 : Math.Clamp((t - _now).TotalSeconds, 0, 0.1);
         _now = t;
         if (_expr != null && _start == TimeSpan.Zero) _start = t;
 

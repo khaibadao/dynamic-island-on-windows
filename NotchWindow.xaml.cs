@@ -164,6 +164,7 @@ public partial class NotchWindow : Window
 
         _ready = true;
         SetUpAmbient();
+        ApplyCatVisibility();
         _clips.Start(this);   // creates the window handle too
         // Two-finger sideways swipe / tilt wheel → previous / next tab
         System.Windows.Interop.HwndSource.FromHwnd(new System.Windows.Interop.WindowInteropHelper(this).Handle)?.AddHook(SidewaysHook);
@@ -311,7 +312,7 @@ public partial class NotchWindow : Window
         Pill.Visibility      = pill ? Visibility.Visible : Visibility.Collapsed;
         StripHost.Visibility = pill ? Visibility.Collapsed : Visibility.Visible;
         RestArea.Visibility  = Visibility.Visible;
-        CatRest.Visibility   = Visibility.Visible;
+        CatRest.Visibility   = AppSettings.Current.ShowCat ? Visibility.Visible : Visibility.Collapsed;
         PlaceCat();
     }
 
@@ -331,6 +332,7 @@ public partial class NotchWindow : Window
     /// <summary>Out from behind one end of the pill, along it to the other end, where she stays.</summary>
     private void StartWalk()
     {
+        if (!AppSettings.Current.ShowCat) return;
         if (_walking || Eyes.Active || !AppSettings.Current.MayWalks || _expanded || !IsVisible || !Pill.IsVisible || _faded
             || _focus.IsRunning || VolumeView.Visibility == Visibility.Visible
             || NativeInterop.IdleTime() >= TimeSpan.FromMinutes(10)) return;   // asleep, or you're away
@@ -368,7 +370,7 @@ public partial class NotchWindow : Window
         WalkerShift.BeginAnimation(TranslateTransform.XProperty, null);
         Walker.StopWalking();
         Walker.Visibility = Visibility.Collapsed;
-        if (!_expanded && VolumeView.Visibility != Visibility.Visible) CatRest.Visibility = Visibility.Visible;
+        if (!_expanded && VolumeView.Visibility != Visibility.Visible && AppSettings.Current.ShowCat) CatRest.Visibility = Visibility.Visible;
 
         // Eyes that were due while Mây was out come right after her
         if (_eyesPending is { } kind)
@@ -1165,10 +1167,10 @@ public partial class NotchWindow : Window
 
     private void ApplyAmbient()
     {
-        Ambient.FrameRate = _energySaver ? 15 : 30;   // battery saver: still drifting, just fewer frames
+        Ambient.FrameRate = _energySaver ? 12 : 20;   // the notes drift slowly: 20 frames a second is plenty   // battery saver: still drifting, just fewer frames
         Ambient.Level = AmbientLevelNow();
         Ambient.Play(_ambientOpen);
-        WatchFps(_ambientOpen && Ambient.Level == AmbientLevel.Full && Ambient.HasArt);
+        // (no frame counting: listening to every frame makes WPF redraw the whole window non-stop)
         UpdateBleed();
     }
 
@@ -1273,7 +1275,7 @@ public partial class NotchWindow : Window
                 if (b.RenderTransform is ScaleTransform sc) sc.BeginAnimation(ScaleTransform.ScaleYProperty, null);
             if (_meterTimer == null)
             {
-                _meterTimer = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(30) };
+                _meterTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(55) };   // ~18 a second: lively, and light
                 _meterTimer.Tick += (_, _) => MeterTick();
             }
             _meterTimer.Start();
@@ -2956,8 +2958,16 @@ public partial class NotchWindow : Window
     private IEnumerable<MayCat> Cats => new[] { CatPanel };
 
     /// <summary>A short reaction: happy hops, or sad after giving up.</summary>
-    /// <summary>The pet was changed in the tray: its tooltip says the new name.</summary>
-    public void RefreshPetTip() => UpdateCat();
+    /// <summary>Tray → Hiện mèo: show or hide her everywhere.</summary>
+    public void ApplyCatVisibility()
+    {
+        bool on = AppSettings.Current.ShowCat;
+        if (!on) EndWalk();
+        CatPanel.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+        if (!_expanded && VolumeView.Visibility != Visibility.Visible && HeadsetView.Visibility != Visibility.Visible)
+            CatRest.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+        UpdateCat();
+    }
 
     private void CatReact(CatMood mood, double seconds)
     {
@@ -3001,7 +3011,7 @@ public partial class NotchWindow : Window
             CatMood.Sleep => "đang ngủ",
             _             => "đang ngồi chơi"
         };
-        CatPanel.ToolTip = $"{PetChoice.Name(PetChoice.Current)} {doing} · đã được ăn {food} phần (mỗi cây trồng xong là 1 phần)";
+        CatPanel.ToolTip = $"Mây {doing} · đã được ăn {food} phần (mỗi cây trồng xong là 1 phần)";
     }
 
     // ── Helpers ───────────────────────────────────────────────────────
