@@ -26,7 +26,7 @@ public sealed class AmbientBackdrop : Grid
     private sealed class Layer
     {
         public required Grid Root;
-        public readonly List<(Animatable Target, DependencyProperty Property, AnimationTimeline Animation)> Moves = new();
+        public readonly List<(IAnimatable Target, DependencyProperty Property, AnimationTimeline Animation)> Moves = new();
     }
 
     private readonly List<Layer> _layers = new();
