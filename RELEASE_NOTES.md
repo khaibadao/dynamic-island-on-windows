@@ -1,5 +1,8 @@
 Bản chỉnh sửa từ [sadeeshasathsara/dynamic-island-on-windows](https://github.com/sadeeshasathsara/dynamic-island-on-windows) (MIT).
 
+### Sửa trong v2.6.2
+- **Banner Windows không còn hiện trùng với tai thỏ** sau mỗi lần khởi động lại hay cập nhật: banner được giữ ẩn suốt khi app còn cài. Trả lại banner: bỏ tích **Ẩn banner Windows trùng tai thỏ** ở menu khay (hoặc trong Cài đặt), hoặc gỡ app bằng bộ cài. Cài bằng lệnh PowerShell thì nhớ bỏ tích mục này trước khi xoá app
+
 ### Sửa trong v2.6.1
 - Bỏ dải sáng lướt ngang qua bảng nhạc
 

@@ -77,7 +77,7 @@ public partial class App : Application
         _listener = new NotificationListener(_suppressor);
         SettingsWindow.Changed += ApplySettings;
         // Signing out / shutting down: put Windows' banners back first
-        SessionEnding += (_, _) => _suppressor?.RestoreAll();
+        // (Windows' banners are no longer put back when signing out: see NotificationListener.Stop)
 
         // Wire notification events to the UI
         _listener.AccessDenied += () => _island.Dispatcher.BeginInvoke(new Action(() => ShowOnIsland(new NotificationData
@@ -400,6 +400,7 @@ public partial class App : Application
             if (obj is MenuItem { Tag: "notch" } item)   item.IsChecked = _notch?.NotchEnabled == true;
             if (obj is MenuItem { Tag: "maywalk" } walk) walk.IsChecked = AppSettings.Current.MayWalks;
             if (obj is MenuItem { Tag: "showcat" } cat) cat.IsChecked = AppSettings.Current.ShowCat;
+            if (obj is MenuItem { Tag: "banners" } banners) banners.IsChecked = ToastSuppressor.Enabled;
             if (obj is MenuItem { Tag: "maywalk" } walk2) walk2.IsEnabled = AppSettings.Current.ShowCat;
             if (obj is MenuItem { Tag: "fullscreen" } fs) fs.IsChecked = AppSettings.Current.HideInFullscreen;
             if (obj is MenuItem { Tag: "ambient" } amb)
@@ -420,6 +421,19 @@ public partial class App : Application
     {
         AppSettings.Current.HideInFullscreen = !AppSettings.Current.HideInFullscreen;
         AppSettings.Current.Save();
+        UpdateNotchMenu();
+    }
+
+    /// <summary>
+    /// Hide Windows' own banner for apps shown on the island. Unticking it puts
+    /// every banner back (do this before deleting the app if it was installed
+    /// with the PowerShell command; the installer's uninstall does it itself).
+    /// </summary>
+    private void Banners_Click(object sender, RoutedEventArgs e)
+    {
+        ToastSuppressor.Enabled = !ToastSuppressor.Enabled;
+        if (ToastSuppressor.Enabled) _suppressor?.HideKnownApps();
+        else _suppressor?.RestoreAll();
         UpdateNotchMenu();
     }
 
@@ -596,6 +610,7 @@ public partial class App : Application
     private void ApplySettings()
     {
         if (!ToastSuppressor.Enabled) _suppressor?.RestoreAll();   // banners back to how Windows had them
+        else _suppressor?.HideKnownApps();
         _notch?.ApplySettings();
     }
 

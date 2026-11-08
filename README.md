@@ -57,7 +57,7 @@ Mọi thứ được xử lý trên máy bạn. Menu khay → **Cài đặt & qu
 | Tên bài hát, ca sĩ | | LRCLIB; NetEase (có công tắc) |
 | Kiểm tra bản mới | | GitHub, khi mở app và mỗi 6 giờ |
 
-Khi app chạy, banner của Windows được ẩn cho những app đã hiện trên đảo (để không hiện hai lần). Thoát app, đăng xuất, tắt mục này trong Cài đặt, hoặc gỡ app là **trả lại như cũ**.
+Banner của Windows được ẩn cho những app đã hiện trên đảo (để không hiện hai lần). Bỏ tích **Ẩn banner Windows trùng tai thỏ** ở menu khay (hoặc trong Cài đặt), hoặc gỡ app bằng bộ cài, là **trả lại như cũ**. Nếu cài bằng lệnh PowerShell, hãy bỏ tích mục này trước khi xoá app.
 
 ### Cập nhật
 

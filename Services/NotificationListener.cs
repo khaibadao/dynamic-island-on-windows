@@ -61,11 +61,13 @@ public sealed class NotificationListener
         _ = Task.Run(() => PollLoop(_cts.Token));
     }
 
-    public void Stop()
-    {
-        _suppressor.RestoreAll();
-        _cts.Cancel();
-    }
+    /// <summary>
+    /// Stops listening. Windows' banners stay hidden for apps shown on the island
+    /// (putting them back on every quit / update and hiding them again on start
+    /// made Windows show both for a while); they come back when the app is
+    /// uninstalled or the switch is turned off.
+    /// </summary>
+    public void Stop() => _cts.Cancel();
 
     private async Task PollLoop(CancellationToken token)
     {

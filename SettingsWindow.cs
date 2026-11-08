@@ -51,7 +51,7 @@ public sealed class SettingsWindow : Window
             "Sóng nhạc trên viên nhảy theo bài đang phát. Âm thanh chỉ được đo độ to theo dải, không ghi âm, không lưu. Tắt thì sóng chỉ lên xuống đều.",
             s.ListenToAudio, v => s.ListenToAudio = v));
         stack.Children.Add(Switch("Ẩn banner Windows trùng với tai thỏ",
-            "Khi tai thỏ hiện thông báo, banner của Windows được ẩn để không hiện hai lần. Thoát app (hoặc tắt mục này) là trả lại như cũ.",
+            "Khi tai thỏ hiện thông báo, banner của Windows được ẩn để không hiện hai lần. Tắt mục này (hoặc gỡ app bằng bộ cài) là trả lại như cũ.",
             s.HideWindowsBanners, v => s.HideWindowsBanners = v));
         stack.Children.Add(Switch("Dừng nốt nhạc trôi khi Windows tắt hiệu ứng hoạt ảnh",
             "Mặc định nốt vẫn trôi dù Windows tắt \"Animation effects\". Bật mục này nếu bạn muốn hạn chế chuyển động trên màn hình.",
