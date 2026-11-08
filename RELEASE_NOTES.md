@@ -1,8 +1,11 @@
 Bản chỉnh sửa từ [sadeeshasathsara/dynamic-island-on-windows](https://github.com/sadeeshasathsara/dynamic-island-on-windows) (MIT).
 
+### Sửa trong v2.6.1
+- Bỏ dải sáng lướt ngang qua bảng nhạc
+
 ### Mới trong v2.6.0
 - **60 khung hình/giây cho mọi thứ** (mượt như trước), vẫn giữ các sửa chữa chống khựng của v2.5.0
-- **Loang màu đẹp hơn**: màu bài hát rực và trong hơn; 9 nốt nhạc nhiều kiểu (♪ ♫ ♬ ♩ ♯ ♭, khoá sol, khoá fa) cùng vài đốm sáng lấp lánh; khoảng 11 giây một lần có **dải sáng lướt qua** bảng như đèn sân khấu
+- **Loang màu đẹp hơn**: màu bài hát rực và trong hơn; 9 nốt nhạc nhiều kiểu (♪ ♫ ♬ ♩ ♯ ♭, khoá sol, khoá fa) cùng vài đốm sáng lấp lánh
 
 ### Sửa trong v2.5.0
 - **Mượt hơn nhiều**: bỏ các chỗ bắt cả khung tai thỏ vẽ lại liên tục (thanh tua nhạc, mắt, việc đếm khung hình của nốt nhạc trôi chạy theo từng khung hình màn hình); mọi hoạt ảnh giới hạn 30 khung hình/giây; sóng nhạc và nốt nhạc trôi nhẹ hơn; đọc thông báo nhẹ hơn

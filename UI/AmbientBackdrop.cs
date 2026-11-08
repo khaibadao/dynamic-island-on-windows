@@ -32,8 +32,6 @@ public sealed class AmbientBackdrop : Grid
     private readonly List<Layer> _layers = new();
     private readonly Rectangle _shade;
     private bool _playing;
-    private readonly Rectangle _sweep;
-    private readonly TranslateTransform _sweepMove = new(-300, 0);
     private AmbientLevel _level = AmbientLevel.Full;
 
     /// <summary>The blurred cover of the current song (for the glow outside the panel).</summary>
@@ -57,18 +55,6 @@ public sealed class AmbientBackdrop : Grid
         _shade.Visibility = Visibility.Collapsed;   // only over a cover
         Children.Add(_shade);
 
-        // A soft band of light sweeping slowly across now and then, like a stage light
-        var band = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(1, 0) };
-        foreach (var (o, al) in new[] { (0.0, 0), (0.45, 0x1A), (0.5, 0x29), (0.55, 0x1A), (1.0, 0) })
-            band.GradientStops.Add(new GradientStop(Color.FromArgb((byte)al, 0xFF, 0xFF, 0xFF), o));
-        band.Freeze();
-        _sweep = new Rectangle
-        {
-            Fill = band, Width = 240, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, -60, 0, -60),
-            RenderTransform = new TransformGroup { Children = { new SkewTransform(-18, 0), _sweepMove } },
-            Visibility = Visibility.Collapsed, IsHitTestVisible = false
-        };
-        Children.Add(_sweep);
         SizeChanged += (_, _) => ClipBottomCorners();
     }
 
@@ -121,17 +107,6 @@ public sealed class AmbientBackdrop : Grid
                 target.BeginAnimation(property, a);
             }
 
-        // the sweep: across in about 6 s, then a 5 s rest
-        bool sweep = move && Blurred != null;
-        _sweep.Visibility = sweep ? Visibility.Visible : Visibility.Collapsed;
-        if (!sweep) { _sweepMove.BeginAnimation(TranslateTransform.XProperty, null); return; }
-        double width = Math.Max(ActualWidth, 640);
-        var pass = new DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromSeconds(11), RepeatBehavior = RepeatBehavior.Forever };
-        pass.KeyFrames.Add(new DiscreteDoubleKeyFrame(-300, KeyTime.FromTimeSpan(TimeSpan.Zero)));
-        pass.KeyFrames.Add(new EasingDoubleKeyFrame(width + 60, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(6)), new SineEase { EasingMode = EasingMode.EaseInOut }));
-        pass.KeyFrames.Add(new DiscreteDoubleKeyFrame(width + 60, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(11))));
-        Timeline.SetDesiredFrameRate(pass, FrameRate);
-        _sweepMove.BeginAnimation(TranslateTransform.XProperty, pass);
     }
 
     /// <summary>60 normally; 30 on battery saver.</summary>
