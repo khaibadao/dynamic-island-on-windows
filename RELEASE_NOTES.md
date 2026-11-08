@@ -1,7 +1,11 @@
 Bản chỉnh sửa từ [sadeeshasathsara/dynamic-island-on-windows](https://github.com/sadeeshasathsara/dynamic-island-on-windows) (MIT).
 
+### Sửa trong v2.5.0
+- **Mượt hơn nhiều**: bỏ các chỗ bắt cả khung tai thỏ vẽ lại liên tục (thanh tua nhạc, mắt, việc đếm khung hình của nốt nhạc trôi chạy theo từng khung hình màn hình); mọi hoạt ảnh giới hạn 30 khung hình/giây; sóng nhạc và nốt nhạc trôi nhẹ hơn; đọc thông báo nhẹ hơn
+- **Tự mở ngay khi đăng nhập**: thêm một tác vụ "khi đăng nhập" trong Task Scheduler (không cần quyền admin), không phải xếp hàng sau các app khởi động khác như trước (có khi hơn 10 phút). Tắt "Start with Windows" hoặc tắt trong Task Manager là bỏ cả hai
+- **Bỏ 5 thú cưng mới**, chỉ giữ mèo; menu khay có **Hiện mèo** để bật / tắt hẳn mèo (tắt thì không tốn gì)
+
 ### Mới trong v2.4.0
-- **Thú cưng**: menu khay → **Thú cưng** để chọn mèo cam, cún, thỏ, hamster, chim cánh cụt hoặc cáo. Con nào cũng đi dạo trên viên, ló đầu, ngồi góc bảng, phản ứng khi chuột lại gần, ngủ, vui, buồn
 - **12 cây vẽ lại** cho bớt "nhựa": tán nhiều chùm lá có sáng tối, thân có cành và vân gỗ, thông tuyết dáng thon nhiều tầng phủ sương
 - **Mở khoá cây theo giờ tập trung** (3 cây có sẵn, rồi 4 · 10 · 20 · 30 · 50 · 80 · 120 · 180 · 240 giờ)
 - **Tai nghe Bluetooth hiện ngay trên viên**: viên giãn ra vài giây với tên, số tai đang kết nối (nếu Windows cho biết) và pin

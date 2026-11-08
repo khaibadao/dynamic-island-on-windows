@@ -36,6 +36,12 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        // Every animation at most 30 frames a second (WPF's default is 60). The
+        // notch is a large see-through window that Windows copies whole on every
+        // frame, so this halves the work of every movement and keeps clicks snappy.
+        System.Windows.Media.Animation.Timeline.DesiredFrameRateProperty.OverrideMetadata(
+            typeof(System.Windows.Media.Animation.Timeline), new FrameworkPropertyMetadata { DefaultValue = 30 });
+
         // Run by the uninstaller: close the running copy, undo every change to Windows, leave.
         if (e.Args.Contains("--uninstall"))
         {
