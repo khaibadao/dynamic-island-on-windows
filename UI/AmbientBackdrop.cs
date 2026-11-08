@@ -32,6 +32,8 @@ public sealed class AmbientBackdrop : Grid
     private readonly List<Layer> _layers = new();
     private readonly Rectangle _shade;
     private bool _playing;
+    private readonly Rectangle _sweep;
+    private readonly TranslateTransform _sweepMove = new(-300, 0);
     private AmbientLevel _level = AmbientLevel.Full;
 
     /// <summary>The blurred cover of the current song (for the glow outside the panel).</summary>
@@ -46,14 +48,27 @@ public sealed class AmbientBackdrop : Grid
             // darker at the bottom and top so text stays readable on any cover
             Fill = new LinearGradientBrush(new GradientStopCollection
             {
-                new(Color.FromArgb(0x70, 0, 0, 0), 0),
-                new(Color.FromArgb(0x52, 0, 0, 0), 0.4),
-                new(Color.FromArgb(0x90, 0, 0, 0), 1)
+                new(Color.FromArgb(0x4D, 0, 0, 0), 0),
+                new(Color.FromArgb(0x29, 0, 0, 0), 0.4),
+                new(Color.FromArgb(0x6B, 0, 0, 0), 1)
             }, new Point(0, 0), new Point(0, 1))
         };
         _shade.Fill.Freeze();
         _shade.Visibility = Visibility.Collapsed;   // only over a cover
         Children.Add(_shade);
+
+        // A soft band of light sweeping slowly across now and then, like a stage light
+        var band = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(1, 0) };
+        foreach (var (o, al) in new[] { (0.0, 0), (0.45, 0x1A), (0.5, 0x29), (0.55, 0x1A), (1.0, 0) })
+            band.GradientStops.Add(new GradientStop(Color.FromArgb((byte)al, 0xFF, 0xFF, 0xFF), o));
+        band.Freeze();
+        _sweep = new Rectangle
+        {
+            Fill = band, Width = 240, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, -60, 0, -60),
+            RenderTransform = new TransformGroup { Children = { new SkewTransform(-18, 0), _sweepMove } },
+            Visibility = Visibility.Collapsed, IsHitTestVisible = false
+        };
+        Children.Add(_sweep);
         SizeChanged += (_, _) => ClipBottomCorners();
     }
 
@@ -105,10 +120,22 @@ public sealed class AmbientBackdrop : Grid
                 Timeline.SetDesiredFrameRate(a, FrameRate);
                 target.BeginAnimation(property, a);
             }
+
+        // the sweep: across in about 6 s, then a 5 s rest
+        bool sweep = move && Blurred != null;
+        _sweep.Visibility = sweep ? Visibility.Visible : Visibility.Collapsed;
+        if (!sweep) { _sweepMove.BeginAnimation(TranslateTransform.XProperty, null); return; }
+        double width = Math.Max(ActualWidth, 640);
+        var pass = new DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromSeconds(11), RepeatBehavior = RepeatBehavior.Forever };
+        pass.KeyFrames.Add(new DiscreteDoubleKeyFrame(-300, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+        pass.KeyFrames.Add(new EasingDoubleKeyFrame(width + 60, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(6)), new SineEase { EasingMode = EasingMode.EaseInOut }));
+        pass.KeyFrames.Add(new DiscreteDoubleKeyFrame(width + 60, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(11))));
+        Timeline.SetDesiredFrameRate(pass, FrameRate);
+        _sweepMove.BeginAnimation(TranslateTransform.XProperty, pass);
     }
 
-    /// <summary>30 normally; 15 on battery saver (the notes drift so slowly it barely shows).</summary>
-    public int FrameRate { get; set; } = 20;
+    /// <summary>60 normally; 30 on battery saver.</summary>
+    public int FrameRate { get; set; } = 60;
 
     /// <summary>A new song's cover (null: no music, the wash fades away).</summary>
     public void SetArt(BitmapSource? art)
@@ -153,13 +180,15 @@ public sealed class AmbientBackdrop : Grid
     // font size, seconds to cross the panel, how far it bobs, how much it tilts, colour.
     private static readonly (string Glyph, double X, double Y, double Size, double Cross, double Bob, double Tilt, int Colour)[] Notes =
     {
-        ("\u266A", 0.08, 0.50, 66, 130, 14, 14, 0),
-        ("\u266B", 0.27, 0.25, 60, 160, 18, 10, 1),
-        ("\U0001D11E", 0.46, 0.55, 88, 215, 10, 8, 2),
-        ("\u266C", 0.63, 0.30, 62, 145, 16, 16, 0),
-        ("\u266A", 0.80, 0.65, 52, 118, 20, 18, 1),
-        ("\u2669", 0.93, 0.22, 50, 185, 12, 12, 2),
-        ("\u266B", 0.38, 0.85, 56, 150, 14, 12, 1),
+        ("\u266A", 0.06, 0.52, 62, 130, 14, 14, 0),          // ♪
+        ("\u266B", 0.20, 0.25, 56, 160, 18, 10, 1),          // ♫
+        ("\U0001D11E", 0.34, 0.58, 80, 215, 10, 8, 2),       // treble clef
+        ("\u266F", 0.47, 0.28, 44, 150, 16, 16, 0),          // ♯
+        ("\u266C", 0.58, 0.68, 58, 120, 20, 18, 1),          // ♬
+        ("\U0001D122", 0.70, 0.32, 56, 185, 12, 12, 2),      // bass clef
+        ("\u266D", 0.82, 0.60, 44, 155, 14, 12, 0),          // ♭
+        ("\u2669", 0.92, 0.22, 50, 140, 15, 14, 1),          // ♩
+        ("\u266B", 0.40, 0.88, 52, 175, 12, 10, 2),          // ♫
     };
 
     private Layer BuildLayer(BitmapSource blurred, Color[] colours)
@@ -172,9 +201,9 @@ public sealed class AmbientBackdrop : Grid
         Color Scale(Color c, double k) => Color.FromRgb((byte)(c.R * k), (byte)(c.G * k), (byte)(c.B * k));
         var baseFill = new LinearGradientBrush(new GradientStopCollection
         {
-            new(Scale(colours[0], 0.7), 0),
-            new(Scale(colours[2], 0.55), 0.6),
-            new(Color.FromRgb(12, 10, 16), 1)
+            new(Scale(colours[0], 0.88), 0),
+            new(Scale(colours[2], 0.72), 0.6),
+            new(Color.FromRgb(22, 18, 30), 1)
         }, new Point(0, 0), new Point(1, 1));
         baseFill.Freeze();
         root.Children.Add(new Rectangle { Fill = baseFill });
@@ -190,8 +219,8 @@ public sealed class AmbientBackdrop : Grid
                 HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
                 Fill = new RadialGradientBrush(new GradientStopCollection
                 {
-                    new(Color.FromArgb(0x8C, c.R, c.G, c.B), 0),
-                    new(Color.FromArgb(0x40, c.R, c.G, c.B), 0.5),
+                    new(Color.FromArgb(0xB8, c.R, c.G, c.B), 0),
+                    new(Color.FromArgb(0x55, c.R, c.G, c.B), 0.5),
                     new(Color.FromArgb(0x00, c.R, c.G, c.B), 1)
                 }),
                 CacheMode = new BitmapCache()
@@ -240,13 +269,34 @@ public sealed class AmbientBackdrop : Grid
             layer.Moves.Add((shift, TranslateTransform.YProperty, Loop(y - n.Bob, y + n.Bob, 9 + n.Colour * 1.3)));
             layer.Moves.Add((tilt, RotateTransform.AngleProperty, Loop(-n.Tilt, n.Tilt, 14 + n.Colour * 2)));
         }
+        // A few small sparks of light drifting along with the notes, twinkling
+        for (int i = 0; i < 7; i++)
+        {
+            double size = 3 + i % 3 * 1.2, sx = (i * .37 + .11) % 1 * w, sy = (i * .53 + .2) % 1 * h;
+            double a = size, b = size * .25;
+            var spark = new Path
+            {
+                Data = Geometry.Parse(FormattableString.Invariant($"M0,{-a} L{b},{-b} L{a},0 L{b},{b} L0,{a} L{-b},{b} L{-a},0 L{-b},{-b} Z")),
+                Fill = new SolidColorBrush(Color.FromRgb(0xFF, 0xFA, 0xEB)),
+                HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+                Opacity = .6
+            };
+            var at = new TranslateTransform(sx, sy);
+            spark.RenderTransform = at;
+            root.Children.Add(spark);
+            double cross = 140 + i % 3 * 40;
+            var drift = new DoubleAnimation(-20, w + 20, TimeSpan.FromSeconds(cross)) { RepeatBehavior = RepeatBehavior.Forever };
+            drift.BeginTime = -TimeSpan.FromSeconds(cross * (sx + 20) / (w + 40));
+            layer.Moves.Add((at, TranslateTransform.XProperty, drift));
+            layer.Moves.Add((spark, OpacityProperty, Loop(.2, .95, .8 + i % 4 * .35)));
+        }
         return layer;
     }
 
     /// <summary>A steady 30 frames a second: smooth enough for slow drifting, and even.</summary>
     private static AnimationTimeline Smooth(AnimationTimeline a)
     {
-        Timeline.SetDesiredFrameRate(a, 20);
+        Timeline.SetDesiredFrameRate(a, 60);
         return a;
     }
 

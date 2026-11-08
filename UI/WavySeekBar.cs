@@ -21,7 +21,7 @@ public sealed class WavySeekBar : FrameworkElement
     private TimeSpan _lastFrame;
     // 30 frames a second from a plain timer: hooking every screen frame instead made
     // WPF redraw the whole (large, see-through) notch window non-stop while music played.
-    private readonly System.Windows.Threading.DispatcherTimer _frameTimer = new(System.Windows.Threading.DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(33) };
+    private readonly System.Windows.Threading.DispatcherTimer _frameTimer = new(System.Windows.Threading.DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(16) };   // 60 a second
     private readonly System.Diagnostics.Stopwatch _frameClock = new();
     private bool _animating;
     private bool _dragging;

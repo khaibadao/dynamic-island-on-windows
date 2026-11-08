@@ -1167,7 +1167,7 @@ public partial class NotchWindow : Window
 
     private void ApplyAmbient()
     {
-        Ambient.FrameRate = _energySaver ? 12 : 20;   // the notes drift slowly: 20 frames a second is plenty   // battery saver: still drifting, just fewer frames
+        Ambient.FrameRate = _energySaver ? 30 : 60;   // battery saver: still drifting, just fewer frames
         Ambient.Level = AmbientLevelNow();
         Ambient.Play(_ambientOpen);
         // (no frame counting: listening to every frame makes WPF redraw the whole window non-stop)
@@ -1275,7 +1275,7 @@ public partial class NotchWindow : Window
                 if (b.RenderTransform is ScaleTransform sc) sc.BeginAnimation(ScaleTransform.ScaleYProperty, null);
             if (_meterTimer == null)
             {
-                _meterTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(55) };   // ~18 a second: lively, and light
+                _meterTimer = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(30) };
                 _meterTimer.Tick += (_, _) => MeterTick();
             }
             _meterTimer.Start();

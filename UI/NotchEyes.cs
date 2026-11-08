@@ -211,7 +211,7 @@ public sealed class NotchEyes : FrameworkElement
     // ── Animation loop ────────────────────────────────────────────────
     // A plain 30-a-second timer (hooking every screen frame made WPF redraw the
     // whole see-through notch window non-stop while the eyes were out).
-    private readonly System.Windows.Threading.DispatcherTimer _frames = new(System.Windows.Threading.DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(33) };
+    private readonly System.Windows.Threading.DispatcherTimer _frames = new(System.Windows.Threading.DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(16) };   // 60 a second
     private readonly System.Diagnostics.Stopwatch _clock = new();
     private bool _framesHooked;
 
