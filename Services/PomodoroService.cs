@@ -127,7 +127,10 @@ public sealed class PomodoroService
     private void Tick()
     {
         if (!Active) { _timer.Stop(); return; }
-        if (S.PomoBreakUntilUtc is { } until && DateTime.UtcNow >= until) EndBreak();
+        if (S.PomoBreakUntilUtc is not { } until || DateTime.UtcNow < until) return;
+        // The PC was off or asleep long past the rest: don't start a round out of nowhere
+        if (DateTime.UtcNow - until > TimeSpan.FromMinutes(30)) { Stop(); return; }
+        EndBreak();
     }
 
     private void EndBreak()

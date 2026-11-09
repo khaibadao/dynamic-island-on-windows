@@ -17,9 +17,11 @@ A sleek, iOS-inspired Dynamic Island notification overlay for Windows 11. Replac
 - **Đảo thông báo**: thông báo từ app và trang web (Messenger, Gmail, Zalo…) hiện trên một viên ở mép trên màn hình, đúng tên và logo của trang; di chuột để xem đủ nội dung, bấm để mở đúng trang; tắt tiếng theo từng app
 - **Tai thỏ**: viên nhỏ luôn ở giữa mép trên với đồng hồ LED và sóng nhạc theo âm thanh thật; di chuột vào để mở bảng:
   - **Nhạc**: ảnh bìa, lời bài hát chạy theo nhạc (LRCLIB, NetEase), thanh tua, âm lượng từng app, nền **nốt nhạc trôi** theo màu bài hát
-  - **Trồng cây** tập trung 5 phút – 3 giờ, 12 loại cây, Deep focus nhắc khi mở YouTube / Facebook…, thống kê ngày / tuần / tháng / năm
-  - **Thông báo** gần đây, **Copy** (lịch sử văn bản và hình ảnh), **Hạn chót** (gõ "Nộp báo cáo 15/11 17h", nhắc trước 1 ngày / 1 giờ)
-- Mắt và chú mèo trên viên, chế độ thuyết trình (tự ẩn khi trình chiếu / chia sẻ màn hình), báo pin, tai nghe Bluetooth, tự cập nhật
+  - **Trồng cây** tập trung 5 phút – 3 giờ, hoặc **Pomodoro** (25·5, 45·10, 50·10, 90·20 hay tự chỉnh, 4 phiên), 12 loại cây, Deep focus nhắc khi mở YouTube / Facebook…, thống kê ngày / tuần / tháng / năm
+  - **Thông báo** gần đây, **Copy** (lịch sử văn bản và hình ảnh, kéo thả ra ngoài, ghim 📌 để bảng không tự đóng)
+  - **Hạn chót & ghi chú**: gõ "Nộp báo cáo 15/11 17h" (nhắc trước 1 ngày / 1 giờ), "Thi PE PRO192 20/11 7h30" (đếm ngược ngày thi), không có giờ thì thành ghi chú; **Ctrl + Alt + N** để ghi nhanh từ bất cứ đâu
+  - **Lịch học**: dán link Google Sheet, chọn file .xlsx / .csv / .ics, dán từ FAP hoặc kéo ảnh chụp lịch vào; nhắc trước 15 phút, viên hiện môn đang học, 20h báo lịch ngày mai
+- Mèo Mây có cảm xúc (học cùng, vươn vai giờ nghỉ, lo khi sắp tới hạn, ngáp khi khuya…), mắt trên viên, chế độ thuyết trình, báo pin, tai nghe Bluetooth, đổi loa ↔ tai nghe một chạm, tổng kết tuần, tự cập nhật
 
 ### Cài đặt
 
@@ -56,6 +58,8 @@ Mọi thứ được xử lý trên máy bạn. Menu khay → **Cài đặt & qu
 | Tên miền trang web gửi thông báo | Logo lưu trên máy | Dịch vụ biểu tượng của Google · có công tắc |
 | Tên bài hát, ca sĩ | | LRCLIB; NetEase (có công tắc) |
 | Kiểm tra bản mới | | GitHub, khi mở app và mỗi 6 giờ |
+| Lịch học từ Google Sheet | Lịch lưu trên máy | Google, chỉ khi bạn dán link (đọc lại mỗi 6 giờ) |
+| Ảnh chụp lịch học | Đọc chữ ngay trên máy (bộ đọc của Windows) | Không gửi |
 
 Banner của Windows được ẩn cho những app đã hiện trên đảo (để không hiện hai lần). Bỏ tích **Ẩn banner Windows trùng tai thỏ** ở menu khay (hoặc trong Cài đặt), hoặc gỡ app bằng bộ cài, là **trả lại như cũ**. Nếu cài bằng lệnh PowerShell, hãy bỏ tích mục này trước khi xoá app.
 
