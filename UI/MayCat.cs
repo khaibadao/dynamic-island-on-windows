@@ -23,7 +23,9 @@ public enum CatMood
     /// <summary>A Pomodoro rest: stretches.</summary>
     Stretch,
     /// <summary>Late at night and still at the PC: droopy eyes, a yawn now and then.</summary>
-    Yawn
+    Yawn,
+    /// <summary>A video call is on: sits quite still (nothing moves, so nothing is redrawn).</summary>
+    Still
 }
 
 /// <summary>Shapes and colours shared by both drawings of Mây.</summary>
@@ -376,6 +378,9 @@ public sealed class MayCat : Canvas
                 _zzz.BeginAnimation(OpacityProperty, new DoubleAnimation(1, 0, TimeSpan.FromSeconds(1.8)) { RepeatBehavior = RepeatBehavior.Forever });
                 break;
 
+            case CatMood.Still:     // no animation at all
+                break;
+
             case CatMood.Excited:   // big hops, tail going fast, stars twinkling
                 Eyes(happy: true);
                 _hop.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(0, -6, TimeSpan.FromMilliseconds(240))
@@ -545,6 +550,8 @@ public sealed class MayPeek : Canvas
 
         switch (mood)
         {
+            case CatMood.Still:
+                break;
             case CatMood.Curious:
                 _leftEar.Angle = 8;
                 _rightEar.Angle = -8;

@@ -56,6 +56,9 @@ public sealed class SettingsWindow : Window
         stack.Children.Add(Switch("Dừng nốt nhạc trôi khi Windows tắt hiệu ứng hoạt ảnh",
             "Mặc định nốt vẫn trôi dù Windows tắt \"Animation effects\". Bật mục này nếu bạn muốn hạn chế chuyển động trên màn hình.",
             s.RespectWindowsAnimations, v => s.RespectWindowsAnimations = v));
+        stack.Children.Add(Switch("Nhẹ hiệu ứng khi đang gọi video",
+            "Khi camera đang bật (Meet, Zoom, Teams…), nốt nhạc dừng trôi, mèo và mắt đứng yên để cuộc gọi mượt hơn. App chỉ xem Windows ghi là camera có đang được dùng không (như đèn báo camera), không mở camera.",
+            s.LightDuringCalls, v => s.LightDuringCalls = v));
         stack.Children.Add(Switch("Nhắc hạn chót cả khi Không làm phiền",
             "Nhắc trước 1 ngày, 1 giờ và lúc đến hạn vẫn hiện dù đang bật Không làm phiền.",
             s.DeadlinesBypassDnd, v => s.DeadlinesBypassDnd = v));

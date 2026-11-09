@@ -1,5 +1,11 @@
 Bản chỉnh sửa từ [sadeeshasathsara/dynamic-island-on-windows](https://github.com/sadeeshasathsara/dynamic-island-on-windows) (MIT).
 
+### Mới trong v2.7.2
+- **Nhẹ khi gọi video**: lúc camera đang bật (Meet, Zoom, Teams, Messenger…), nốt nhạc dừng trôi, mèo và mắt đứng yên để cuộc gọi mượt; tắt camera là chạy lại như cũ. App chỉ xem Windows ghi là camera có đang được dùng không (như đèn báo camera), không mở camera. Tắt được trong Cài đặt & quyền riêng tư
+
+### Sửa trong v2.7.2
+- **Đọc được thời khoá biểu dạng lưới** trên Google Sheet: cột giờ ở bất kỳ đâu ("7h-7h45", "6h45", "19h-20h30 (1h30)", "22h30-0h"), các thứ nằm ngang, môn ghi bằng chữ (Văn, Toán…); ô tự ghi giờ ("17h30-19h: Toán thầy Lư") lấy giờ của ô; bỏ qua "Giải lao", "Vào lớp", "Dậy"; hai tiết liền nhau cùng môn gộp làm một
+
 ### Sửa trong v2.7.1
 - **Hết giật khi mở bảng**: nút đổi loa không còn hỏi Windows danh sách loa / tai nghe mỗi lần mở bảng (chỉ hỏi lúc bấm, và hỏi ngầm); trạng thái micro cũng được hỏi ngầm. Với tai nghe Bluetooth, các câu hỏi này có thể làm đứng giao diện cả trăm mili giây
 - Tab Trồng cây không vẽ lại các nút Tự do / Pomodoro mỗi lần chuyển tab

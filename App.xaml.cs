@@ -19,6 +19,7 @@ public partial class App : Application
     private FocusService? _focus;
     private PomodoroService? _pomo;
     private ScheduleService? _schedule;
+    private CameraWatcher? _camera;
     private VolumeWatcher? _volume;
     private BluetoothBatteryWatcher? _headsets;
     private FocusWidget? _focusWidget;
@@ -209,6 +210,11 @@ public partial class App : Application
             Glyph   = "\uE8BF", GlyphColor = "#34C7C7",
             OnClick = () => _notch?.Dispatcher.BeginInvoke(new Action(() => _notch.OpenTab("schedule")))
         }, keepInHistory: false);
+
+        // Video call (camera on): the notch goes easy on effects so the call stays smooth
+        _camera = new CameraWatcher();
+        _camera.Changed += on => _notch?.Dispatcher.BeginInvoke(new Action(() => _notch.SetInCall(on && AppSettings.Current.LightDuringCalls)));
+        Try("camera", _camera.Start);
 
         // Sunday evening: the week in one card
         var weekly = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMinutes(5) };
@@ -732,6 +738,7 @@ public partial class App : Application
         if (!ToastSuppressor.Enabled) _suppressor?.RestoreAll();   // banners back to how Windows had them
         else _suppressor?.HideKnownApps();
         _notch?.ApplySettings();
+        _notch?.SetInCall(_camera?.InUse == true && AppSettings.Current.LightDuringCalls);
     }
 
     private void Quit_Click(object sender, RoutedEventArgs e)

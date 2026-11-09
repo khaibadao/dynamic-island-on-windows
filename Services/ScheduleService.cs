@@ -213,5 +213,5 @@ public sealed class ScheduleService
     }
 
     /// <summary>"7:30", "13:00".</summary>
-    public static string Hm(TimeSpan t) => $"{(int)t.TotalHours}:{t.Minutes:00}";
+    public static string Hm(TimeSpan t) => $"{(int)t.TotalHours % 24}:{t.Minutes:00}";
 }

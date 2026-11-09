@@ -339,7 +339,7 @@ public partial class NotchWindow : Window
     /// <summary>Out from behind one end of the pill, along it to the other end, where she stays.</summary>
     private void StartWalk()
     {
-        if (!AppSettings.Current.ShowCat) return;
+        if (!AppSettings.Current.ShowCat || _inCall) return;
         if (_walking || Eyes.Active || !AppSettings.Current.MayWalks || _expanded || !IsVisible || !Pill.IsVisible || _faded
             || _focus.IsRunning || VolumeView.Visibility == Visibility.Visible
             || NativeInterop.IdleTime() >= TimeSpan.FromMinutes(10)) return;   // asleep, or you're away
@@ -402,7 +402,7 @@ public partial class NotchWindow : Window
         var now = DateTime.UtcNow;
         var c = NativeInterop.CursorIn(Pill);
         double w = Pill.ActualWidth, h = Pill.ActualHeight;
-        bool inZone = c is { } p0 && Math.Abs(p0.X - w / 2) <= ZoneHalfWidth && p0.Y >= -4 && p0.Y <= ZoneHeight;
+        bool inZone = !_inCall && c is { } p0 && Math.Abs(p0.X - w / 2) <= ZoneHalfWidth && p0.Y >= -4 && p0.Y <= ZoneHeight;
 
         if (!inZone || c is not { } p || !CanShowEyes)
         {
@@ -466,7 +466,7 @@ public partial class NotchWindow : Window
     /// <summary>Every 30 s: an expression that suits the moment.</summary>
     private void EyesTick()
     {
-        if (!CanShowEyes || Eyes.Active || _faded) return;
+        if (!CanShowEyes || Eyes.Active || _faded || _inCall) return;
         // Sleepy only when you've really stopped (no key or mouse for 3 minutes); otherwise a random face
         string kind = NativeInterop.IdleTime() >= TimeSpan.FromMinutes(3) ? "sleepy"
                     : _hasMusic && _playing && _rng.Next(3) == 0 ? "happy"   // music: now and then a happy bob
@@ -1168,6 +1168,7 @@ public partial class NotchWindow : Window
             if (AppSettings.Current.Ambient == "off") return null;
             if ((RenderCapability.Tier >> 16) < 2) return "Máy không có tăng tốc đồ họa";
             if (AppSettings.Current.Ambient == "light") return null;
+            if (_inCall) return "Đang gọi video (camera bật): tạm dừng cho máy nhẹ";
             if (AppSettings.Current.RespectWindowsAnimations && !SystemParameters.ClientAreaAnimation) return "Windows đang tắt hiệu ứng hoạt ảnh";
             if (_ambientSlow) return "Máy hơi yếu nên đã tự giảm";
             if (_energySaver) return "Tiết kiệm pin: nốt trôi chậm hơn để đỡ tốn pin";
@@ -1175,9 +1176,23 @@ public partial class NotchWindow : Window
         }
     }
 
+    // ── In a video call (camera on): fewer effects, the call gets the PC ──
+    private bool _inCall;
+
+    /// <summary>Camera in use: the notes stand still, Mây and the eyes keep still. Off: all back.</summary>
+    public void SetInCall(bool on)
+    {
+        if (on == _inCall) return;
+        _inCall = on;
+        if (on) { EndWalk(); Eyes.Stop(); GrowForEyes(false); }
+        ApplyAmbient();
+        UpdateCat();
+    }
+
     private AmbientLevel AmbientLevelNow()
     {
         var chosen = AppSettings.Current.Ambient;
+        if (_inCall && chosen != "off" && (RenderCapability.Tier >> 16) >= 2) return AmbientLevel.Light;
         if (chosen == "off" || (RenderCapability.Tier >> 16) < 2) return AmbientLevel.Off;
         // Windows' "Animation effects" switch only counts if you asked for that in Cài đặt
         bool windowsSaysStill = AppSettings.Current.RespectWindowsAnimations && !SystemParameters.ClientAreaAnimation;
@@ -3665,7 +3680,7 @@ public partial class NotchWindow : Window
     /// <summary>A notification came in: Mây looks up curiously for a few seconds (unless she's celebrating).</summary>
     public void CatCurious()
     {
-        if (_catOverride == CatMood.Excited && DateTime.Now < _catOverrideUntil) return;
+        if (_inCall || (_catOverride == CatMood.Excited && DateTime.Now < _catOverrideUntil)) return;
         CatReact(CatMood.Curious, 4);
     }
 
@@ -3686,6 +3701,7 @@ public partial class NotchWindow : Window
         else
         {
             _catOverride = null;
+            if (_inCall) { mood = CatMood.Still; goto apply; }
             int hour = DateTime.Now.Hour;
             bool idle = NativeInterop.IdleTime() >= TimeSpan.FromMinutes(10);
             mood = _deadlines?.Pressing == true && !idle ? CatMood.Worried           // a deadline within the hour / exam today
@@ -3698,6 +3714,7 @@ public partial class NotchWindow : Window
                  : CatMood.Idle;
         }
 
+        apply:
         // Every tree you grow is a meal; Mây grows a little with each one.
         int food = _focus.TotalTrees;
         double growth = 1 + Math.Min(0.3, food * 0.015);
@@ -3721,6 +3738,7 @@ public partial class NotchWindow : Window
             CatMood.Study   => "đang học cùng bạn",
             CatMood.Stretch => "đang vươn vai giờ nghỉ",
             CatMood.Yawn    => "buồn ngủ rồi, khuya lắm rồi đó",
+            CatMood.Still   => "ngồi yên cho bạn gọi video",
             _             => "đang ngồi chơi"
         };
         CatPanel.ToolTip = $"Mây {doing} · đã được ăn {food} phần (mỗi cây trồng xong là 1 phần)";

@@ -60,6 +60,7 @@ Mọi thứ được xử lý trên máy bạn. Menu khay → **Cài đặt & qu
 | Kiểm tra bản mới | | GitHub, khi mở app và mỗi 6 giờ |
 | Lịch học từ Google Sheet | Lịch lưu trên máy | Google, chỉ khi bạn dán link (đọc lại mỗi 6 giờ) |
 | Ảnh chụp lịch học | Đọc chữ ngay trên máy (bộ đọc của Windows) | Không gửi |
+| Camera có đang được dùng không (để nhẹ hiệu ứng khi gọi video) | Chỉ đọc dấu hiệu Windows ghi lại, không mở camera | Không gửi · có công tắc |
 
 Nếu thông báo của một trang web (vd claude.ai, messenger.com) vẫn bật banner của Windows ở góc phải dưới: **Settings → System → Notifications** → bấm vào trang đó (vd *claude.ai (via Microsoft Edge)*) → tắt **Show notification banners**. Tai thỏ vẫn hiện bình thường.
 

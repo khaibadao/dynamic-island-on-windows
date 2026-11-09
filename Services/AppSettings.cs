@@ -108,6 +108,8 @@ public sealed class AppSettings
     public bool NetEaseLyrics { get; set; } = true;
     /// <summary>Stop the drifting notes when Windows' "Animation effects" is off (off by default).</summary>
     public bool RespectWindowsAnimations { get; set; }
+    /// <summary>Camera in use (a video call): fewer effects.</summary>
+    public bool LightDuringCalls { get; set; } = true;
     /// <summary>Deadline reminders show even with Do Not Disturb on.</summary>
     public bool DeadlinesBypassDnd { get; set; } = true;
 

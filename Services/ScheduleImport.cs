@@ -21,8 +21,9 @@ public static class ScheduleImport
     // "PRF192", "OSG202", "MAD101", "SWP391", "PRO192c"
     private static readonly Regex CodeRx = new(@"(?<![A-Za-z0-9])([A-Z]{2,4}\d{3}[a-zA-Z]?)(?![A-Za-z0-9])", RegexOptions.Compiled);
     // "7:30-9:50", "07h30 – 09h50", "7:30 đến 9:50"
-    private static readonly Regex RangeRx = new(@"(\d{1,2})\s*[:hg.]\s*(\d{2})\s*(?:-|–|—|~|đến|to)\s*(\d{1,2})\s*[:hg.]\s*(\d{2})", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex OneTimeRx = new(@"^\s*(\d{1,2})\s*(?:[:hg.]\s*(\d{2}))?\s*$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    // "7:30-9:50", "07h30 – 09h50", "7h-7h45", "13h - 14h", "22h30-0h", "7:30 đến 9:50"
+    private static readonly Regex RangeRx = new(@"(?<!\d)(\d{1,2})\s*(?:[:.]\s*(\d{2})|[hg]\s*(\d{2})?)\s*(?:-|–|—|~|đến|to)\s*(\d{1,2})\s*(?:[:.]\s*(\d{2})|[hg]\s*(\d{2})?)(?!\d)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex OneTimeRx = new(@"^\s*(\d{1,2})\s*(?:[:hg.]\s*(\d{2})?)?\s*$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     // "at DE-C201", "P.304", "Phòng 304", "room 201", "BE-305"
     private static readonly Regex RoomRx = new(@"(?:\bat\s+|\bph(?:ò|o)ng\s*|\broom\s*|\bP\.\s?)([A-Za-z0-9][A-Za-z0-9.\-]*\d[A-Za-z0-9.\-]*)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex DayMonthRx = new(@"(?<!\d)(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?(?!\d)", RegexOptions.Compiled);
@@ -68,15 +69,19 @@ public static class ScheduleImport
         return h is >= 0 and < 24 && min < 60 ? new TimeSpan(h, min, 0) : null;
     }
 
-    private static (TimeSpan, TimeSpan)? Range(string text)
+    private static (TimeSpan, TimeSpan)? Range(string text) => RangeAt(text, out _);
+
+    private static (TimeSpan, TimeSpan)? RangeAt(string text, out Match match)
     {
-        var m = RangeRx.Match(text);
-        if (!m.Success) return null;
-        int h1 = int.Parse(m.Groups[1].Value), m1 = int.Parse(m.Groups[2].Value);
-        int h2 = int.Parse(m.Groups[3].Value), m2 = int.Parse(m.Groups[4].Value);
-        if (h1 > 23 || h2 > 23 || m1 > 59 || m2 > 59) return null;
+        match = RangeRx.Match(text);
+        if (!match.Success) return null;
+        static int Min(Match m, int a, int b) => m.Groups[a].Success ? int.Parse(m.Groups[a].Value) : m.Groups[b].Success ? int.Parse(m.Groups[b].Value) : 0;
+        int h1 = int.Parse(match.Groups[1].Value), m1 = Min(match, 2, 3);
+        int h2 = int.Parse(match.Groups[4].Value), m2 = Min(match, 5, 6);
+        if (h1 > 23 || h2 > 24 || m1 > 59 || m2 > 59) return null;
         var a = new TimeSpan(h1, m1, 0);
         var b = new TimeSpan(h2, m2, 0);
+        if (b <= a && h2 == 0) b += TimeSpan.FromDays(1);   // "22h30-0h": until midnight
         return b > a ? (a, b) : null;
     }
 
@@ -157,14 +162,24 @@ public static class ScheduleImport
     private static List<ClassSlot> FromGrid(List<string[]> rows, Dictionary<int, int> dayOfColumn, string origin)
     {
         var result = new List<ClassSlot>();
-        foreach (var row in rows)
+        int firstDay = dayOfColumn.Keys.Min();
+        // The cells left of the days say when: "Slot 2", "Ca 2", "7h-7h45", or just "6h45"
+        string Side(string[] row) => string.Join(" ", row.Take(Math.Min(firstDay, row.Length)));
+        var starts = rows.Select(r => Range(Side(r))?.Item1 ?? Time(LastTime(Side(r)))).ToList();
+        for (int r = 0; r < rows.Count; r++)
         {
-            // The first cell may say the slot: "Slot 2", "Ca 2", "Tiết 3", or a time range
-            string first = row.Length > 0 ? row[0] : "";
+            var row = rows[r];
+            string first = Side(row);
             (TimeSpan, TimeSpan)? rowTime = Range(first);
             if (rowTime == null && Regex.Match(first, @"(?:slot|ca|tiết|tiet)\s*(\d)", RegexOptions.IgnoreCase) is { Success: true } sm
                 && int.Parse(sm.Groups[1].Value) is >= 1 and < 7 and var slot)
                 rowTime = (FptSlots[slot].Start, FptSlots[slot].End);
+            if (rowTime == null && starts[r] is { } single)
+            {
+                // A start only: until the next row that has a time (or 45 minutes)
+                var next = starts.Skip(r + 1).FirstOrDefault(t => t != null && t > single);
+                rowTime = (single, next ?? single + TimeSpan.FromMinutes(45));
+            }
 
             foreach (var (col, day) in dayOfColumn)
             {
@@ -177,8 +192,35 @@ public static class ScheduleImport
                 }
             }
         }
-        return Dedupe(result);
+        return Merge(Dedupe(result));
     }
+
+    /// <summary>"SÁNG 6h45" → "6h45": the last thing in the side cells that looks like a time.</summary>
+    private static string LastTime(string side) =>
+        Regex.Matches(side, @"\d{1,2}\s*(?:[:.]\s*\d{2}|[hg]\s*(?:\d{2})?)", RegexOptions.IgnoreCase).LastOrDefault()?.Value ?? "";
+
+    /// <summary>Two periods of the same subject back to back (a short break between) become one.</summary>
+    private static List<ClassSlot> Merge(List<ClassSlot> list)
+    {
+        var merged = new List<ClassSlot>();
+        foreach (var s in list.OrderBy(x => x.Date ?? DateTime.MinValue).ThenBy(x => x.Weekday).ThenBy(x => x.Start))
+        {
+            var last = merged.LastOrDefault();
+            if (last != null && last.Weekday == s.Weekday && last.Date == s.Date &&
+                string.Equals(last.Subject, s.Subject, StringComparison.OrdinalIgnoreCase) &&
+                s.Start >= last.Start && s.Start - last.End <= TimeSpan.FromMinutes(20))
+            {
+                if (s.End > last.End) last.End = s.End;
+                last.Room ??= s.Room;
+                continue;
+            }
+            merged.Add(s);
+        }
+        return merged;
+    }
+
+    /// <summary>Things written in a timetable that aren't classes.</summary>
+    private static readonly Regex NotAClass = new(@"^(giải lao|giai lao|nghỉ|nghi|nghỉ trưa|ra chơi|ra choi|dậy|day|vào lớp|vao lop|ăn trưa|ăn sáng|ăn tối|break|lunch|x|-+|–)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     /// <summary>One cell of a timetable: "PRF192- at DE-C201 (Not yet) (7:30-9:50)".</summary>
     private static IEnumerable<ClassSlot> FromCell(string cell, (TimeSpan, TimeSpan)? rowTime)
@@ -188,9 +230,14 @@ public static class ScheduleImport
         var codes = CodeRx.Matches(cell);
         if (codes.Count == 0)
         {
-            // A table someone typed: the subject's own name, time from the row
-            if (rowTime is { } t && !Regex.IsMatch(cell, @"^[\s\-–]*$"))
-                yield return new ClassSlot { Subject = cell.Split('\n')[0].Trim(), Start = t.Item1, End = t.Item2, Room = Room(cell) };
+            // A table someone typed: the subject's own name; a time in the cell ("17h30-19h: Toán")
+            // wins over the row's
+            var own = RangeAt(cell, out var at);
+            string name = own != null ? cell.Remove(at.Index, at.Length) : cell;
+            name = Regex.Replace(name.Split('\n')[0], @"^[\s:\-–,.]+|[\s:\-–,]+$", "").Trim();
+            var when = own ?? rowTime;
+            if (when is { } t && name.Length > 0 && !NotAClass.IsMatch(name))
+                yield return new ClassSlot { Subject = name, Start = t.Item1, End = t.Item2, Room = Room(cell) };
             yield break;
         }
         for (int i = 0; i < codes.Count; i++)

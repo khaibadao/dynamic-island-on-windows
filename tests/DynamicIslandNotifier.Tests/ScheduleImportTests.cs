@@ -123,4 +123,25 @@ public class ScheduleImportTests
     [InlineData("Nộp báo cáo", false)]
     [InlineData("Thiết kế web", false)]
     public void Exams(string title, bool exam) => Assert.Equal(exam, DeadlineService.IsExamTitle(title));
+    [Fact]
+    public void GridSheetWithTimeColumn()
+    {
+        // A school timetable as Google Sheets exports it: times in column B, days across, no subject codes
+        var text = "THỜI KHÓA BIỂU NĂM HỌC 2026-2027 (Áp dụng sau GKI - Đã sửa đổi)\n\tTHỜI GIAN\tTHỨ 2\tTHỨ 3\tTHỨ 4\tTHỨ 5\tTHỨ 6\tTHỨ 7\tCHỦ NHẬT\nSÁNG\t4h - 6h\tChuyên đề Anh ( Thầy Cường )\tChuyên đề Anh ( Cô Thương )\tChuyên đề Anh ( Thầy Cường )\tChuyên đề Anh ( Cô Thương )\tChuyên đề Anh ( Thầy Cường )\tChuyên đề Anh ( Cô Thương )\t\n\t6h45\tVào lớp\tVào lớp\tVào lớp\tVào lớp\tVào lớp\tVào lớp\tDậy\n\t7h-7h45\tChào cờ\tVăn\tVăn\tToán\tToán\tChuyên đề ( Cô Thương )\t7h15-8h45: IELTS Writing cô Mến\n\t7h50-8h35\tTin học\tVăn\tVăn\tToán\tToán\tChuyên đề ( Cô Thương )\t\n\t8h35-8h55\tGiải lao\tGiải lao\tGiải lao\tGiải lao\tGiải lao\tGiải lao\tBTVN cô Mến\n\t8h55-9h40\tTin học\tGiáo dục địa phương\tTiếng pháp\tSử\tChuyên đề ( Thầy Cường )\tToán\t\n\t9h45-10h30\tKinh tế pháp luật\tLý\tTiếng pháp\tSử\tChuyên đề ( Thầy Cường )\t\tDạy Tom\n\t10h35-11h20\tKinh tế pháp luật\tLý\tChuyên đề ( Cô Thương )\tTiếng Pháp\tLý\t\t\nCHIỀU\t13h-14h\tGiải đề HSGTP 12\tToán\tToán\tToán\tToán\tHọc Mỹ thuật\tIELTS Writing Task 1\n\t14h-15h\t\tHọc Thể dục-GDQP\tHọc chuyên đề cô Thương\tLuyện IELTS Writing task 1\tHọc chuyên đề thầy Cường\t\tIELTS Writing Task 2\n\t15h-16h\t\t\t\tLuyện IELTS Writing task 2\t\tGiải lao\t15h30-17h: Toán thầy Lư\n\t16h-17h\tLý\t\tVăn\tVăn\tLuyện Listening\tVăn\t\n\t17h-18h\t\t\t\t17h30-19h: Toán thầy Lư\t17h-19h: Văn thầy Dũng\t17h-19h: Văn thầy Dũng\t\nTỐI\t19h-20h30 (1h30)\tLuyện IELTS Reading\t19h15-20h45: IELTS Speaking thầy Chương\t19h-20h30: Toán thầy Lư\t19h15-20h45: IELTS Reading x Listening cô Trân\t19h-21h: Văn thầy Dũng\tLuyện IELTS Reading\tBù môn\n\t20h30-21h30 (1h)\tBTVN Toán thầy Lư\t\tBTVN Toán thầy Lư\t\t\tVăn\t\n\t21h30-22h30 (1h)\tVăn\tLuyện Listening\tLý\tBTVN cô Trân\tBTVN Toán thầy Lư\tLý\t\n\t22h30-23h (30p)\tLuyện Speaking\tLuyện Speaking\tLuyện Speaking\t22h30-0h: Dạy IELTS Reading\t22h30-0h: Dạy IELTS Writing\tLuyện Listening\t\n\t23h-23h30\tLuyện Listening\tLuyện Listening\tLuyện Listening\tLuyện Speaking\tLuyện Speaking\tLuyện Speaking\t";
+        var slots = ScheduleImport.FromTable(ScheduleImport.ParseCsv(text), "sheet");
+        // Văn 7h-7h45 + 7h50-8h35 on Tuesday is one block
+        var van = Assert.Single(slots, s => s.Weekday == 2 && s.Subject == "Văn" && s.Start == new TimeSpan(7, 0, 0));
+        Assert.Equal(new TimeSpan(8, 35, 0), van.End);
+        // A time inside the cell wins over the row's
+        var toan = Assert.Single(slots, s => s.Weekday == 4 && s.Subject == "Toán thầy Lư" && s.Start == new TimeSpan(17, 30, 0));
+        Assert.Equal(new TimeSpan(19, 0, 0), toan.End);
+        // Until midnight
+        Assert.Contains(slots, s => s.Weekday == 5 && s.Subject == "Dạy IELTS Writing" && s.End == TimeSpan.FromHours(24));
+        // Breaks and "Vào lớp" / "Dậy" aren't classes
+        Assert.DoesNotContain(slots, s => s.Subject is "Giải lao" or "Vào lớp" or "Dậy");
+        // Sunday column read too
+        Assert.Contains(slots, s => s.Weekday == 7 && s.Subject == "IELTS Writing cô Mến" && s.Start == new TimeSpan(7, 15, 0));
+        Assert.Contains(slots, s => s.Weekday == 1 && s.Subject == "Chuyên đề Anh ( Thầy Cường )" && s.Start == new TimeSpan(4, 0, 0) && s.End == new TimeSpan(6, 0, 0));
+        Assert.True(slots.Count > 60, $"only {slots.Count}");
+    }
 }
