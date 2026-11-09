@@ -2673,16 +2673,6 @@ public partial class NotchWindow : Window
         SheetLinkPlaceholder.Visibility = SheetLink.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private void SchedulePasteFap_Click(object sender, RoutedEventArgs e)
-    {
-        if (_schedule == null) return;
-        string text = "";
-        try { if (Clipboard.ContainsText()) text = Clipboard.GetText(); } catch { }
-        if (text.Trim().Length < 10) { SayScheduleHint("Chưa có gì để dán. Trên FAP: Weekly timetable → Ctrl + A → Ctrl + C rồi bấm lại nhé.", ok: false); return; }
-        var msg = _schedule.FromPaste(text);
-        ScheduleImported(msg, msg.StartsWith("Đã"));
-    }
-
     private async void SchedulePasteImage_Click(object sender, RoutedEventArgs e)
     {
         BitmapSource? picture = null;

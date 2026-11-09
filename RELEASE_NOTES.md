@@ -1,5 +1,17 @@
 Bản chỉnh sửa từ [sadeeshasathsara/dynamic-island-on-windows](https://github.com/sadeeshasathsara/dynamic-island-on-windows) (MIT).
 
+### Mới trong v2.7.0
+- **📌 Giữ im Dynamic**: nút ghim ở hàng nút trên cùng của bảng (hoặc menu khay). Ghim rồi thì bảng không tự đóng khi chuột rời đi, chép rồi dán bao nhiêu lần cũng được. Bấm ghim lần nữa (hoặc Esc khi chuột trên bảng) để thả
+- **Kéo thả từ tab Copy**: kéo chữ hoặc ảnh ra Messenger, Word, thư mục… (thả vào thư mục ra file .png)
+- **Pomodoro trong Trồng cây**: chọn Tự do hoặc Pomodoro với 4 mốc (25·5, 45·10, 50·10, 90·20) hoặc tự chỉnh; 4 phiên, nghỉ dài sau phiên cuối, mỗi phiên học xong là một cây và được tính vào giờ mở khoá cây
+- **Đếm ngược ngày thi**: hạn chót bắt đầu bằng "Thi…" (vd *Thi PE PRO192 20/11 7h30*) được đếm theo ngày, mỗi sáng báo một lần; từ 3 ngày trước chuyển cam, ngày thi chuyển đỏ
+- **Ghi chú nhanh Ctrl + Alt + N** từ bất cứ đâu: có giờ thì thành hạn chót, không có giờ thì lưu ghi chú (tab Hạn chót & ghi chú)
+- **Lịch học** (tab mới): dán link Google Sheet (cột Thứ · Bắt đầu · Kết thúc · Môn · Phòng), chọn file .xlsx / .csv / .ics, hoặc dán / kéo ảnh chụp lịch vào (đọc chữ ngay trên máy). Nhắc trước 15 phút, viên hiện môn đang học và số phút còn lại, 20h báo lịch ngày mai
+- **Đổi loa ↔ tai nghe** một chạm ở hàng nút trên cùng của bảng
+- **Mèo Mây có cảm xúc**: phấn khích khi mở khoá cây mới, tò mò khi có tin nhắn, lo lắng khi sắp tới hạn / ngày thi, đọc sách trong phiên Pomodoro, vươn vai giờ nghỉ, ngáp khi đã khuya
+- **Tổng kết tuần** tối Chủ nhật: giờ tập trung, số cây, chuỗi ngày, ngày chăm nhất
+- Mắt trên viên nhìn theo chuột từ xa hơn (thêm khoảng 1/5 màn hình)
+
 ### Sửa trong v2.6.2
 - **Banner Windows không còn hiện trùng với tai thỏ** sau mỗi lần khởi động lại hay cập nhật: banner được giữ ẩn suốt khi app còn cài. Trả lại banner: bỏ tích **Ẩn banner Windows trùng tai thỏ** ở menu khay (hoặc trong Cài đặt), hoặc gỡ app bằng bộ cài. Cài bằng lệnh PowerShell thì nhớ bỏ tích mục này trước khi xoá app
 

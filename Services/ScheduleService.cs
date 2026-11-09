@@ -12,7 +12,7 @@ using System.Windows.Threading;
 /// Lịch học: the week's classes, a reminder 15 minutes before each one, the
 /// class going on now (for the pill), and in the evening a line about tomorrow.
 /// The timetable comes from a Google Sheet link (re-read every 6 hours), a
-/// file, text pasted from FAP, or a photo.
+/// file, or a photo of the timetable.
 /// </summary>
 public sealed class ScheduleService
 {
@@ -139,16 +139,6 @@ public sealed class ScheduleService
     {
         using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
         return ScheduleImport.FromTable(ScheduleImport.ParseXlsx(fs), "file");
-    }
-
-    /// <summary>Text pasted from FAP (or any timetable copied as text).</summary>
-    public string FromPaste(string text)
-    {
-        var slots = ScheduleImport.FromText(text, "fap");
-        if (slots.Count == 0) return "Chưa đọc được lịch. Trên FAP mở Weekly timetable → Ctrl + A → Ctrl + C rồi dán lại nhé.";
-        Replace(slots, "fap");
-        CrashLog.Write($"Schedule: {slots.Count} classes pasted");
-        return $"Đã thêm {slots.Count} buổi học · lặp lại mỗi tuần, lịch đổi thì dán lại";
     }
 
     /// <summary>A photo / screenshot of a timetable, read by Windows' own text recognition (offline).</summary>

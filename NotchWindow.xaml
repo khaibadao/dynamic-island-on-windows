@@ -1114,10 +1114,7 @@
                                              KeyDown="SheetLink_KeyDown" TextChanged="SheetLink_TextChanged"/>
                                 </Grid>
                             </Border>
-                            <UniformGrid Columns="3" Margin="0,8,0,0">
-                                <Button Content="Dán từ FAP" Style="{StaticResource ActionButton}" Background="#1AFFFFFF" Foreground="White"
-                                        Margin="0,0,6,0" Click="SchedulePasteFap_Click"
-                                        ToolTip="Trên FAP: Weekly timetable → Ctrl + A → Ctrl + C, rồi bấm nút này"/>
+                            <UniformGrid Columns="2" Margin="0,8,0,0">
                                 <Button Content="Dán ảnh lịch" Style="{StaticResource ActionButton}" Background="#1AFFFFFF" Foreground="White"
                                         Margin="0,0,6,0" Click="SchedulePasteImage_Click"
                                         ToolTip="Chụp lịch (Win + Shift + S) rồi bấm nút này · hoặc kéo ảnh vào đây"/>
