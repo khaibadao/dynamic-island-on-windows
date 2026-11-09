@@ -144,4 +144,14 @@ public class ScheduleImportTests
         Assert.Contains(slots, s => s.Weekday == 1 && s.Subject == "Chuyên đề Anh ( Thầy Cường )" && s.Start == new TimeSpan(4, 0, 0) && s.End == new TimeSpan(6, 0, 0));
         Assert.True(slots.Count > 60, $"only {slots.Count}");
     }
+
+    [Theory]
+    [InlineData("Văn", "class")]
+    [InlineData("Chuyên đề ( Thầy Cường )", "extra")]
+    [InlineData("Toán thầy Lư", "extra")]
+    [InlineData("BTVN Toán thầy Lư", "self")]
+    [InlineData("Luyện IELTS Reading", "self")]
+    [InlineData("Dạy IELTS Writing", "teach")]
+    [InlineData("OSG202", "class")]
+    public void Kinds(string subject, string kind) => Assert.Equal(kind, ScheduleService.Kind(subject));
 }

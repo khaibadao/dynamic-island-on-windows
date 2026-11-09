@@ -2633,25 +2633,156 @@ public partial class NotchWindow : Window
             });
             return;
         }
-        var teal = Color.FromRgb(0x34, 0xC7, 0xC7);
+        // Calendar-style day: times down the left, one coloured block per session (coloured by
+        // kind), a red "now" line, past sessions faded, the current and next one marked.
+        bool today = _scheduleDay == DateTime.Today;
+        var nowT = now.TimeOfDay;
+        var next = today ? classes.FirstOrDefault(c => c.Start > nowT) : null;
+        var current = today ? classes.FirstOrDefault(c => nowT >= c.Start && nowT < c.End) : null;
+        int left = today ? classes.Count(c => c.Start > nowT) : classes.Count;
+        int minutes = (int)classes.Sum(c => (c.End - c.Start).TotalMinutes);
+
+        var summary = new TextBlock { FontSize = 12, FontFamily = new FontFamily("Segoe UI"), Foreground = Frozen(Color.FromArgb(0xD8, 0xFF, 0xFF, 0xFF)), Margin = new Thickness(2, 0, 0, 8), TextTrimming = TextTrimming.CharacterEllipsis };
+        void Bold(string t) => summary.Inlines.Add(new System.Windows.Documents.Run(t) { FontWeight = FontWeights.SemiBold, Foreground = Brushes.White });
+        void Plain(string t) => summary.Inlines.Add(new System.Windows.Documents.Run(t));
+        Plain(today ? "Hôm nay " : $"{Weekdays[(int)_scheduleDay.DayOfWeek]} ");
+        Bold($"{classes.Count} buổi");
+        Plain($" · {minutes / 60} giờ{(minutes % 60 > 0 ? $" {minutes % 60} phút" : "")}");
+        if (today)
+        {
+            Plain(" · còn "); Bold($"{left}");
+            if (next != null) { Plain(" · tiếp theo "); Bold(next.Subject); Plain($" lúc {ScheduleService.Hm(next.Start)} (sau {Until(next.Start - nowT)})"); }
+            else if (current == null) Plain(" · xong hết rồi!");
+        }
+        ScheduleList.Children.Add(summary);
+
+        FrameworkElement? anchor = null;
+        bool nowDrawn = !today;
         foreach (var c in classes)
         {
-            bool today = _scheduleDay == DateTime.Today;
-            bool live = today && now.TimeOfDay >= c.Start && now.TimeOfDay < c.End;
-            bool done = today && now.TimeOfDay >= c.End;
-            string? badge = live ? $"còn {Math.Max(1, (int)Math.Ceiling((c.End - now.TimeOfDay).TotalMinutes))} phút"
-                          : today && !done && c.Start - now.TimeOfDay <= TimeSpan.FromHours(3) ? $"sau {DeadlineService.Left(now.Date + c.Start, now).Replace("còn ", "")}"
-                          : null;
-            var colour = live ? Color.FromRgb(0x30, 0xD1, 0x58) : teal;
-            var id = c.Id;
-            var row = PlannerRow(colour, null, c.Subject,
-                $"{ScheduleService.Hm(c.Start)} – {ScheduleService.Hm(c.End)}" + (c.Room != null ? $" · {c.Room}" : "") + (c.Date == null ? "" : $" · chỉ ngày {c.Date:dd/MM}"),
-                badge, strike: false, highlighted: false, remove: () => _schedule?.Remove(id), click: () => { });
-            row.Opacity = done ? 0.5 : 1;
-            row.Cursor = Cursors.Arrow;
-            row.ToolTip = null;
-            ScheduleList.Children.Add(row);
+            if (!nowDrawn && c.Start > nowT)
+            {
+                nowDrawn = true;
+                ScheduleList.Children.Add(anchor = NowLine(now));
+            }
+            bool live = c == current, past = today && c.End <= nowT, isNext = c == next;
+            var colour = KindColour(ScheduleService.Kind(c.Subject));
+            var block = ScheduleBlock(c, colour, live, isNext, nowT);
+            if (past) block.Opacity = 0.4;
+            if (live) anchor ??= block;
+            ScheduleList.Children.Add(block);
         }
+        if (!nowDrawn) ScheduleList.Children.Add(anchor = NowLine(now));
+
+        // Open on "now": the current or next session near the top
+        if (anchor != null)
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                try
+                {
+                    double y = anchor.TranslatePoint(new Point(0, 0), ScheduleList).Y;
+                    ScheduleScroll.ScrollToVerticalOffset(Math.Max(0, y - 60));
+                }
+                catch { }
+            }), DispatcherPriority.Loaded);
+        else ScheduleScroll.ScrollToTop();
+    }
+
+    /// <summary>Colours by kind of session: on the timetable at school, extra class, self-study, teaching.</summary>
+    private static Color KindColour(string kind) => kind switch
+    {
+        "extra" => Color.FromRgb(0xFF, 0x9F, 0x0A),
+        "self"  => Color.FromRgb(0xBF, 0x8C, 0xFF),
+        "teach" => Color.FromRgb(0x30, 0xD1, 0x58),
+        _       => Color.FromRgb(0x4D, 0xA3, 0xFF),
+    };
+
+    private static string KindName(string kind) => kind switch
+    {
+        "extra" => "Học thêm", "self" => "Tự học", "teach" => "Đi dạy", _ => "Trên lớp"
+    };
+
+    private static string Until(TimeSpan t) =>
+        t.TotalMinutes >= 60 ? $"{(int)t.TotalHours} giờ{(t.Minutes > 0 ? $" {t.Minutes} phút" : "")}" : $"{Math.Max(1, (int)Math.Ceiling(t.TotalMinutes))} phút";
+
+    /// <summary>The red "now" line with the time on its left.</summary>
+    private static FrameworkElement NowLine(DateTime now)
+    {
+        var red = Color.FromRgb(0xFF, 0x45, 0x3A);
+        var grid = new Grid { Margin = new Thickness(0, 1, 0, 7) };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(44) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition());
+        grid.Children.Add(new TextBlock { Text = now.ToString("H:mm"), FontSize = 10.5, FontWeight = FontWeights.Bold, FontFamily = new FontFamily("Segoe UI"), Foreground = Frozen(red), HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 0, 6, 0) });
+        var line = new Grid { VerticalAlignment = VerticalAlignment.Center };
+        line.Children.Add(new System.Windows.Shapes.Ellipse { Width = 7, Height = 7, Fill = Frozen(red), HorizontalAlignment = HorizontalAlignment.Left });
+        line.Children.Add(new Border { Height = 1.5, Background = Frozen(red), Margin = new Thickness(3, 0, 0, 0) });
+        Grid.SetColumn(line, 1);
+        grid.Children.Add(line);
+        return grid;
+    }
+
+    /// <summary>One session: start time on the left, then a coloured block with name, time, kind / countdown and ✕.</summary>
+    private FrameworkElement ScheduleBlock(ClassSlot c, Color colour, bool live, bool isNext, TimeSpan nowT)
+    {
+        var grid = new Grid { Margin = new Thickness(0, 0, 0, 5) };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(44) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition());
+        grid.Children.Add(new TextBlock
+        {
+            Text = ScheduleService.Hm(c.Start), FontSize = 10.5, FontFamily = new FontFamily("Segoe UI"),
+            Foreground = Frozen(Color.FromArgb(0x88, 0xFF, 0xFF, 0xFF)), HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 4, 8, 0)
+        });
+
+        var inner = new Grid();
+        inner.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        inner.ColumnDefinitions.Add(new ColumnDefinition());
+        inner.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        inner.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        inner.Children.Add(new Border { Width = 3, CornerRadius = new CornerRadius(1.5), Background = Frozen(colour), Margin = new Thickness(0, 1, 9, 1) });
+
+        var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        text.Children.Add(new TextBlock { Text = c.Subject, FontSize = 12.5, FontWeight = FontWeights.SemiBold, FontFamily = new FontFamily("Segoe UI"), Foreground = Brushes.White, TextTrimming = TextTrimming.CharacterEllipsis });
+        int length = (int)(c.End - c.Start).TotalMinutes;
+        text.Children.Add(new TextBlock
+        {
+            Text = $"{ScheduleService.Hm(c.Start)} – {ScheduleService.Hm(c.End)} · {length} phút" + (c.Room != null ? $" · {c.Room}" : "") + (c.Date == null ? "" : $" · chỉ ngày {c.Date:dd/MM}"),
+            FontSize = 10.5, FontFamily = new FontFamily("Segoe UI"), Foreground = Frozen(Color.FromArgb(0x99, 0xFF, 0xFF, 0xFF)), TextTrimming = TextTrimming.CharacterEllipsis
+        });
+        Grid.SetColumn(text, 1);
+        inner.Children.Add(text);
+
+        string badge = live ? $"đang học · còn {Until(c.End - nowT)}" : isNext ? $"sau {Until(c.Start - nowT)}" : KindName(ScheduleService.Kind(c.Subject));
+        var tag = new Border
+        {
+            CornerRadius = new CornerRadius(9), Padding = new Thickness(7, 1, 7, 2), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 2, 0),
+            Background = live || isNext ? Frozen(Color.FromArgb(0x4D, colour.R, colour.G, colour.B)) : Brushes.Transparent,
+            Child = new TextBlock { Text = badge, FontSize = 10.5, FontWeight = FontWeights.SemiBold, FontFamily = new FontFamily("Segoe UI"), Foreground = Frozen(colour) }
+        };
+        Grid.SetColumn(tag, 2);
+        inner.Children.Add(tag);
+
+        var remove = new TextBlock
+        {
+            Text = "\uE711", FontFamily = (FontFamily)FindResource("IconFont"), FontSize = 9, Cursor = Cursors.Hand, Padding = new Thickness(6),
+            Foreground = Frozen(Color.FromArgb(0x88, 0xFF, 0xFF, 0xFF)), VerticalAlignment = VerticalAlignment.Center, ToolTip = "Xoá buổi này", Visibility = Visibility.Hidden
+        };
+        var id = c.Id;
+        remove.MouseLeftButtonUp += (_, e) => { e.Handled = true; _schedule?.Remove(id); };
+        Grid.SetColumn(remove, 3);
+        inner.Children.Add(remove);
+
+        bool strong = live || isNext;
+        var box = new Border
+        {
+            Child = inner, CornerRadius = new CornerRadius(9), Padding = new Thickness(8, 5, 4, 5),
+            Background = Frozen(Color.FromArgb((byte)(strong ? 0x48 : 0x22), colour.R, colour.G, colour.B)),
+            BorderThickness = new Thickness(1), BorderBrush = strong ? Frozen(Color.FromArgb(0xCC, colour.R, colour.G, colour.B)) : Brushes.Transparent
+        };
+        box.MouseEnter += (_, _) => remove.Visibility = Visibility.Visible;
+        box.MouseLeave += (_, _) => remove.Visibility = Visibility.Hidden;
+        Grid.SetColumn(box, 1);
+        grid.Children.Add(box);
+        return grid;
     }
 
     private void SayScheduleHint(string text, bool ok = true)

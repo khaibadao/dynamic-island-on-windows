@@ -212,6 +212,19 @@ public sealed class ScheduleService
         }
     }
 
+    /// <summary>
+    /// What kind of session, from its name: "teach" (Dạy …), "self" (Luyện …, BTVN …, Tự học, Ôn …),
+    /// "extra" (with a teacher named: thầy / cô), else "class" (on the school timetable).
+    /// </summary>
+    public static string Kind(string subject)
+    {
+        var s = subject.Trim().ToLowerInvariant();
+        if (System.Text.RegularExpressions.Regex.IsMatch(s, @"^(dạy|day)\b")) return "teach";
+        if (System.Text.RegularExpressions.Regex.IsMatch(s, @"^(luyện|luyen|btvn|tự học|tu hoc|ôn|on tap|bù|làm bài)")) return "self";
+        if (System.Text.RegularExpressions.Regex.IsMatch(s, @"(?<!\p{L})(thầy|cô)(?!\p{L})")) return "extra";
+        return "class";
+    }
+
     /// <summary>"7:30", "13:00".</summary>
     public static string Hm(TimeSpan t) => $"{(int)t.TotalHours % 24}:{t.Minutes:00}";
 }
