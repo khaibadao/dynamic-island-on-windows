@@ -585,7 +585,8 @@
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                         <Button x:Name="PinBtn" Style="{StaticResource QuickButton}" Content="&#xE718;" Click="Pin_Click"
                                 ToolTip="Giữ im Dynamic: bảng không tự đóng khi chuột rời đi"/>
-                        <Button x:Name="OutputBtn" Style="{StaticResource QuickButton}" Content="&#xE7F5;" Click="Output_Click"/>
+                        <Button x:Name="OutputBtn" Style="{StaticResource QuickButton}" Content="&#xE7F5;" Click="Output_Click"
+                                ToolTip="Đổi loa ↔ tai nghe (bấm để chuyển sang thiết bị kế tiếp)"/>
                         <Button x:Name="MicBtn" Style="{StaticResource QuickButton}" Content="&#xE720;" Click="Mic_Click"/>
                         <Button x:Name="DndBtn" Style="{StaticResource QuickButton}" Content="&#xE708;" Click="Dnd_Click"/>
                         <Button Style="{StaticResource QuickButton}" Content="&#xE722;" Click="Screenshot_Click" ToolTip="Chụp màn hình (Win + Shift + S)"/>

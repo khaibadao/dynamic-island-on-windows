@@ -548,6 +548,7 @@ public partial class NotchWindow : Window
     /// <summary>Opens the panel (on <paramref name="tab"/>, or the tab used last).</summary>
     private void Expand(string? tab)
     {
+        StallWatch.Doing = "opening the panel";
         if (!IsVisible) return;
         bool wasOpen = _expanded;
         _expanded = true;
@@ -572,7 +573,7 @@ public partial class NotchWindow : Window
         Expanded.Visibility   = Visibility.Visible;
 
         UpdateClock();
-        UpdateQuickButtons();
+        Dispatcher.BeginInvoke(new Action(UpdateQuickButtons), DispatcherPriority.Background);
         UpdateCat();
 
         // Open on the tab asked for, else the one used last; straight to the tree while one grows.
@@ -604,6 +605,7 @@ public partial class NotchWindow : Window
     private void Collapse()
     {
         _closeTimer.Stop();
+        StallWatch.Doing = "closing the panel";
         if (!_expanded) return;
         _expanded = false;
         _seeking  = false;
@@ -777,6 +779,7 @@ public partial class NotchWindow : Window
 
     private void ShowTab(string tab, int direction)
     {
+        StallWatch.Doing = $"tab {tab}";
         bool animate = _tab != tab && Expanded.IsVisible && Expanded.Opacity > 0.9;
         bool animateWidth = animate;
         _tab = tab;
@@ -1894,6 +1897,8 @@ public partial class NotchWindow : Window
         PomoCustomRow.Children.Add(new TextBlock { Text = "· kéo thước để đổi phút học", Foreground = Frozen(Color.FromArgb(0x88, 0xFF, 0xFF, 0xFF)), FontSize = 11, FontFamily = new FontFamily("Segoe UI"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) });
     }
 
+    private string? _focusNavKey, _pomoPlansKey, _pomoCustomKey;
+
     private void SkipBreak_Click(object sender, RoutedEventArgs e) => _pomo?.SkipBreak();
     private void StopPomo_Click(object sender, RoutedEventArgs e) => _pomo?.Stop();
 
@@ -1907,18 +1912,25 @@ public partial class NotchWindow : Window
         bool custom = pomo && plan.Key == "custom";
         var kind = running ? _focus.CurrentKind : _selectedKind;
 
-        FocusModeNav.Children.Clear();
-        foreach (var (key, label) in new[] { ("free", "Tự do"), ("pomodoro", "Pomodoro") })
+        // Rebuilt only when what they show changes (this runs on every tab switch)
+        string navKey = $"{AppSettings.Current.FocusMode}|{idle}";
+        if (navKey != _focusNavKey)
         {
-            var seg = Segment(label, AppSettings.Current.FocusMode == key, () => SetFocusMode(key));
-            seg.Padding = new Thickness(9, 3, 9, 3);
-            if (!idle) { seg.Opacity = 0.5; seg.Cursor = Cursors.Arrow; }
-            FocusModeNav.Children.Add(seg);
+            _focusNavKey = navKey;
+            FocusModeNav.Children.Clear();
+            foreach (var (key, label) in new[] { ("free", "Tự do"), ("pomodoro", "Pomodoro") })
+            {
+                var seg = Segment(label, AppSettings.Current.FocusMode == key, () => SetFocusMode(key));
+                seg.Padding = new Thickness(9, 3, 9, 3);
+                if (!idle) { seg.Opacity = 0.5; seg.Cursor = Cursors.Arrow; }
+                FocusModeNav.Children.Add(seg);
+            }
         }
 
-        if (custom) { Ruler.Minutes = Math.Clamp(AppSettings.Current.PomoCustomStudy, FocusService.MinMinutes, FocusService.MaxMinutes); BuildPomoCustom(); }
+        string plansKey = $"{AppSettings.Current.PomoPlan}|{AppSettings.Current.PomoCustomStudy}|{AppSettings.Current.PomoCustomBreak}";
+        if (custom) { Ruler.Minutes = Math.Clamp(AppSettings.Current.PomoCustomStudy, FocusService.MinMinutes, FocusService.MaxMinutes); if (plansKey != _pomoCustomKey) { _pomoCustomKey = plansKey; BuildPomoCustom(); } }
         else if (!pomo && Ruler.Minutes != _selectedMinutes) Ruler.Minutes = _selectedMinutes;
-        if (pomo && idle) BuildPomoPlans();
+        if (pomo && idle && plansKey != _pomoPlansKey) { _pomoPlansKey = plansKey; BuildPomoPlans(); }
 
         Ruler.Visibility         = idle && (!pomo || custom) ? Visibility.Visible : Visibility.Collapsed;
         PomoPlans.Visibility     = idle && pomo ? Visibility.Visible : Visibility.Collapsed;
@@ -3156,12 +3168,13 @@ public partial class NotchWindow : Window
     // ── Quick buttons ─────────────────────────────────────────────────
     private void UpdateQuickButtons()
     {
-        UpdateOutputButton();
-        var muted = QuickActions.IsMicMuted();
-        MicBtn.IsEnabled  = muted != null;
-        MicBtn.Foreground = muted == true ? Frozen(Color.FromRgb(0xFF, 0x45, 0x3A)) : Frozen(Color.FromArgb(0xCC, 0xFF, 0xFF, 0xFF));
-        MicBtn.ToolTip    = muted == null ? "Không tìm thấy micro"
-                          : muted == true ? "Micro đang tắt · bấm để bật" : "Micro đang bật · bấm để tắt";
+        // The microphone's state comes from Windows' audio service, which can be slow
+        // (Bluetooth headsets): asked in the background, the buttons update when it answers.
+        _ = System.Threading.Tasks.Task.Run(() =>
+        {
+            var muted = QuickActions.IsMicMuted();
+            Dispatcher.BeginInvoke(new Action(() => ShowMic(muted)));
+        });
 
         bool dnd = QuickActions.DoNotDisturb;
         DndBtn.Foreground = dnd ? Frozen(DndColour) : Frozen(Color.FromArgb(0xCC, 0xFF, 0xFF, 0xFF));
@@ -3170,36 +3183,56 @@ public partial class NotchWindow : Window
         UpdateStrip();
     }
 
-    // ── Sound output: one click goes to the next speakers / headphones ──
-    private void UpdateOutputButton()
+    private void ShowMic(bool? muted)
     {
-        var outputs = AudioOutputs.List();
-        var now = outputs.FirstOrDefault(o => o.IsDefault);
-        OutputBtn.Content   = now?.Headphones == true ? "\uE7F6" : "\uE7F5";
-        OutputBtn.IsEnabled = outputs.Count > 1;
-        OutputBtn.ToolTip   = outputs.Count switch
-        {
-            0 => "Không thấy loa / tai nghe nào",
-            1 => $"Đang phát qua {now?.Name ?? outputs[0].Name} · chỉ có một thiết bị",
-            _ => $"Đang phát qua {now?.Name ?? "?"} · bấm để chuyển sang {outputs[(Math.Max(0, outputs.ToList().FindIndex(o => o.IsDefault)) + 1) % outputs.Count].Name}"
-        };
+        MicBtn.IsEnabled  = muted != null;
+        MicBtn.Foreground = muted == true ? Frozen(Color.FromRgb(0xFF, 0x45, 0x3A)) : Frozen(Color.FromArgb(0xCC, 0xFF, 0xFF, 0xFF));
+        MicBtn.ToolTip    = muted == null ? "Không tìm thấy micro"
+                          : muted == true ? "Micro đang tắt · bấm để bật" : "Micro đang bật · bấm để tắt";
     }
+
+    // ── Sound output: one click goes to the next speakers / headphones ──
+    // Nothing is asked of Windows until the button is clicked, and then off the UI thread.
+    private bool _switchingOutput;
 
     private void Output_Click(object sender, RoutedEventArgs e)
     {
-        var outputs = AudioOutputs.List();
-        if (outputs.Count < 2) return;
-        int i = Math.Max(0, outputs.ToList().FindIndex(o => o.IsDefault));
-        var next = outputs[(i + 1) % outputs.Count];
-        if (AudioOutputs.Use(next.Id)) Notice?.Invoke(next.Headphones ? "Đã chuyển sang tai nghe" : "Đã chuyển sang loa", next.Name);
-        else Notice?.Invoke("Không chuyển được loa", "Thử chọn trong biểu tượng loa ở thanh taskbar nhé");
-        UpdateOutputButton();
+        if (_switchingOutput) return;
+        _switchingOutput = true;
+        OutputBtn.Opacity = 0.5;
+        _ = System.Threading.Tasks.Task.Run(() =>
+        {
+            var outputs = AudioOutputs.List();
+            AudioOutputs.Output? next = null;
+            bool ok = false;
+            if (outputs.Count >= 2)
+            {
+                int i = Math.Max(0, outputs.ToList().FindIndex(o => o.IsDefault));
+                next = outputs[(i + 1) % outputs.Count];
+                ok = AudioOutputs.Use(next.Id);
+            }
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                _switchingOutput = false;
+                OutputBtn.Opacity = 1;
+                if (next == null) Notice?.Invoke("Chỉ có một loa", "Cắm tai nghe hoặc kết nối Bluetooth rồi bấm lại nhé");
+                else if (ok)
+                {
+                    OutputBtn.Content = next.Headphones ? "\uE7F6" : "\uE7F5";
+                    Notice?.Invoke(next.Headphones ? "Đã chuyển sang tai nghe" : "Đã chuyển sang loa", next.Name);
+                }
+                else Notice?.Invoke("Không chuyển được loa", "Thử chọn trong biểu tượng loa ở thanh taskbar nhé");
+            }));
+        });
     }
 
     private void Mic_Click(object sender, RoutedEventArgs e)
     {
-        QuickActions.ToggleMic();
-        UpdateQuickButtons();
+        _ = System.Threading.Tasks.Task.Run(() =>
+        {
+            var muted = QuickActions.ToggleMic();
+            Dispatcher.BeginInvoke(new Action(() => ShowMic(muted)));
+        });
     }
 
     private void Dnd_Click(object sender, RoutedEventArgs e)

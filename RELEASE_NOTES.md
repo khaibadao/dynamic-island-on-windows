@@ -1,5 +1,10 @@
 Bản chỉnh sửa từ [sadeeshasathsara/dynamic-island-on-windows](https://github.com/sadeeshasathsara/dynamic-island-on-windows) (MIT).
 
+### Sửa trong v2.7.1
+- **Hết giật khi mở bảng**: nút đổi loa không còn hỏi Windows danh sách loa / tai nghe mỗi lần mở bảng (chỉ hỏi lúc bấm, và hỏi ngầm); trạng thái micro cũng được hỏi ngầm. Với tai nghe Bluetooth, các câu hỏi này có thể làm đứng giao diện cả trăm mili giây
+- Tab Trồng cây không vẽ lại các nút Tự do / Pomodoro mỗi lần chuyển tab
+- **Máy đo khựng**: mỗi lần giao diện bị đứng quá 150 ms, startup.log ghi lại bao lâu và lúc đó đang làm gì (không ghi nội dung gì của bạn), để tìm đúng chỗ còn lag
+
 ### Mới trong v2.7.0
 - **📌 Giữ im Dynamic**: nút ghim ở hàng nút trên cùng của bảng (hoặc menu khay). Ghim rồi thì bảng không tự đóng khi chuột rời đi, chép rồi dán bao nhiêu lần cũng được. Bấm ghim lần nữa (hoặc Esc khi chuột trên bảng) để thả
 - **Kéo thả từ tab Copy**: kéo chữ hoặc ảnh ra Messenger, Word, thư mục… (thả vào thư mục ra file .png)

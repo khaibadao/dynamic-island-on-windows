@@ -273,6 +273,7 @@ public partial class App : Application
         await StartWithRetry("notifications", _listener.StartAsync);
         await StartWithRetry("music", _media.StartAsync);
         CrashLog.Write("Ready");
+        StallWatch.Start(Dispatcher);   // logs any moment the screen freezes > 150 ms
     }
 
     private static void Try(string what, Action action)
