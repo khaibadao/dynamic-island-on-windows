@@ -18,6 +18,7 @@ public partial class App : Application
     private ClipboardService? _clips;
     private FocusService? _focus;
     private PomodoroService? _pomo;
+    private ScheduleService? _schedule;
     private VolumeWatcher? _volume;
     private BluetoothBatteryWatcher? _headsets;
     private FocusWidget? _focusWidget;
@@ -188,6 +189,31 @@ public partial class App : Application
             GlyphColor = (exams[0].Due.Date - DateTime.Today).Days switch { <= 0 => "#FF5C5C", <= 3 => "#FF9F0A", _ => "#4DA3FF" },
             OnClick = () => _notch?.Dispatcher.BeginInvoke(new Action(() => _notch.OpenTab("deadlines")))
         }, keepInHistory: false, bypassDnd: true);
+
+        // Lịch học: 15 minutes before each class, and at 20:00 what's on tomorrow
+        _schedule = new ScheduleService();
+        _notch.UseSchedule(_schedule);
+        _schedule.Upcoming += (c, start) => ShowOnIsland(new NotificationData
+        {
+            AppName = "Lịch học",
+            Title   = $"Sắp vào {c.Subject}",
+            Body    = $"{start:HH:mm}" + (c.Room != null ? $" · phòng {c.Room}" : "") + $" · còn {Math.Max(1, (int)Math.Round((start - DateTime.Now).TotalMinutes))} phút",
+            Glyph   = "\uE8BF", GlyphColor = "#34C7C7",
+            OnClick = () => _notch?.Dispatcher.BeginInvoke(new Action(() => _notch.OpenTab("schedule")))
+        }, keepInHistory: false);
+        _schedule.Tomorrow += list => ShowOnIsland(new NotificationData
+        {
+            AppName = "Lịch học",
+            Title   = $"Mai bạn có {list.Count} buổi học",
+            Body    = $"Tiết đầu {ScheduleService.Hm(list[0].Start)} · {list[0].Subject}" + (list[0].Room != null ? $" · {list[0].Room}" : "") + " · nhớ đặt báo thức",
+            Glyph   = "\uE8BF", GlyphColor = "#34C7C7",
+            OnClick = () => _notch?.Dispatcher.BeginInvoke(new Action(() => _notch.OpenTab("schedule")))
+        }, keepInHistory: false);
+
+        // Sunday evening: the week in one card
+        var weekly = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMinutes(5) };
+        weekly.Tick += (_, _) => WeeklySummary();
+        weekly.Start();
 
         _focusWidget = new FocusWidget(_focus);   // the small floating timer while a tree grows
         _ = _history.RestoreIconsAsync();   // site logos for notifications kept from last time
@@ -412,6 +438,41 @@ public partial class App : Application
     {
         s = s.ReplaceLineEndings(" ").Trim();
         return s.Length <= max ? s : s[..(max - 1)] + "…";
+    }
+
+    /// <summary>Sunday from 19:00, once: hours of focus, trees, streak and the best day of the week.</summary>
+    private void WeeklySummary()
+    {
+        var now = DateTime.Now;
+        if (_focus == null || now.DayOfWeek != DayOfWeek.Sunday || now.Hour < 19) return;
+        if (AppSettings.Current.WeeklySummaryDay?.Date == now.Date) return;
+        AppSettings.Current.WeeklySummaryDay = now.Date;
+        AppSettings.Current.Save();
+
+        var monday = now.Date.AddDays(-6);
+        var days = _focus.LastDays(7);
+        int minutes = days.Sum(d => d.Minutes), trees = days.Sum(d => d.Trees);
+        var best = days.OrderByDescending(d => d.Minutes).First();
+        string[] names = { "Chủ nhật", "Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7" };
+        int classes = AppSettings.Current.Schedule.Count(c => c.Date == null || (c.Date >= monday && c.Date <= now.Date));
+
+        var parts = new List<string>();
+        if (minutes > 0) parts.Add($"{(minutes >= 60 ? $"{minutes / 60} giờ {minutes % 60:00} phút" : $"{minutes} phút")} tập trung");
+        if (trees > 0) parts.Add($"{trees} cây");
+        int streak = _focus.Streak();
+        if (streak >= 2) parts.Add($"chuỗi {streak} ngày");
+        if (best.Minutes > 0) parts.Add($"chăm nhất: {names[(int)best.Day.DayOfWeek]}");
+        if (classes > 0) parts.Add($"{classes} buổi học");
+
+        ShowOnIsland(new NotificationData
+        {
+            AppName = "Tổng kết tuần",
+            Title   = minutes > 0 ? "Tuần này của bạn" : "Tuần này chưa trồng cây nào",
+            Body    = parts.Count > 0 ? string.Join(" · ", parts) : "Tuần sau thử một vòng Pomodoro nhé, Mây chờ đó!",
+            Glyph   = "\uE9D2",
+            GlyphColor = "#34C759",
+            OnClick = () => _notch?.Dispatcher.BeginInvoke(new Action(() => _notch.OpenTab("focus")))
+        }, keepInHistory: true, bypassDnd: false);
     }
 
     private NotificationData MakeFocusNotification(FocusSession session)

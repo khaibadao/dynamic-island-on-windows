@@ -91,9 +91,9 @@ public partial class NotchWindow : Window
     /// <summary>"Mute this app" from a notification card.</summary>
     public event Action<NotificationData>? MuteRequested;
 
-    private static readonly string[] Tabs     = { "music", "focus", "notifications", "clipboard", "deadlines" };
-    private static readonly string[] TabNames = { "Nhạc", "Trồng cây", "Thông báo", "Copy", "Hạn chót" };
-    private static readonly string[] TabGlyphs = { "\uE8D6", "", "\uEA8F", "\uE77F", "\uE787" };   // tree is drawn
+    private static readonly string[] Tabs     = { "music", "focus", "notifications", "clipboard", "deadlines", "schedule" };
+    private static readonly string[] TabNames = { "Nhạc", "Trồng cây", "Thông báo", "Copy", "Hạn chót & ghi chú", "Lịch học" };
+    private static readonly string[] TabGlyphs = { "\uE8D6", "", "\uEA8F", "\uE77F", "\uE787", "\uE8BF" };   // tree is drawn
 
     /// <summary>Each tab's icon has its own colour (the tree draws its own).</summary>
     private static readonly Color[] TabColours =
@@ -103,6 +103,7 @@ public partial class NotchWindow : Window
         Color.FromRgb(0xFF, 0xB0, 0x20),   // Thông báo: orange-yellow
         Color.FromRgb(0x4D, 0xA3, 0xFF),   // Copy: blue
         Color.FromRgb(0xB3, 0x8C, 0xFF),   // Hạn chót: purple
+        Color.FromRgb(0x34, 0xC7, 0xC7),   // Lịch học: teal
     };
     private string _clipMode = "texts";   // the Copy tab's section: "texts" or "images"
 
@@ -121,7 +122,7 @@ public partial class NotchWindow : Window
         {
             _closeTimer.Stop();
             // Only the visible panel counts, not the window's transparent area.
-            if (!_seeking && !_typing && !_pinned && !_dragging && !NativeInterop.IsCursorOver(Expanded)) Collapse();
+            if (!_seeking && !_typing && !_pinned && !_dragging && !_pickingFile && !NativeInterop.IsCursorOver(Expanded)) Collapse();
         };
         _volumeTimer.Tick += (_, _) => { _volumeTimer.Stop(); VolumeView.Visibility = Visibility.Collapsed; ShowRest(); };
         _headsetTimer.Tick += (_, _) => HideHeadset();
@@ -786,6 +787,7 @@ public partial class NotchWindow : Window
         NotificationsTab.Visibility = tab == "notifications" ? Visibility.Visible : Visibility.Collapsed;
         ClipboardTab.Visibility     = tab == "clipboard"     ? Visibility.Visible : Visibility.Collapsed;
         DeadlinesTab.Visibility     = tab == "deadlines"     ? Visibility.Visible : Visibility.Collapsed;
+        ScheduleTab.Visibility      = tab == "schedule"      ? Visibility.Visible : Visibility.Collapsed;
         UpdateSideBar();
 
         // Slide in from the side we're moving to, with a soft fade
@@ -822,6 +824,10 @@ public partial class NotchWindow : Window
                 break;
             case "deadlines":
                 RebuildDeadlines();
+                break;
+            case "schedule":
+                _scheduleDay = DateTime.Today;
+                ShowScheduleImport(!ScheduleServiceHasAny);
                 break;
         }
         ApplyLyricsLayout(animateWidth);
@@ -920,6 +926,15 @@ public partial class NotchWindow : Window
             PillClock.Text = DateTime.Now.ToString("HH:mm");
         }
 
+        // In class (and no tree growing): "OSG202 · 25′" next to the time
+        var lesson = focus ? null : ScheduleService.Now(DateTime.Now);
+        if (lesson != null)
+        {
+            int left = Math.Max(1, (int)Math.Ceiling((lesson.End - DateTime.Now.TimeOfDay).TotalMinutes));
+            PillClass.Text = $"{Short(lesson.Subject, 10)} · {left}\u2032";
+        }
+        PillClass.Visibility = lesson != null ? Visibility.Visible : Visibility.Collapsed;
+
         // Style C: one fixed white for the digits, the bars and (a little softer) the rim
         PillLeaf.Visibility   = focus ? Visibility.Visible : Visibility.Collapsed;
         SwayLeaf(focus);
@@ -931,6 +946,8 @@ public partial class NotchWindow : Window
         PillGlow.Color        = Neutral;
         PillGlow.Opacity      = 0.25;
     }
+
+    private static string Short(string s, int max) => s.Length <= max ? s : s[..(max - 1)] + "…";
 
     private string _pillTitle = "";
 
@@ -2514,6 +2531,270 @@ public partial class NotchWindow : Window
         }
     }
 
+    // ── Lịch học ──────────────────────────────────────────────────────
+    private ScheduleService? _schedule;
+    private DateTime _scheduleDay = DateTime.Today;
+    private bool _scheduleImporting;
+    private bool ScheduleServiceHasAny => AppSettings.Current.Schedule.Count > 0;
+
+    /// <summary>Called by the app once.</summary>
+    public void UseSchedule(ScheduleService schedule)
+    {
+        _schedule = schedule;
+        _schedule.Changed += () => { if (_tab == "schedule" && _expanded) RebuildSchedule(); };
+    }
+
+    private void ShowScheduleImport(bool on)
+    {
+        _scheduleImporting = on;
+        ScheduleImportView.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+        ScheduleScroll.Visibility     = on ? Visibility.Collapsed : Visibility.Visible;
+        ScheduleImportBtn.Content     = on ? (ScheduleServiceHasAny ? "Xem lịch" : "Nhập lịch") : "Nhập lịch";
+        ScheduleImportBtn.Visibility  = on && !ScheduleServiceHasAny ? Visibility.Collapsed : Visibility.Visible;
+        ScheduleClearBtn.Visibility   = ScheduleServiceHasAny ? Visibility.Visible : Visibility.Collapsed;
+        var remind = AppSettings.Current.ScheduleReminders;
+        ScheduleRemindSwitch.Background = remind ? Frozen(Color.FromRgb(0x34, 0xC7, 0xC7)) : Frozen(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF));
+        ScheduleRemindKnob.HorizontalAlignment = remind ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+        if (on && SheetLink.Text.Length == 0 && AppSettings.Current.ScheduleSheetUrl is { } link) SheetLink.Text = link;
+        RebuildSchedule();
+    }
+
+    private void ScheduleImport_Click(object sender, RoutedEventArgs e) => ResizeAfter(() => ShowScheduleImport(!_scheduleImporting));
+
+    /// <summary>Runs a change inside the tab and lets the panel glide to its new height.</summary>
+    private void ResizeAfter(Action change)
+    {
+        ContentCard.BeginAnimation(HeightProperty, null);
+        double from = ContentCard.ActualHeight;
+        change();
+        ContentCard.UpdateLayout();
+        double to = ContentCard.ActualHeight;
+        if (Expanded.IsVisible && from > 0 && Math.Abs(to - from) > 1)
+            ContentCard.BeginAnimation(HeightProperty, new DoubleAnimation(from, to, TimeSpan.FromMilliseconds(200))
+            {
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }, FillBehavior = FillBehavior.Stop
+            });
+    }
+
+    private void RebuildSchedule()
+    {
+        // Day picker: T2 … CN of this week, today marked
+        ScheduleDays.Children.Clear();
+        var monday = DateTime.Today.AddDays(-(ScheduleImport.Iso(DateTime.Today.DayOfWeek) - 1));
+        for (int i = 0; i < 7; i++)
+        {
+            var day = monday.AddDays(i);
+            bool count = ScheduleService.On(day).Count > 0;
+            var seg = Segment(ShortDays[(int)day.DayOfWeek], day == _scheduleDay, () => { _scheduleDay = day; if (_scheduleImporting) ShowScheduleImport(false); else ResizeAfter(RebuildSchedule); });
+            seg.Padding = new Thickness(8, 3, 8, 3);
+            if (day == DateTime.Today && seg.Child is TextBlock tb) tb.TextDecorations = TextDecorations.Underline;
+            if (!count) seg.Opacity = 0.55;
+            ScheduleDays.Children.Add(seg);
+        }
+
+        ScheduleList.Children.Clear();
+        if (_scheduleImporting) return;
+        var classes = ScheduleService.On(_scheduleDay);
+        var now = DateTime.Now;
+        if (classes.Count == 0)
+        {
+            ScheduleList.Children.Add(new TextBlock
+            {
+                Text = ScheduleServiceHasAny ? $"{Weekdays[(int)_scheduleDay.DayOfWeek]} không có tiết nào. Nghỉ ngơi nhé!" : "Chưa có lịch học. Bấm \u201CNhập lịch\u201D để thêm.",
+                Foreground = Frozen(Color.FromArgb(0x99, 0xFF, 0xFF, 0xFF)), FontSize = 12, FontFamily = new FontFamily("Segoe UI"),
+                HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 18, 0, 18)
+            });
+            return;
+        }
+        var teal = Color.FromRgb(0x34, 0xC7, 0xC7);
+        foreach (var c in classes)
+        {
+            bool today = _scheduleDay == DateTime.Today;
+            bool live = today && now.TimeOfDay >= c.Start && now.TimeOfDay < c.End;
+            bool done = today && now.TimeOfDay >= c.End;
+            string? badge = live ? $"còn {Math.Max(1, (int)Math.Ceiling((c.End - now.TimeOfDay).TotalMinutes))} phút"
+                          : today && !done && c.Start - now.TimeOfDay <= TimeSpan.FromHours(3) ? $"sau {DeadlineService.Left(now.Date + c.Start, now).Replace("còn ", "")}"
+                          : null;
+            var colour = live ? Color.FromRgb(0x30, 0xD1, 0x58) : teal;
+            var id = c.Id;
+            var row = PlannerRow(colour, null, c.Subject,
+                $"{ScheduleService.Hm(c.Start)} – {ScheduleService.Hm(c.End)}" + (c.Room != null ? $" · {c.Room}" : "") + (c.Date == null ? "" : $" · chỉ ngày {c.Date:dd/MM}"),
+                badge, strike: false, highlighted: false, remove: () => _schedule?.Remove(id), click: () => { });
+            row.Opacity = done ? 0.5 : 1;
+            row.Cursor = Cursors.Arrow;
+            row.ToolTip = null;
+            ScheduleList.Children.Add(row);
+        }
+    }
+
+    private void SayScheduleHint(string text, bool ok = true)
+    {
+        ScheduleHint.Text = text;
+        ScheduleHint.Foreground = ok ? Frozen(Color.FromRgb(0x7F, 0xE3, 0xE3)) : Frozen(Color.FromRgb(0xFF, 0xC0, 0x5A));
+        ScheduleHint.Visibility = text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>After an import: show the classes (the day with the most, or today).</summary>
+    private void ScheduleImported(string message, bool ok)
+    {
+        SayScheduleHint(message, ok);
+        if (ok && ScheduleServiceHasAny)
+        {
+            _scheduleDay = ScheduleService.On(DateTime.Today).Count > 0 ? DateTime.Today
+                : Enumerable.Range(0, 7).Select(i => DateTime.Today.AddDays(i)).FirstOrDefault(d => ScheduleService.On(d).Count > 0, DateTime.Today);
+            ResizeAfter(() => ShowScheduleImport(false));
+        }
+        else ResizeAfter(() => ShowScheduleImport(true));
+    }
+
+    private async void SheetLink_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape) { EndTyping(collapse: false); e.Handled = true; return; }
+        if (e.Key != Key.Enter || _schedule == null) return;
+        e.Handled = true;
+        var link = SheetLink.Text.Trim();
+        if (link.Length == 0) return;
+        EndTyping(collapse: false);
+        SayScheduleHint("Đang đọc sheet…");
+        var msg = await _schedule.FromSheetAsync(link);
+        ScheduleImported(msg, msg.StartsWith("Đã"));
+    }
+
+    private void SheetLink_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (_typing) return;
+        BeginTyping(SheetLink);
+        e.Handled = true;
+    }
+
+    private void SheetLink_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (!_ready) return;
+        SheetLinkPlaceholder.Visibility = SheetLink.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void SchedulePasteFap_Click(object sender, RoutedEventArgs e)
+    {
+        if (_schedule == null) return;
+        string text = "";
+        try { if (Clipboard.ContainsText()) text = Clipboard.GetText(); } catch { }
+        if (text.Trim().Length < 10) { SayScheduleHint("Chưa có gì để dán. Trên FAP: Weekly timetable → Ctrl + A → Ctrl + C rồi bấm lại nhé.", ok: false); return; }
+        var msg = _schedule.FromPaste(text);
+        ScheduleImported(msg, msg.StartsWith("Đã"));
+    }
+
+    private async void SchedulePasteImage_Click(object sender, RoutedEventArgs e)
+    {
+        BitmapSource? picture = null;
+        try { if (Clipboard.ContainsImage()) picture = Clipboard.GetImage(); } catch { }
+        if (picture == null) { SayScheduleHint("Chưa có ảnh trong clipboard. Chụp lịch bằng Win + Shift + S rồi bấm lại, hoặc kéo ảnh vào đây.", ok: false); return; }
+        await ReadSchedulePicture(SavePng(picture));
+    }
+
+    private static string SavePng(BitmapSource picture)
+    {
+        System.IO.Directory.CreateDirectory(DragFolder);
+        var path = System.IO.Path.Combine(DragFolder, $"lich-{DateTime.Now:HHmmss}.png");
+        var png = new PngBitmapEncoder();
+        png.Frames.Add(BitmapFrame.Create(picture));
+        using (var fs = System.IO.File.Create(path)) png.Save(fs);
+        return path;
+    }
+
+    private async System.Threading.Tasks.Task ReadSchedulePicture(string path)
+    {
+        if (_schedule == null) return;
+        SayScheduleHint("Đang đọc ảnh…");
+        var (msg, count) = await _schedule.FromImageAsync(path);
+        ScheduleImported(msg, count > 0);
+    }
+
+    private void ScheduleFile_Click(object sender, RoutedEventArgs e)
+    {
+        if (_schedule == null) return;
+        _pickingFile = true;
+        NativeInterop.SetActivatable(this, true);
+        try
+        {
+            var dialog = new Microsoft.Win32.OpenFileDialog
+            {
+                Title = "Chọn file lịch học",
+                Filter = "Lịch học (*.xlsx;*.csv;*.ics;*.png;*.jpg)|*.xlsx;*.csv;*.ics;*.png;*.jpg;*.jpeg|Tất cả|*.*"
+            };
+            if (dialog.ShowDialog(this) == true) _ = ImportScheduleFile(dialog.FileName);
+        }
+        finally
+        {
+            _pickingFile = false;
+            NativeInterop.SetActivatable(this, false);
+        }
+    }
+
+    private bool _pickingFile;
+
+    private async System.Threading.Tasks.Task ImportScheduleFile(string path)
+    {
+        if (_schedule == null) return;
+        var ext = System.IO.Path.GetExtension(path).ToLowerInvariant();
+        if (ext is ".png" or ".jpg" or ".jpeg" or ".bmp") { await ReadSchedulePicture(path); return; }
+        var msg = _schedule.FromFile(path);
+        ScheduleImported(msg, msg.StartsWith("Đã"));
+    }
+
+    private void Schedule_DragOver(object sender, DragEventArgs e)
+    {
+        e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) || e.Data.GetDataPresent(DataFormats.Bitmap) ? DragDropEffects.Copy : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private async void Schedule_Drop(object sender, DragEventArgs e)
+    {
+        e.Handled = true;
+        if (_dragging) return;   // our own copied item dragged over
+        if (e.Data.GetData(DataFormats.FileDrop) is string[] { Length: > 0 } files) await ImportScheduleFile(files[0]);
+        else if (e.Data.GetData(DataFormats.Bitmap) is BitmapSource picture) await ReadSchedulePicture(SavePng(picture));
+    }
+
+    /// <summary>A timetable file or picture dropped anywhere on the open panel goes to Lịch học.</summary>
+    private void Panel_DragOver(object sender, DragEventArgs e)
+    {
+        if (_dragging) return;
+        _closeTimer.Stop();
+        if (_tab != "schedule" && (e.Data.GetDataPresent(DataFormats.FileDrop) || e.Data.GetDataPresent(DataFormats.Bitmap)))
+        {
+            SelectTab("schedule", Array.IndexOf(Tabs, "schedule") - Array.IndexOf(Tabs, _tab));
+            ShowScheduleImport(true);
+        }
+    }
+
+    private void ScheduleRemind_Click(object sender, MouseButtonEventArgs e)
+    {
+        AppSettings.Current.ScheduleReminders = !AppSettings.Current.ScheduleReminders;
+        AppSettings.Current.Save();
+        ShowScheduleImport(_scheduleImporting);
+    }
+
+    private bool _confirmClearSchedule;
+
+    private void ScheduleClear_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_confirmClearSchedule)
+        {
+            _confirmClearSchedule = true;
+            ScheduleClearBtn.Content = "Bấm lần nữa để xoá";
+            var t = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+            t.Tick += (_, _) => { t.Stop(); _confirmClearSchedule = false; ScheduleClearBtn.Content = "Xoá lịch"; };
+            t.Start();
+            return;
+        }
+        _confirmClearSchedule = false;
+        ScheduleClearBtn.Content = "Xoá lịch";
+        _schedule?.Clear();
+        SheetLink.Text = "";
+        SayScheduleHint("Đã xoá lịch học");
+        ResizeAfter(() => ShowScheduleImport(true));
+    }
+
     // ── Recent notifications ──────────────────────────────────────────
     private string? _notifFilter;                       // show only this app, or all
     private readonly Dictionary<string, Color> _appColours = new();
@@ -2885,6 +3166,7 @@ public partial class NotchWindow : Window
     // ── Quick buttons ─────────────────────────────────────────────────
     private void UpdateQuickButtons()
     {
+        UpdateOutputButton();
         var muted = QuickActions.IsMicMuted();
         MicBtn.IsEnabled  = muted != null;
         MicBtn.Foreground = muted == true ? Frozen(Color.FromRgb(0xFF, 0x45, 0x3A)) : Frozen(Color.FromArgb(0xCC, 0xFF, 0xFF, 0xFF));
@@ -2896,6 +3178,32 @@ public partial class NotchWindow : Window
         DndBtn.Background = dnd ? Frozen(Color.FromArgb(0x33, DndColour.R, DndColour.G, DndColour.B)) : Brushes.Transparent;
         DndBtn.ToolTip    = dnd ? "Không làm phiền: BẬT · thông báo vẫn vào lịch sử" : "Không làm phiền: tắt";
         UpdateStrip();
+    }
+
+    // ── Sound output: one click goes to the next speakers / headphones ──
+    private void UpdateOutputButton()
+    {
+        var outputs = AudioOutputs.List();
+        var now = outputs.FirstOrDefault(o => o.IsDefault);
+        OutputBtn.Content   = now?.Headphones == true ? "\uE7F6" : "\uE7F5";
+        OutputBtn.IsEnabled = outputs.Count > 1;
+        OutputBtn.ToolTip   = outputs.Count switch
+        {
+            0 => "Không thấy loa / tai nghe nào",
+            1 => $"Đang phát qua {now?.Name ?? outputs[0].Name} · chỉ có một thiết bị",
+            _ => $"Đang phát qua {now?.Name ?? "?"} · bấm để chuyển sang {outputs[(Math.Max(0, outputs.ToList().FindIndex(o => o.IsDefault)) + 1) % outputs.Count].Name}"
+        };
+    }
+
+    private void Output_Click(object sender, RoutedEventArgs e)
+    {
+        var outputs = AudioOutputs.List();
+        if (outputs.Count < 2) return;
+        int i = Math.Max(0, outputs.ToList().FindIndex(o => o.IsDefault));
+        var next = outputs[(i + 1) % outputs.Count];
+        if (AudioOutputs.Use(next.Id)) Notice?.Invoke(next.Headphones ? "Đã chuyển sang tai nghe" : "Đã chuyển sang loa", next.Name);
+        else Notice?.Invoke("Không chuyển được loa", "Thử chọn trong biểu tượng loa ở thanh taskbar nhé");
+        UpdateOutputButton();
     }
 
     private void Mic_Click(object sender, RoutedEventArgs e)

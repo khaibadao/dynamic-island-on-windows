@@ -392,6 +392,9 @@
                             <DropShadowEffect x:Name="PillClockGlow" Color="White" BlurRadius="5" ShadowDepth="0" Opacity="0"/>
                         </ui:LedClock.Effect>
                     </ui:LedClock>
+                    <!-- In class: the subject and the minutes until it ends -->
+                    <TextBlock x:Name="PillClass" Foreground="#9FD0FF" FontSize="11" FontWeight="SemiBold" FontFamily="Segoe UI"
+                               Margin="8,0,0,0" VerticalAlignment="Center" Visibility="Collapsed"/>
                     <StackPanel x:Name="PillBars" Orientation="Horizontal" Height="11" Margin="10,0,0,0"
                                 VerticalAlignment="Center" Visibility="Collapsed">
                         <Rectangle x:Name="Bar1" Width="2.4" Height="11" RadiusX="1.2" RadiusY="1.2" Fill="White" Margin="0.9,0" RenderTransformOrigin="0.5,0.5">
@@ -539,7 +542,8 @@
                 VerticalAlignment="Top"
                 RenderTransformOrigin="0.5,0"
                 MouseEnter="Expanded_MouseEnter"
-                MouseLeave="Expanded_MouseLeave">
+                MouseLeave="Expanded_MouseLeave"
+                AllowDrop="True" DragOver="Panel_DragOver">
             <Border.RenderTransform>
                 <ScaleTransform x:Name="ExpandedScale" ScaleX="1" ScaleY="1"/>
             </Border.RenderTransform>
@@ -581,6 +585,7 @@
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                         <Button x:Name="PinBtn" Style="{StaticResource QuickButton}" Content="&#xE718;" Click="Pin_Click"
                                 ToolTip="Giữ im Dynamic: bảng không tự đóng khi chuột rời đi"/>
+                        <Button x:Name="OutputBtn" Style="{StaticResource QuickButton}" Content="&#xE7F5;" Click="Output_Click"/>
                         <Button x:Name="MicBtn" Style="{StaticResource QuickButton}" Content="&#xE720;" Click="Mic_Click"/>
                         <Button x:Name="DndBtn" Style="{StaticResource QuickButton}" Content="&#xE708;" Click="Dnd_Click"/>
                         <Button Style="{StaticResource QuickButton}" Content="&#xE722;" Click="Screenshot_Click" ToolTip="Chụp màn hình (Win + Shift + S)"/>
@@ -1062,6 +1067,77 @@
                             <TextBlock Text="Chưa có gì. Hạn chót được nhắc trước 1 ngày, 1 giờ và lúc đến hạn. Bắt đầu bằng &quot;Thi&quot; để đếm ngược ngày thi. Ctrl + Alt + N để ghi nhanh từ bất cứ đâu."
                                        Foreground="#99FFFFFF" FontSize="12" FontFamily="Segoe UI" Margin="0,8,0,0"
                                        TextWrapping="Wrap" TextAlignment="Center" MaxWidth="380"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- Lịch học: the day's classes; ways to bring in a timetable -->
+                    <Grid x:Name="ScheduleTab" Visibility="Collapsed" Margin="10,8,10,8" AllowDrop="True"
+                          DragOver="Schedule_DragOver" Drop="Schedule_Drop">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <Grid>
+                            <Border Background="#1AFFFFFF" CornerRadius="10" Padding="3" HorizontalAlignment="Left">
+                                <StackPanel x:Name="ScheduleDays" Orientation="Horizontal"/>
+                            </Border>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                <Button x:Name="ScheduleImportBtn" Content="Nhập lịch" Style="{StaticResource ActionButton}"
+                                        Background="#2634C7C7" Foreground="#7FE3E3" Padding="12,4" Click="ScheduleImport_Click"/>
+                            </StackPanel>
+                        </Grid>
+                        <TextBlock x:Name="ScheduleHint" Grid.Row="1" Foreground="#7FE3E3" FontSize="11" FontFamily="Segoe UI"
+                                   Margin="4,6,0,0" TextWrapping="Wrap" Visibility="Collapsed"/>
+
+                        <!-- The day's classes -->
+                        <ScrollViewer x:Name="ScheduleScroll" Grid.Row="2" MaxHeight="190" Margin="0,8,0,0" VerticalScrollBarVisibility="Hidden" Focusable="False">
+                            <StackPanel x:Name="ScheduleList"/>
+                        </ScrollViewer>
+
+                        <!-- Bringing a timetable in -->
+                        <StackPanel x:Name="ScheduleImportView" Grid.Row="2" Margin="0,8,0,0" Visibility="Collapsed">
+                            <Border Background="#1AFFFFFF" CornerRadius="10" Height="32" Padding="10,0">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="&#xE71B;" FontFamily="{StaticResource IconFont}" FontSize="12" Foreground="#34C7C7"
+                                               VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <TextBlock x:Name="SheetLinkPlaceholder" Grid.Column="1" IsHitTestVisible="False"
+                                               Text="Dán link Google Sheet rồi Enter (chia sẻ: ai có link đều xem được)"
+                                               Foreground="#88FFFFFF" FontSize="12" FontFamily="Segoe UI" VerticalAlignment="Center"/>
+                                    <TextBox x:Name="SheetLink" Grid.Column="1" Background="Transparent" BorderThickness="0" Foreground="White"
+                                             CaretBrush="White" FontSize="12" FontFamily="Segoe UI" VerticalContentAlignment="Center"
+                                             PreviewMouseLeftButtonDown="SheetLink_PreviewMouseLeftButtonDown"
+                                             KeyDown="SheetLink_KeyDown" TextChanged="SheetLink_TextChanged"/>
+                                </Grid>
+                            </Border>
+                            <UniformGrid Columns="3" Margin="0,8,0,0">
+                                <Button Content="Dán từ FAP" Style="{StaticResource ActionButton}" Background="#1AFFFFFF" Foreground="White"
+                                        Margin="0,0,6,0" Click="SchedulePasteFap_Click"
+                                        ToolTip="Trên FAP: Weekly timetable → Ctrl + A → Ctrl + C, rồi bấm nút này"/>
+                                <Button Content="Dán ảnh lịch" Style="{StaticResource ActionButton}" Background="#1AFFFFFF" Foreground="White"
+                                        Margin="0,0,6,0" Click="SchedulePasteImage_Click"
+                                        ToolTip="Chụp lịch (Win + Shift + S) rồi bấm nút này · hoặc kéo ảnh vào đây"/>
+                                <Button Content="Chọn file…" Style="{StaticResource ActionButton}" Background="#1AFFFFFF" Foreground="White"
+                                        Click="ScheduleFile_Click" ToolTip=".xlsx · .csv · .ics (lịch Google Calendar)"/>
+                            </UniformGrid>
+                            <TextBlock Foreground="#88FFFFFF" FontSize="11" FontFamily="Segoe UI" Margin="2,8,0,0" TextWrapping="Wrap"
+                                       Text="Sheet / Excel cần các cột: Thứ · Bắt đầu · Kết thúc · Môn · Phòng. Kéo thả ảnh chụp lịch hoặc file vào bảng này cũng được. Ảnh được đọc ngay trên máy, không gửi đi đâu."/>
+                            <Grid Margin="0,8,0,0">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Border x:Name="ScheduleRemindSwitch" Width="38" Height="22" CornerRadius="11" Cursor="Hand"
+                                            VerticalAlignment="Center" MouseLeftButtonUp="ScheduleRemind_Click">
+                                        <Ellipse x:Name="ScheduleRemindKnob" Width="16" Height="16" Fill="White" HorizontalAlignment="Left" Margin="3,0"/>
+                                    </Border>
+                                    <TextBlock Text="Nhắc trước 15 phút · 20h báo lịch ngày mai" Foreground="#CCFFFFFF" FontSize="11.5"
+                                               FontFamily="Segoe UI" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </StackPanel>
+                                <Button x:Name="ScheduleClearBtn" Content="Xoá lịch" Style="{StaticResource ActionButton}" HorizontalAlignment="Right"
+                                        Background="#33FF5A52" Foreground="#FF8A84" Padding="12,4" Click="ScheduleClear_Click"/>
+                            </Grid>
                         </StackPanel>
                     </Grid>
                 </Grid>
