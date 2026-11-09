@@ -579,6 +579,8 @@
                         </StackPanel>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                        <Button x:Name="PinBtn" Style="{StaticResource QuickButton}" Content="&#xE718;" Click="Pin_Click"
+                                ToolTip="Giữ im Dynamic: bảng không tự đóng khi chuột rời đi"/>
                         <Button x:Name="MicBtn" Style="{StaticResource QuickButton}" Content="&#xE720;" Click="Mic_Click"/>
                         <Button x:Name="DndBtn" Style="{StaticResource QuickButton}" Content="&#xE708;" Click="Dnd_Click"/>
                         <Button Style="{StaticResource QuickButton}" Content="&#xE722;" Click="Screenshot_Click" ToolTip="Chụp màn hình (Win + Shift + S)"/>
@@ -768,6 +770,7 @@
                             </Grid>
 
                             <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
+                                <Grid>
                                 <Border x:Name="PickedTree" Background="#1AFFFFFF" CornerRadius="10" Padding="4,2,10,2"
                                         HorizontalAlignment="Left" Cursor="Hand" MouseLeftButtonUp="PickedTree_Click">
                                     <StackPanel Orientation="Horizontal">
@@ -780,13 +783,21 @@
                                                    Margin="6,0,0,0" VerticalAlignment="Center"/>
                                     </StackPanel>
                                 </Border>
+                                <!-- Tự do | Pomodoro -->
+                                <Border Background="#1AFFFFFF" CornerRadius="10" Padding="3" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                    <StackPanel x:Name="FocusModeNav" Orientation="Horizontal"/>
+                                </Border>
+                                </Grid>
 
                                 <TextBlock x:Name="FocusRemaining" Foreground="White" FontSize="34" FontWeight="SemiBold"
                                            FontFamily="Segoe UI" Margin="0,4,0,0"/>
                                 <TextBlock x:Name="FocusSub" Foreground="#AAFFFFFF" FontSize="12" FontFamily="Segoe UI" Margin="0,0,0,6"/>
 
                                 <!-- Idle: drag the ruler; running: the progress bar -->
+                                <!-- Pomodoro: the rhythms (and the rest length when you set your own) -->
+                                <WrapPanel x:Name="PomoPlans" Margin="0,0,0,8" Visibility="Collapsed"/>
                                 <ui:TimeRuler x:Name="Ruler" Margin="0,0,0,8"/>
+                                <StackPanel x:Name="PomoCustomRow" Orientation="Horizontal" Margin="0,0,0,8" Visibility="Collapsed"/>
                                 <Grid x:Name="FocusProgress" Height="4" Margin="0,4,0,12" Visibility="Collapsed">
                                     <Border Background="#33FFFFFF" CornerRadius="2"/>
                                     <Border Background="#34C759" CornerRadius="2" RenderTransformOrigin="0,0.5">
@@ -817,6 +828,10 @@
                                             Background="White" Foreground="#10301F" Click="Plant_Click"/>
                                     <Button x:Name="GiveUpBtn" Content="Bỏ cuộc" Style="{StaticResource ActionButton}"
                                             Background="#33FF5A52" Foreground="#FF8A84" Click="GiveUp_Click" Visibility="Collapsed"/>
+                                    <Button x:Name="SkipBreakBtn" Content="Học tiếp luôn" Style="{StaticResource ActionButton}"
+                                            Background="White" Foreground="#10301F" Click="SkipBreak_Click" Visibility="Collapsed"/>
+                                    <Button x:Name="StopPomoBtn" Content="Dừng Pomodoro" Style="{StaticResource ActionButton}" Margin="8,0,0,0"
+                                            Background="#26FFFFFF" Foreground="White" Click="StopPomo_Click" Visibility="Collapsed"/>
                                 </StackPanel>
                                 <TextBlock x:Name="FocusWarn" Foreground="#FFD08A" FontSize="11.5" FontFamily="Segoe UI"
                                            TextWrapping="Wrap" Margin="0,8,0,0" Visibility="Collapsed"/>
@@ -1027,7 +1042,7 @@
                                 <TextBlock Text="&#xE710;" FontFamily="{StaticResource IconFont}" FontSize="12" Foreground="#B38CFF"
                                            VerticalAlignment="Center" Margin="0,0,8,0"/>
                                 <TextBlock x:Name="DeadlineAddPlaceholder" Grid.Column="1" IsHitTestVisible="False"
-                                           Text="Thêm hạn chót, vd: Nộp báo cáo PRO 15/11 17h · bấm một hạn để sửa"
+                                           Text="Nộp báo cáo PRO 15/11 17h · Thi PE PRO192 20/11 7h30 · không giờ = ghi chú"
                                            Foreground="#88FFFFFF" FontSize="12" FontFamily="Segoe UI" VerticalAlignment="Center"/>
                                 <TextBox x:Name="DeadlineAdd" Grid.Column="1" Background="Transparent" BorderThickness="0" Foreground="White"
                                          CaretBrush="White" FontSize="12" FontFamily="Segoe UI" VerticalContentAlignment="Center"
@@ -1044,7 +1059,7 @@
                                     Visibility="Collapsed" Margin="0,14">
                             <TextBlock Text="&#xE787;" FontFamily="{StaticResource IconFont}" FontSize="24"
                                        Foreground="#55B38CFF" HorizontalAlignment="Center"/>
-                            <TextBlock Text="Chưa có hạn chót nào. Tai thỏ sẽ nhắc trước 1 ngày, 1 giờ và lúc đến hạn."
+                            <TextBlock Text="Chưa có gì. Hạn chót được nhắc trước 1 ngày, 1 giờ và lúc đến hạn. Bắt đầu bằng &quot;Thi&quot; để đếm ngược ngày thi. Ctrl + Alt + N để ghi nhanh từ bất cứ đâu."
                                        Foreground="#99FFFFFF" FontSize="12" FontFamily="Segoe UI" Margin="0,8,0,0"
                                        TextWrapping="Wrap" TextAlignment="Center" MaxWidth="380"/>
                         </StackPanel>

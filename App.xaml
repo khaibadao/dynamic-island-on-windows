@@ -17,6 +17,7 @@
                         <MenuItem Header="Notch bar" Tag="notch" IsCheckable="True" Click="NotchToggle_Click"/>
                         <MenuItem Header="Music: On" Tag="music" Click="MusicToggle_Click"/>
                         <MenuItem Header="Start with Windows" Tag="autostart" IsCheckable="True" Click="AutoStartToggle_Click"/>
+                        <MenuItem Header="Giữ im Dynamic (bảng không tự đóng)" Tag="pin" IsCheckable="True" Click="Pin_Click"/>
                         <MenuItem Header="Hiện mèo" Tag="showcat" IsCheckable="True" Click="ShowCat_Click"/>
                         <MenuItem Header="Ẩn banner Windows trùng tai thỏ" Tag="banners" IsCheckable="True" Click="Banners_Click"
                                   ToolTip="Bỏ tích để trả lại banner thông báo của Windows (nhớ làm trước khi xoá app nếu cài bằng lệnh)"/>

@@ -261,6 +261,18 @@ public static class NativeInterop
     private struct LASTINPUTINFO { public uint cbSize; public uint dwTime; }
     [DllImport("user32.dll")] private static extern bool GetLastInputInfo(ref LASTINPUTINFO info);
 
+    [DllImport("user32.dll")] private static extern short GetAsyncKeyState(int key);
+    [DllImport("user32.dll")] private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint modifiers, uint key);
+
+    public const int WM_HOTKEY = 0x0312, QuickNoteHotkey = 0xB001;
+
+    /// <summary>Ctrl + Alt + N, sent to the window as WM_HOTKEY. False if another app has it.</summary>
+    public static bool RegisterQuickNoteHotkey(IntPtr hwnd) =>
+        RegisterHotKey(hwnd, QuickNoteHotkey, 0x0001 /*Alt*/ | 0x0002 /*Ctrl*/ | 0x4000 /*no repeat*/, 0x4E /*N*/);
+
+    /// <summary>Whether a key (virtual-key code) is held down right now, whichever window has focus.</summary>
+    public static bool KeyDown(int virtualKey) => (GetAsyncKeyState(virtualKey) & 0x8000) != 0;
+
     /// <summary>How long since the last key press or mouse move anywhere.</summary>
     public static TimeSpan IdleTime()
     {

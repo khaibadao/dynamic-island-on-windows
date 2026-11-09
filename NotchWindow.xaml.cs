@@ -121,7 +121,7 @@ public partial class NotchWindow : Window
         {
             _closeTimer.Stop();
             // Only the visible panel counts, not the window's transparent area.
-            if (!_seeking && !_typing && !NativeInterop.IsCursorOver(Expanded)) Collapse();
+            if (!_seeking && !_typing && !_pinned && !_dragging && !NativeInterop.IsCursorOver(Expanded)) Collapse();
         };
         _volumeTimer.Tick += (_, _) => { _volumeTimer.Stop(); VolumeView.Visibility = Visibility.Collapsed; ShowRest(); };
         _headsetTimer.Tick += (_, _) => HideHeadset();
@@ -144,7 +144,9 @@ public partial class NotchWindow : Window
         // Mây
         _focus.Finished += session => Dispatcher.BeginInvoke(new Action(() =>
         {
-            CatReact(session.Success ? CatMood.Happy : CatMood.Sad, session.Success ? 8 : 10);
+            double after = _focus.FocusedHours, before = after - session.Minutes / 60.0;
+            bool unlocked = session.Success && TreeCatalog.All.Any(t => t.UnlockHours > before && t.UnlockHours <= after);
+            CatReact(unlocked ? CatMood.Excited : session.Success ? CatMood.Happy : CatMood.Sad, unlocked ? 10 : session.Success ? 8 : 10);
             React(session.Success ? "love" : "sad");
         }));
         CatPanel.MouseLeftButtonUp += (_, _) => CatReact(CatMood.Happy, 2.5);   // a pat on the head
@@ -168,6 +170,9 @@ public partial class NotchWindow : Window
         _clips.Start(this);   // creates the window handle too
         // Two-finger sideways swipe / tilt wheel → previous / next tab
         System.Windows.Interop.HwndSource.FromHwnd(new System.Windows.Interop.WindowInteropHelper(this).Handle)?.AddHook(SidewaysHook);
+        // Ctrl + Alt + N anywhere: a quick note (skipped quietly if another app already uses it)
+        if (!NativeInterop.RegisterQuickNoteHotkey(new System.Windows.Interop.WindowInteropHelper(this).Handle))
+            CrashLog.Write("Ctrl+Alt+N is taken by another app: quick note only from the panel");
         Loaded += (_, _) =>
         {
             Recenter();
@@ -265,6 +270,7 @@ public partial class NotchWindow : Window
     {
         // In the open panel: pointer close to Mây → she rolls over for a belly rub
         if (_expanded) CatPanel.BellyUp = NativeInterop.IsCursorNear(CatPanel, 18);
+        if (_expanded && _pinned && NativeInterop.KeyDown(0x1B) && NativeInterop.IsCursorOver(Expanded)) { Pinned = false; Collapse(); }
         if (!IsVisible || _expanded) { _dwellStart = null; return; }
 
         FrameworkElement? target = Pill.IsVisible ? Pill : StripHost.IsVisible ? StripHost : null;
@@ -381,7 +387,9 @@ public partial class NotchWindow : Window
     }
 
     // ── Eyes watching the pointer ─────────────────────────────────────
-    private const double ZoneHalfWidth = 240, ZoneHeight = 100;   // ≈ the browser's tab + bookmark bars
+    private const double ZoneHalfWidth = 240;
+    /// <summary>How far down the eyes notice the pointer: the browser's tab + bookmark bars, plus a fifth of the screen.</summary>
+    private static double ZoneHeight => 100 + SystemParameters.PrimaryScreenHeight * 0.2;
     private DateTime? _zoneSince, _leftZoneAt;
     private DateTime _lastMove = DateTime.UtcNow, _lastDizzy;
     private Point _lastCursor, _lastDir;
@@ -530,7 +538,7 @@ public partial class NotchWindow : Window
     private void Expanded_MouseEnter(object sender, MouseEventArgs e) => _closeTimer.Stop();
     private void Expanded_MouseLeave(object sender, MouseEventArgs e)
     {
-        if (!_seeking && !_typing) _closeTimer.Start();
+        if (!_seeking && !_typing && !_pinned && !_dragging) _closeTimer.Start();
     }
 
     // ── Open / close ──────────────────────────────────────────────────
@@ -589,7 +597,7 @@ public partial class NotchWindow : Window
         }
 
         if (wasOpen) AmbientOpened(true);
-        if (!_typing) _closeTimer.Start();   // closes again if the mouse just passed by
+        if (!_typing && !_pinned) _closeTimer.Start();   // closes again if the mouse just passed by
     }
 
     private void Collapse()
@@ -731,6 +739,12 @@ public partial class NotchWindow : Window
     /// <summary>A sideways swipe on the touchpad (or a tilt wheel) flips tabs, one per gesture.</summary>
     private IntPtr SidewaysHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
+        if (msg == NativeInterop.WM_HOTKEY && wParam.ToInt32() == NativeInterop.QuickNoteHotkey)
+        {
+            OpenQuickNote();
+            handled = true;
+            return IntPtr.Zero;
+        }
         if (msg != WM_MOUSEHWHEEL || !_expanded) return IntPtr.Zero;
         int delta = (short)((wParam.ToInt64() >> 16) & 0xFFFF);
         // The image row scrolls sideways itself.
@@ -828,7 +842,7 @@ public partial class NotchWindow : Window
     // ── Every second ──────────────────────────────────────────────────
     private void OnTick()
     {
-        if (_focus.IsRunning) UpdateFocusTick();
+        if (_focus.IsRunning || _pomo?.OnBreak == true) UpdateFocusTick();
         UpdatePillClock();
         UpdateCat();
         if (_expanded)
@@ -838,7 +852,7 @@ public partial class NotchWindow : Window
             if (ClipboardTab.IsVisible) RefreshClipTimes();
 
             // Safety net in case MouseLeave never came: close once the pointer is gone.
-            if (!_seeking && !_typing && !_closeTimer.IsEnabled && !NativeInterop.IsCursorOver(Expanded))
+            if (!_seeking && !_typing && !_pinned && !_dragging && !_closeTimer.IsEnabled && !NativeInterop.IsCursorOver(Expanded))
                 _closeTimer.Start();
         }
     }
@@ -1695,7 +1709,8 @@ public partial class NotchWindow : Window
         Ruler.Minutes = _selectedMinutes;
         Ruler.Changed += m =>
         {
-            _selectedMinutes = m;
+            if (PomoMode) { AppSettings.Current.PomoCustomStudy = m; AppSettings.Current.Save(); }
+            else _selectedMinutes = m;
             if (!_focus.IsRunning) UpdateFocusUi();
         };
         _deep = new DeepFocus(_focus);
@@ -1769,28 +1784,156 @@ public partial class NotchWindow : Window
     private static string Duration(int minutes) =>
         minutes >= 60 ? $"{minutes / 60} giờ" + (minutes % 60 > 0 ? $" {minutes % 60} phút" : "") : $"{minutes} phút";
 
+    // ── Pomodoro ──────────────────────────────────────────────────────
+    private PomodoroService? _pomo;
+    private static bool PomoMode => AppSettings.Current.FocusMode == "pomodoro";
+
+    /// <summary>Called by the app once.</summary>
+    public void UsePomodoro(PomodoroService pomo)
+    {
+        _pomo = pomo;
+        _pomo.Changed += UpdateFocusUi;
+        _pomo.CycleDone += () => CatReact(CatMood.Excited, 10);
+        UpdateFocusUi();
+    }
+
+    private void SetFocusMode(string mode)
+    {
+        if (_focus.IsRunning || _pomo?.OnBreak == true || AppSettings.Current.FocusMode == mode) return;
+        AppSettings.Current.FocusMode = mode;
+        AppSettings.Current.Save();
+        ContentCard.BeginAnimation(HeightProperty, null);
+        double from = ContentCard.ActualHeight;
+        UpdateFocusUi();
+        ContentCard.UpdateLayout();
+        double to = ContentCard.ActualHeight;
+        if (Expanded.IsVisible && from > 0 && Math.Abs(to - from) > 1)
+            ContentCard.BeginAnimation(HeightProperty, new DoubleAnimation(from, to, TimeSpan.FromMilliseconds(200))
+            {
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }, FillBehavior = FillBehavior.Stop
+            });
+    }
+
+    /// <summary>The rhythm chips: Ngắn 25·5, Vừa 45·10, Sâu 50·10, Dài 90·20, Tự chỉnh.</summary>
+    private void BuildPomoPlans()
+    {
+        PomoPlans.Children.Clear();
+        var picked = AppSettings.Current.PomoPlan;
+        var green = Color.FromRgb(0x34, 0xC7, 0x59);
+        foreach (var plan in PomodoroService.Plans.Append(new PomoPlan("custom", "Tự chỉnh", 0, 0, "")))
+        {
+            bool on = plan.Key == picked;
+            var chip = new Border
+            {
+                CornerRadius = new CornerRadius(9), Padding = new Thickness(9, 3, 9, 4), Margin = new Thickness(0, 0, 5, 5), Cursor = Cursors.Hand,
+                Background = Frozen(on ? Color.FromArgb(0x40, green.R, green.G, green.B) : Color.FromArgb(0x1A, 0xFF, 0xFF, 0xFF)),
+                BorderThickness = new Thickness(1), BorderBrush = on ? Frozen(green) : Brushes.Transparent,
+                ToolTip = plan.Key == "custom" ? "Tự đặt số phút học và nghỉ" : $"Học {plan.Study} phút, nghỉ {plan.Break} phút · hợp với {plan.Hint}",
+                Child = new StackPanel
+                {
+                    Children =
+                    {
+                        new TextBlock { Text = plan.Name, Foreground = Brushes.White, FontSize = 11.5, FontWeight = FontWeights.SemiBold, FontFamily = new FontFamily("Segoe UI"), HorizontalAlignment = HorizontalAlignment.Center },
+                        new TextBlock
+                        {
+                            Text = plan.Key == "custom" ? $"{AppSettings.Current.PomoCustomStudy} · {AppSettings.Current.PomoCustomBreak}" : $"{plan.Study} · {plan.Break}",
+                            Foreground = Frozen(Color.FromArgb(0xAA, 0xFF, 0xFF, 0xFF)), FontSize = 10.5, FontFamily = new FontFamily("Segoe UI"), HorizontalAlignment = HorizontalAlignment.Center
+                        }
+                    }
+                }
+            };
+            var key = plan.Key;
+            chip.MouseLeftButtonUp += (_, _) =>
+            {
+                AppSettings.Current.PomoPlan = key;
+                AppSettings.Current.Save();
+                ContentCard.BeginAnimation(HeightProperty, null);
+                UpdateFocusUi();
+            };
+            PomoPlans.Children.Add(chip);
+        }
+    }
+
+    /// <summary>Own rhythm: the ruler sets the study minutes, this row the rest.</summary>
+    private void BuildPomoCustom()
+    {
+        PomoCustomRow.Children.Clear();
+        int rest = AppSettings.Current.PomoCustomBreak;
+        Button Step(string label, int delta) 
+        {
+            var b = new Button { Content = label, Style = (Style)FindResource("QuickButton"), Width = 24, Height = 24, FontSize = 12, Margin = new Thickness(0) };
+            b.Click += (_, _) =>
+            {
+                AppSettings.Current.PomoCustomBreak = Math.Clamp(AppSettings.Current.PomoCustomBreak + delta, 1, 60);
+                AppSettings.Current.Save();
+                UpdateFocusUi();
+            };
+            return b;
+        }
+        PomoCustomRow.Children.Add(new TextBlock { Text = "Nghỉ", Foreground = Frozen(Color.FromArgb(0xCC, 0xFF, 0xFF, 0xFF)), FontSize = 12, FontFamily = new FontFamily("Segoe UI"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) });
+        PomoCustomRow.Children.Add(Step("\u2212", -1));
+        PomoCustomRow.Children.Add(new TextBlock { Text = $"{rest} phút", Foreground = Brushes.White, FontSize = 12, FontWeight = FontWeights.SemiBold, FontFamily = new FontFamily("Segoe UI"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 6, 0), MinWidth = 44, TextAlignment = TextAlignment.Center });
+        PomoCustomRow.Children.Add(Step("+", +1));
+        PomoCustomRow.Children.Add(new TextBlock { Text = "· kéo thước để đổi phút học", Foreground = Frozen(Color.FromArgb(0x88, 0xFF, 0xFF, 0xFF)), FontSize = 11, FontFamily = new FontFamily("Segoe UI"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) });
+    }
+
+    private void SkipBreak_Click(object sender, RoutedEventArgs e) => _pomo?.SkipBreak();
+    private void StopPomo_Click(object sender, RoutedEventArgs e) => _pomo?.Stop();
+
     private void UpdateFocusUi()
     {
         bool running = _focus.IsRunning;
+        bool onBreak = _pomo?.OnBreak == true;
+        bool idle = !running && !onBreak;
+        bool pomo = PomoMode;
+        var plan = PomodoroService.Selected;
+        bool custom = pomo && plan.Key == "custom";
         var kind = running ? _focus.CurrentKind : _selectedKind;
 
-        Ruler.Visibility         = running ? Visibility.Collapsed : Visibility.Visible;
-        FocusProgress.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
-        PlantBtn.Visibility      = running ? Visibility.Collapsed : Visibility.Visible;
+        FocusModeNav.Children.Clear();
+        foreach (var (key, label) in new[] { ("free", "Tự do"), ("pomodoro", "Pomodoro") })
+        {
+            var seg = Segment(label, AppSettings.Current.FocusMode == key, () => SetFocusMode(key));
+            seg.Padding = new Thickness(9, 3, 9, 3);
+            if (!idle) { seg.Opacity = 0.5; seg.Cursor = Cursors.Arrow; }
+            FocusModeNav.Children.Add(seg);
+        }
+
+        if (custom) { Ruler.Minutes = Math.Clamp(AppSettings.Current.PomoCustomStudy, FocusService.MinMinutes, FocusService.MaxMinutes); BuildPomoCustom(); }
+        else if (!pomo && Ruler.Minutes != _selectedMinutes) Ruler.Minutes = _selectedMinutes;
+        if (pomo && idle) BuildPomoPlans();
+
+        Ruler.Visibility         = idle && (!pomo || custom) ? Visibility.Visible : Visibility.Collapsed;
+        PomoPlans.Visibility     = idle && pomo ? Visibility.Visible : Visibility.Collapsed;
+        PomoCustomRow.Visibility = idle && custom ? Visibility.Visible : Visibility.Collapsed;
+        FocusProgress.Visibility = idle ? Visibility.Collapsed : Visibility.Visible;
+        PlantBtn.Visibility      = idle ? Visibility.Visible : Visibility.Collapsed;
+        PlantBtn.Content         = pomo ? "Bắt đầu Pomodoro" : "Trồng cây";
         GiveUpBtn.Visibility     = running ? Visibility.Visible : Visibility.Collapsed;
-        PickedTree.Opacity       = running ? 0.6 : 1;
-        PickedTree.Cursor        = running ? Cursors.Arrow : Cursors.Hand;
+        SkipBreakBtn.Visibility  = onBreak ? Visibility.Visible : Visibility.Collapsed;
+        StopPomoBtn.Visibility   = onBreak ? Visibility.Visible : Visibility.Collapsed;
+        SkipBreakBtn.Content     = _pomo?.LongBreakNow == true ? "Xong nghỉ" : "Học tiếp luôn";
+        PickedTree.Opacity       = idle ? 1 : 0.6;
+        PickedTree.Cursor        = idle ? Cursors.Hand : Cursors.Arrow;
 
         BigTree.Kind = kind;
         PickedTreeIcon.Kind = kind;
-        PickedTreeText.Text = running ? TreeCatalog.Get(kind).Name : $"{TreeCatalog.Get(kind).Name} · đổi cây ›";
+        PickedTreeText.Text = !idle ? TreeCatalog.Get(kind).Name : $"{TreeCatalog.Get(kind).Name} · đổi cây ›";
 
-        if (running) UpdateFocusTick();
+        if (!idle) UpdateFocusTick();
         else
         {
             BigTree.Set(1, dead: false);
-            FocusRemaining.Text = Clock(_selectedMinutes);
-            FocusSub.Text = $"{Duration(_selectedMinutes)} · kéo thước để đổi";
+            if (pomo)
+            {
+                FocusRemaining.Text = Clock(plan.Study);
+                FocusSub.Text = $"Học {plan.Study} · nghỉ {plan.Break} · {PomodoroService.Rounds} phiên, nghỉ dài {plan.LongBreak} phút cuối";
+            }
+            else
+            {
+                FocusRemaining.Text = Clock(_selectedMinutes);
+                FocusSub.Text = $"{Duration(_selectedMinutes)} · kéo thước để đổi";
+            }
             FocusWarn.Visibility = Visibility.Collapsed;
             ResetGiveUp();
         }
@@ -1809,11 +1952,22 @@ public partial class NotchWindow : Window
 
     private void UpdateFocusTick()
     {
+        if (_pomo is { OnBreak: true } p)
+        {
+            var rest = p.BreakRemaining;
+            FocusRemaining.Text   = rest.ToString(@"mm\:ss");
+            FocusSub.Text         = p.LongBreakNow ? $"Nghỉ dài {p.BreakMinutes} phút · xong cả {PomodoroService.Rounds} phiên!"
+                                                   : $"Nghỉ {p.BreakMinutes} phút · xong phiên {p.Round}/{PomodoroService.Rounds} · đứng dậy vươn vai nhé";
+            FocusFillScale.ScaleX = p.BreakMinutes > 0 ? Math.Clamp(1 - rest.TotalMinutes / p.BreakMinutes, 0, 1) : 1;
+            BigTree.Set(1, dead: false);
+            return;
+        }
         if (!_focus.IsRunning) return;
         var left = _focus.Remaining;
         FocusRemaining.Text   = left.TotalHours >= 1 ? left.ToString(@"h\:mm\:ss") : left.ToString(@"mm\:ss");
         var done = TimeSpan.FromMinutes(_focus.Minutes) - left;
-        FocusSub.Text         = $"{TreeCatalog.Get(_focus.CurrentKind).Name} · đã học {(int)done.TotalMinutes} / {_focus.Minutes} phút";
+        FocusSub.Text         = (_pomo?.Studying == true ? $"Phiên {_pomo.Round}/{PomodoroService.Rounds} · " : "")
+                              + $"{TreeCatalog.Get(_focus.CurrentKind).Name} · đã học {(int)done.TotalMinutes} / {_focus.Minutes} phút";
         FocusFillScale.ScaleX = _focus.Progress;
         BigTree.Set(_focus.Progress, dead: false);
     }
@@ -1825,6 +1979,12 @@ public partial class NotchWindow : Window
 
     private void Plant_Click(object sender, RoutedEventArgs e)
     {
+        if (PomoMode && _pomo != null)
+        {
+            AppSettings.Current.LastTreeKind = _selectedKind.ToString();
+            _pomo.Start(PomodoroService.Selected, _selectedKind);
+            return;
+        }
         AppSettings.Current.LastFocusMinutes = _selectedMinutes;
         AppSettings.Current.LastTreeKind     = _selectedKind.ToString();
         _focus.Start(_selectedMinutes, _selectedKind);   // saves settings too
@@ -2122,70 +2282,149 @@ public partial class NotchWindow : Window
     {
         DeadlineList.Children.Clear();
         var items = _deadlines?.Items ?? Array.Empty<Deadline>();
-        NoDeadlinesText.Visibility = items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        var notes = _deadlines?.Notes ?? Array.Empty<QuickNote>();
+        NoDeadlinesText.Visibility = items.Count == 0 && notes.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         var now = DateTime.Now;
-        foreach (var d in items)
+
+        // Exams first (counted in days), then deadlines, then notes
+        foreach (var d in items.Where(d => d.Exam))
+        {
+            int days = (d.Due.Date - now.Date).Days;
+            var colour = days <= 0 ? Color.FromRgb(0xFF, 0x5C, 0x5C)
+                       : days <= 3 ? Color.FromRgb(0xFF, 0x9F, 0x0A)
+                       : Color.FromRgb(0x4D, 0xA3, 0xFF);
+            var editing = d;
+            DeadlineList.Children.Add(PlannerRow(colour, "\uE7BE", d.Title,
+                $"Thi · {Weekdays[(int)d.Due.DayOfWeek]}, {d.Due:dd/MM} · {d.Due:HH:mm}",
+                days == 0 && d.Due > now ? "Hôm nay · thi tốt nhé!" : DeadlineService.DaysLeft(d.Due, now),
+                strike: d.Due < now.AddHours(-3), highlighted: d.Id == _editingDeadline,
+                remove: () => _deadlines?.Remove(editing.Id), click: () => BeginEditDeadline(editing)));
+        }
+
+        foreach (var d in items.Where(d => !d.Exam))
         {
             var left = d.Due - now;
             // red when late or < 1 h, orange < 24 h, purple later
             var colour = left < TimeSpan.FromHours(1) ? Color.FromRgb(0xFF, 0x5C, 0x5C)
                        : left < TimeSpan.FromHours(24) ? Color.FromRgb(0xFF, 0xB0, 0x20)
                        : Color.FromRgb(0xB3, 0x8C, 0xFF);
+            var editing = d;
+            DeadlineList.Children.Add(PlannerRow(colour, null, d.Title,
+                $"{Weekdays[(int)d.Due.DayOfWeek]}, {d.Due:dd/MM} · {d.Due:HH:mm}",
+                DeadlineService.Left(d.Due, now), strike: left < TimeSpan.Zero, highlighted: d.Id == _editingDeadline,
+                remove: () => _deadlines?.Remove(editing.Id), click: () => BeginEditDeadline(editing)));
+        }
 
-            var grid = new Grid();
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            grid.ColumnDefinitions.Add(new ColumnDefinition());
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-            var dot = new Border { Width = 4, Height = 26, CornerRadius = new CornerRadius(2), Background = Frozen(colour), Margin = new Thickness(0, 0, 10, 0) };
-            grid.Children.Add(dot);
-
-            var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-            text.Children.Add(new TextBlock
+        if (notes.Count > 0)
+        {
+            DeadlineList.Children.Add(new TextBlock
             {
-                Text = d.Title, Foreground = Brushes.White, FontSize = 13, FontFamily = new FontFamily("Segoe UI"),
-                FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis,
-                TextDecorations = left < TimeSpan.Zero ? TextDecorations.Strikethrough : null
+                Text = "GHI CHÚ", Foreground = Frozen(Color.FromArgb(0x88, 0xFF, 0xFF, 0xFF)), FontSize = 10.5, FontWeight = FontWeights.SemiBold,
+                FontFamily = new FontFamily("Segoe UI"), Margin = new Thickness(4, items.Count > 0 ? 6 : 0, 0, 5)
             });
-            text.Children.Add(new TextBlock
+            var yellow = Color.FromRgb(0xFF, 0xD6, 0x0A);
+            foreach (var n in notes)
             {
-                Text = $"{Weekdays[(int)d.Due.DayOfWeek]}, {d.Due:dd/MM} · {d.Due:HH:mm}",
-                Foreground = Frozen(Color.FromArgb(0x99, 0xFF, 0xFF, 0xFF)), FontSize = 11, FontFamily = new FontFamily("Segoe UI")
-            });
-            Grid.SetColumn(text, 1);
-            grid.Children.Add(text);
+                var note = n;
+                DeadlineList.Children.Add(PlannerRow(yellow, "\uE70B", n.Text, Ago(n.Time), null,
+                    strike: false, highlighted: n.Id == _editingNote,
+                    remove: () => _deadlines?.RemoveNote(note.Id), click: () => BeginEditNote(note)));
+            }
+        }
+    }
 
+    /// <summary>One row in Hạn chót: a coloured mark, the name, a small line under it, a badge and ✕.</summary>
+    private Border PlannerRow(Color colour, string? glyph, string title, string sub, string? badgeText,
+                              bool strike, bool highlighted, Action remove, Action click)
+    {
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition());
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        UIElement mark = glyph == null
+            ? new Border { Width = 4, Height = 26, CornerRadius = new CornerRadius(2), Background = Frozen(colour), Margin = new Thickness(0, 0, 10, 0) }
+            : new TextBlock
+            {
+                Text = glyph, FontFamily = (FontFamily)FindResource("IconFont"), FontSize = 14, Foreground = Frozen(colour),
+                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 9, 0)
+            };
+        grid.Children.Add(mark);
+
+        var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        text.Children.Add(new TextBlock
+        {
+            Text = title, Foreground = Brushes.White, FontSize = 13, FontFamily = new FontFamily("Segoe UI"),
+            FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis,
+            TextDecorations = strike ? TextDecorations.Strikethrough : null
+        });
+        text.Children.Add(new TextBlock
+        {
+            Text = sub, Foreground = Frozen(Color.FromArgb(0x99, 0xFF, 0xFF, 0xFF)), FontSize = 11, FontFamily = new FontFamily("Segoe UI")
+        });
+        Grid.SetColumn(text, 1);
+        grid.Children.Add(text);
+
+        if (badgeText != null)
+        {
             var badge = new Border
             {
                 CornerRadius = new CornerRadius(9), Padding = new Thickness(8, 2, 8, 3), VerticalAlignment = VerticalAlignment.Center,
                 Background = Frozen(Color.FromArgb(0x30, colour.R, colour.G, colour.B)), Margin = new Thickness(8, 0, 6, 0),
-                Child = new TextBlock { Text = DeadlineService.Left(d.Due, now), Foreground = Frozen(colour), FontSize = 11.5, FontFamily = new FontFamily("Segoe UI"), FontWeight = FontWeights.SemiBold }
+                Child = new TextBlock { Text = badgeText, Foreground = Frozen(colour), FontSize = 11.5, FontFamily = new FontFamily("Segoe UI"), FontWeight = FontWeights.SemiBold }
             };
             Grid.SetColumn(badge, 2);
             grid.Children.Add(badge);
-
-            var remove = new TextBlock
-            {
-                Text = "\uE711", FontFamily = (FontFamily)FindResource("IconFont"), FontSize = 10, Cursor = Cursors.Hand,
-                Foreground = Frozen(Color.FromArgb(0x88, 0xFF, 0xFF, 0xFF)), VerticalAlignment = VerticalAlignment.Center,
-                Padding = new Thickness(6), ToolTip = "Xoá"
-            };
-            var id = d.Id;
-            remove.MouseLeftButtonUp += (_, e) => { e.Handled = true; _deadlines?.Remove(id); };
-            Grid.SetColumn(remove, 3);
-            grid.Children.Add(remove);
-
-            var row = new Border
-            {
-                Child = grid, CornerRadius = new CornerRadius(10), Padding = new Thickness(8, 6, 4, 6), Margin = new Thickness(0, 0, 0, 5),
-                Background = Frozen(d.Id == _editingDeadline ? Color.FromArgb(0x30, 0xB3, 0x8C, 0xFF) : Color.FromArgb(0x16, 0xFF, 0xFF, 0xFF)),
-                Cursor = Cursors.Hand, ToolTip = "Bấm để sửa"
-            };
-            var editing = d;
-            row.MouseLeftButtonUp += (_, e) => { e.Handled = true; BeginEditDeadline(editing); };
-            DeadlineList.Children.Add(row);
         }
+
+        var x = new TextBlock
+        {
+            Text = "\uE711", FontFamily = (FontFamily)FindResource("IconFont"), FontSize = 10, Cursor = Cursors.Hand,
+            Foreground = Frozen(Color.FromArgb(0x88, 0xFF, 0xFF, 0xFF)), VerticalAlignment = VerticalAlignment.Center,
+            Padding = new Thickness(6), ToolTip = "Xoá"
+        };
+        x.MouseLeftButtonUp += (_, e) => { e.Handled = true; remove(); };
+        Grid.SetColumn(x, 3);
+        grid.Children.Add(x);
+
+        var row = new Border
+        {
+            Child = grid, CornerRadius = new CornerRadius(10), Padding = new Thickness(8, 6, 4, 6), Margin = new Thickness(0, 0, 0, 5),
+            Background = Frozen(highlighted ? Color.FromArgb(0x30, 0xB3, 0x8C, 0xFF) : Color.FromArgb(0x16, 0xFF, 0xFF, 0xFF)),
+            Cursor = Cursors.Hand, ToolTip = "Bấm để sửa"
+        };
+        row.MouseLeftButtonUp += (_, e) => { e.Handled = true; click(); };
+        return row;
+    }
+
+    private Guid? _editingNote;
+
+    private void BeginEditNote(QuickNote n)
+    {
+        _editingDeadline = null;
+        _editingNote = n.Id;
+        if (!_typing) BeginTyping(DeadlineAdd);
+        DeadlineAdd.Text = n.Text;
+        DeadlineAdd.CaretIndex = n.Text.Length;
+        DeadlineAdd.Focus();
+        DeadlineHint.Text = "Đang sửa ghi chú · thêm giờ (vd 17h mai) để thành hạn chót · Enter để lưu";
+        DeadlineHint.Foreground = Frozen(Color.FromRgb(0xFF, 0xD6, 0x0A));
+        DeadlineHint.Visibility = Visibility.Visible;
+        RebuildDeadlines();
+    }
+
+    /// <summary>Ctrl + Alt + N anywhere: the panel opens on Hạn chót with the cursor in the box.</summary>
+    public void OpenQuickNote()
+    {
+        if (!IsVisible) return;
+        Expand("deadlines");
+        DeadlineAdd.Text = "";
+        EndEditDeadline();
+        BeginTyping(DeadlineAdd);
+        DeadlineHint.Text = "Ghi nhanh · có giờ thì thành hạn chót, không có giờ thì lưu ghi chú · Esc để đóng";
+        DeadlineHint.Foreground = Frozen(Color.FromRgb(0xFF, 0xD6, 0x0A));
+        DeadlineHint.Visibility = Visibility.Visible;
     }
 
     private void DeadlineAdd_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -2200,6 +2439,7 @@ public partial class NotchWindow : Window
     /// <summary>Click a deadline: its name and time go back into the box to fix; Enter saves.</summary>
     private void BeginEditDeadline(Deadline d)
     {
+        _editingNote = null;
         _editingDeadline = d.Id;
         if (!_typing) BeginTyping(DeadlineAdd);
         DeadlineAdd.Text = DeadlineService.EditText(d);
@@ -2214,6 +2454,7 @@ public partial class NotchWindow : Window
     private void EndEditDeadline()
     {
         _editingDeadline = null;
+        _editingNote = null;
         DeadlineHint.Foreground = Frozen(Color.FromRgb(0xFF, 0xC0, 0x5A));
         DeadlineHint.Visibility = Visibility.Collapsed;
     }
@@ -2225,10 +2466,18 @@ public partial class NotchWindow : Window
             var text = DeadlineAdd.Text.Trim();
             if (text.Length > 0 && _deadlines != null)
             {
-                string? problem;
-                bool ok = _editingDeadline is { } id
-                    ? _deadlines.Update(id, text, out problem)
-                    : _deadlines.Add(text, out problem) != null;
+                string? problem = null;
+                bool hasTime = DeadlineService.Parse(text, DateTime.Now) != null;
+                bool ok;
+                if (_editingNote is { } noteId)
+                {
+                    // A note given a time becomes a deadline
+                    if (hasTime) { ok = _deadlines.Add(text, out problem) != null; if (ok) _deadlines.RemoveNote(noteId); }
+                    else { _deadlines.UpdateNote(noteId, text); ok = true; }
+                }
+                else if (_editingDeadline is { } id) ok = _deadlines.Update(id, text, out problem);
+                else if (!hasTime) { _deadlines.AddNote(text); ok = true; }
+                else ok = _deadlines.Add(text, out problem) != null;
                 if (!ok)
                 {
                     DeadlineHint.Text = problem;
@@ -2522,6 +2771,117 @@ public partial class NotchWindow : Window
         else if (_expanded && !NativeInterop.IsCursorOver(Expanded)) _closeTimer.Start();
     }
 
+    // ── Giữ im Dynamic: pinned open ───────────────────────────────────
+    private bool _pinned;
+
+    /// <summary>Pinned: the panel stays open when the pointer leaves (to copy several things in a row).</summary>
+    public bool Pinned
+    {
+        get => _pinned;
+        set
+        {
+            if (value == _pinned) return;
+            _pinned = value;
+            UpdatePinButton();
+            PinnedChanged?.Invoke(value);
+            if (value) _closeTimer.Stop();
+            else if (_expanded && !NativeInterop.IsCursorOver(Expanded)) _closeTimer.Start();
+        }
+    }
+
+    /// <summary>For the tray menu's tick.</summary>
+    public event Action<bool>? PinnedChanged;
+
+    /// <summary>From the tray: pin and open, or unpin and close.</summary>
+    public void SetPinned(bool on)
+    {
+        Pinned = on;
+        if (on && !_expanded) Expand();
+        else if (!on && _expanded && !NativeInterop.IsCursorOver(Expanded)) Collapse();
+    }
+
+    private void Pin_Click(object sender, RoutedEventArgs e) => Pinned = !Pinned;
+
+    private void UpdatePinButton()
+    {
+        var on = Color.FromRgb(0xFF, 0x9F, 0x0A);
+        PinBtn.Content    = _pinned ? "\uE841" : "\uE718";   // PinFill / Pin
+        PinBtn.Foreground = _pinned ? Frozen(on) : Frozen(Color.FromArgb(0xCC, 0xFF, 0xFF, 0xFF));
+        PinBtn.Background = _pinned ? Frozen(Color.FromArgb(0x33, on.R, on.G, on.B)) : Brushes.Transparent;
+        PinBtn.ToolTip    = _pinned ? "Đang giữ im · bấm để thả (hoặc Esc khi chuột trên bảng)"
+                                    : "Giữ im Dynamic: bảng không tự đóng khi chuột rời đi";
+    }
+
+    // ── Drag a copied item out (to Messenger, Word, a folder…) ──
+    private Point? _dragStart;
+    private bool _dragging, _dragDone;
+
+    /// <summary>Where dragged pictures are written as .png files; emptied when the app starts and quits.</summary>
+    internal static readonly string DragFolder = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "DynamicIsland-drag");
+
+    internal static void ClearDragFolder()
+    {
+        try { if (System.IO.Directory.Exists(DragFolder)) System.IO.Directory.Delete(DragFolder, recursive: true); } catch { }
+    }
+
+    private void MakeDraggable(FrameworkElement element, ClipItem item)
+    {
+        element.PreviewMouseLeftButtonDown += (_, e) => { _dragStart = e.GetPosition(this); _dragDone = false; };
+        element.PreviewMouseLeftButtonUp   += (_, _) => _dragStart = null;
+        element.PreviewMouseMove += (_, e) =>
+        {
+            if (_dragStart is not { } start || e.LeftButton != MouseButtonState.Pressed) return;
+            var p = e.GetPosition(this);
+            if (Math.Abs(p.X - start.X) < SystemParameters.MinimumHorizontalDragDistance * 2 &&
+                Math.Abs(p.Y - start.Y) < SystemParameters.MinimumVerticalDragDistance * 2) return;
+            _dragStart = null;
+            e.Handled = true;
+            StartDrag(element, item);
+        };
+    }
+
+    private void StartDrag(DependencyObject source, ClipItem item)
+    {
+        var data = DragData(item);
+        if (data == null) return;
+        _dragging = _dragDone = true;
+        _closeTimer.Stop();
+        try { DragDrop.DoDragDrop(source, data, DragDropEffects.Copy); }
+        catch (Exception ex) { CrashLog.Write($"Drag failed: {ex.GetType().Name}"); }
+        finally
+        {
+            _dragging = false;
+            if (_expanded && !_pinned && !NativeInterop.IsCursorOver(Expanded)) _closeTimer.Start();
+        }
+    }
+
+    /// <summary>Text as text; a picture as the picture itself plus a .png file (folders, chat apps take files).</summary>
+    private static DataObject? DragData(ClipItem item)
+    {
+        if (!item.IsImage)
+            return string.IsNullOrEmpty(item.Text) ? null : new DataObject(DataFormats.UnicodeText, item.Text);
+
+        var picture = ClipboardService.LoadImage(item, 0);
+        if (picture == null) return null;
+        var data = new DataObject();
+        data.SetImage(picture);
+        try
+        {
+            System.IO.Directory.CreateDirectory(DragFolder);
+            var file = System.IO.Path.Combine(DragFolder, $"anh-{item.Time:yyyyMMdd-HHmmss}.png");
+            if (!System.IO.File.Exists(file))
+            {
+                var png = new PngBitmapEncoder();
+                png.Frames.Add(BitmapFrame.Create(picture));
+                using var fs = System.IO.File.Create(file);
+                png.Save(fs);
+            }
+            data.SetFileDropList(new System.Collections.Specialized.StringCollection { file });
+        }
+        catch { }
+        return data;
+    }
+
     // ── Quick buttons ─────────────────────────────────────────────────
     private void UpdateQuickButtons()
     {
@@ -2766,7 +3126,8 @@ public partial class NotchWindow : Window
         };
         row.MouseEnter += (_, _) => { row.Background = hover;  buttons.Visibility = Visibility.Visible; };
         row.MouseLeave += (_, _) => { row.Background = normal; buttons.Visibility = Visibility.Hidden; };
-        row.MouseLeftButtonUp += (_, _) => { if (!buttons.IsMouseOver) CopyClip(item); };
+        row.MouseLeftButtonUp += (_, _) => { if (!buttons.IsMouseOver && !_dragDone) CopyClip(item); _dragDone = false; };
+        MakeDraggable(row, item);
         return row;
     }
 
@@ -2856,7 +3217,8 @@ public partial class NotchWindow : Window
 
         tile.MouseEnter += (_, _) => { tile.BorderBrush = accent; buttons.Visibility = Visibility.Visible; };
         tile.MouseLeave += (_, _) => { tile.BorderBrush = newest ? accent : rest; buttons.Visibility = Visibility.Collapsed; };
-        tile.MouseLeftButtonUp += (_, _) => { if (!buttons.IsMouseOver) CopyClip(item); };
+        tile.MouseLeftButtonUp += (_, _) => { if (!buttons.IsMouseOver && !_dragDone) CopyClip(item); _dragDone = false; };
+        MakeDraggable(tile, item);
         return tile;
     }
 
@@ -2969,6 +3331,13 @@ public partial class NotchWindow : Window
         UpdateCat();
     }
 
+    /// <summary>A notification came in: Mây looks up curiously for a few seconds (unless she's celebrating).</summary>
+    public void CatCurious()
+    {
+        if (_catOverride == CatMood.Excited && DateTime.Now < _catOverrideUntil) return;
+        CatReact(CatMood.Curious, 4);
+    }
+
     private void CatReact(CatMood mood, double seconds)
     {
         _catOverride      = mood;
@@ -2986,9 +3355,15 @@ public partial class NotchWindow : Window
         else
         {
             _catOverride = null;
-            mood = _focus.IsRunning ? CatMood.Focus                                  // sits by the tree
+            int hour = DateTime.Now.Hour;
+            bool idle = NativeInterop.IdleTime() >= TimeSpan.FromMinutes(10);
+            mood = _deadlines?.Pressing == true && !idle ? CatMood.Worried           // a deadline within the hour / exam today
+                 : _pomo?.OnBreak == true ? CatMood.Stretch                          // Pomodoro rest: stretches
+                 : _focus.IsRunning ? (_pomo?.Studying == true ? CatMood.Study       // Pomodoro round: reads
+                                                              : CatMood.Focus)       // sits by the tree
                  : _hasMusic && _playing ? CatMood.Dance                             // dances to the music
-                 : NativeInterop.IdleTime() >= TimeSpan.FromMinutes(10) ? CatMood.Sleep
+                 : idle ? CatMood.Sleep
+                 : hour >= 23 || hour < 4 ? CatMood.Yawn                             // still up late
                  : CatMood.Idle;
         }
 
@@ -3009,6 +3384,12 @@ public partial class NotchWindow : Window
             CatMood.Happy => "đang vui lắm",
             CatMood.Sad   => "hơi buồn vì cây chết",
             CatMood.Sleep => "đang ngủ",
+            CatMood.Excited => "phấn khích quá trời",
+            CatMood.Curious => "tò mò xem ai nhắn",
+            CatMood.Worried => "lo lắng vì sắp tới hạn",
+            CatMood.Study   => "đang học cùng bạn",
+            CatMood.Stretch => "đang vươn vai giờ nghỉ",
+            CatMood.Yawn    => "buồn ngủ rồi, khuya lắm rồi đó",
             _             => "đang ngồi chơi"
         };
         CatPanel.ToolTip = $"Mây {doing} · đã được ăn {food} phần (mỗi cây trồng xong là 1 phần)";

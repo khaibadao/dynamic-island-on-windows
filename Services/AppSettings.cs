@@ -36,6 +36,37 @@ public sealed class AppSettings
 
     /// <summary>Hạn chót: deadlines you count down to.</summary>
     public List<Deadline> Deadlines { get; set; } = new();
+    /// <summary>Quick notes (Ctrl + Alt + N, or a line without a time).</summary>
+    public List<QuickNote> Notes { get; set; } = new();
+    /// <summary>The day the morning exam countdown was last shown.</summary>
+    public DateTime? ExamNoticeDay { get; set; }
+    /// <summary>The Sunday the week's summary was last shown.</summary>
+    public DateTime? WeeklySummaryDay { get; set; }
+
+    // ── Pomodoro (in tree planting) ──
+    /// <summary>"free" (pick the minutes) or "pomodoro" (study / rest rounds).</summary>
+    public string FocusMode { get; set; } = "free";
+    public string PomoPlan { get; set; } = "short";
+    public int PomoCustomStudy { get; set; } = 30;
+    public int PomoCustomBreak { get; set; } = 5;
+    public bool PomoActive { get; set; }
+    public int PomoRound { get; set; } = 1;
+    public int PomoStudy { get; set; } = 25;
+    public int PomoBreak { get; set; } = 5;
+    public DateTime? PomoBreakUntilUtc { get; set; }
+    public bool PomoLongBreak { get; set; }
+    public int PomoBreakMinutes { get; set; }
+    public string? PomoKind { get; set; }
+
+    // ── Lịch học ──
+    /// <summary>Classes, each a weekly slot (or one date).</summary>
+    public List<ClassSlot> Schedule { get; set; } = new();
+    /// <summary>A Google Sheet link the schedule is read from (refreshed every few hours).</summary>
+    public string? ScheduleSheetUrl { get; set; }
+    public DateTime? ScheduleSyncedUtc { get; set; }
+    /// <summary>Remind 15 minutes before each class; the evening line about tomorrow.</summary>
+    public bool ScheduleReminders { get; set; } = true;
+    public DateTime? TomorrowNoticeDay { get; set; }
 
     /// <summary>Colour wash behind the panel: "full", "light" (still picture) or "off".</summary>
     public string Ambient { get; set; } = "full";
@@ -119,6 +150,22 @@ public sealed class AppSettings
     }
 }
 
+/// <summary>One class: a weekday (or a single date), start and end time, subject and room.</summary>
+public sealed class ClassSlot
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    /// <summary>Monday = 1 … Sunday = 7 (ignored when <see cref="Date"/> is set).</summary>
+    public int Weekday { get; set; }
+    /// <summary>A single day (FAP's weekly page, a calendar file); null = every week.</summary>
+    public DateTime? Date { get; set; }
+    public TimeSpan Start { get; set; }
+    public TimeSpan End { get; set; }
+    public string Subject { get; set; } = "";
+    public string? Room { get; set; }
+    /// <summary>Where it came from: "sheet", "file", "fap", "photo", "typed".</summary>
+    public string? Origin { get; set; }
+}
+
 /// <summary>A deadline to count down to; reminders already sent are remembered.</summary>
 public sealed class Deadline
 {
@@ -128,4 +175,14 @@ public sealed class Deadline
     public bool Warned24h { get; set; }
     public bool Warned1h { get; set; }
     public bool WarnedDue { get; set; }
+    /// <summary>An exam ("Thi …"): counted down in days, a notice each morning.</summary>
+    public bool Exam { get; set; }
+}
+
+/// <summary>A line typed without a time: kept as a note.</summary>
+public sealed class QuickNote
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Text { get; set; } = "";
+    public DateTime Time { get; set; } = DateTime.Now;
 }

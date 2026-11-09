@@ -17,6 +17,7 @@ public partial class App : Application
     private NotchWindow? _notch;
     private ClipboardService? _clips;
     private FocusService? _focus;
+    private PomodoroService? _pomo;
     private VolumeWatcher? _volume;
     private BluetoothBatteryWatcher? _headsets;
     private FocusWidget? _focusWidget;
@@ -87,7 +88,11 @@ public partial class App : Application
             Glyph = "\uE7BA", GlyphColor = "#FFB020",
             OnClick = () => { try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("ms-settings:privacy-notifications") { UseShellExecute = true }); } catch { } }
         }, keepInHistory: false, bypassDnd: true)));
-        _listener.OnNotificationReceived += data => _island.Dispatcher.BeginInvoke(new Action(() => ShowOnIsland(data, keepInHistory: true)));
+        _listener.OnNotificationReceived += data => _island.Dispatcher.BeginInvoke(new Action(() =>
+        {
+            ShowOnIsland(data, keepInHistory: true);
+            _notch?.CatCurious();   // Mây looks up at the new message
+        }));
         _island.MuteRequested += Mute;
         _island.ActiveChanged += active => _notch?.SetIslandActive(active);
 
@@ -103,9 +108,38 @@ public partial class App : Application
         // The notch: music, tree planting, volume, recent notifications
         _media  = new MediaWatcher { Enabled = AppSettings.Current.MusicEnabled };
         _focus  = new FocusService();
+        _pomo   = new PomodoroService(_focus);   // before anything else listens for finished trees
         _clips  = new ClipboardService();
+        NotchWindow.ClearDragFolder();   // pictures dragged out last time
         _notch  = new NotchWindow(_media, _focus, _history, _clips);
         _notch.MuteRequested += Mute;
+        _notch.UsePomodoro(_pomo);
+        _pomo.BreakStarted += (round, minutes, last) => ShowOnIsland(new NotificationData
+        {
+            AppName = "Pomodoro",
+            Title   = last ? $"Xong cả {PomodoroService.Rounds} phiên! Nghỉ dài {minutes} phút" : $"Nghỉ {minutes} phút nhé",
+            Body    = last ? "Giỏi lắm! Đi lại, uống nước, cho mắt nghỉ một chút"
+                           : $"Xong phiên {round}/{PomodoroService.Rounds} · {Core.TreeCatalog.Get(_focus.CurrentKind).Name} đã lớn · đứng dậy vươn vai",
+            Icon    = DynamicIslandNotifier.UI.TreeShape.Render(1, dead: false, _focus.CurrentKind),
+            SourceKey = "system:focus",
+            OnClick = () => _notch?.OpenTab("focus")
+        }, keepInHistory: false);
+        _pomo.RoundStarted += round => ShowOnIsland(new NotificationData
+        {
+            AppName = "Pomodoro", Title = $"Vào phiên {round}/{PomodoroService.Rounds}",
+            Body = $"{AppSettings.Current.PomoStudy} phút · một cây mới đang lớn", Glyph = "\uE916", GlyphColor = "#34C759",
+            SourceKey = "system:focus", OnClick = () => _notch?.OpenTab("focus")
+        }, keepInHistory: false);
+        _pomo.CycleDone += () =>
+        {
+            System.Media.SystemSounds.Asterisk.Play();
+            ShowOnIsland(new NotificationData
+            {
+                AppName = "Pomodoro", Title = "Hoàn thành một vòng Pomodoro 🎉",
+                Body = $"{PomodoroService.Rounds} phiên · {PomodoroService.Rounds * AppSettings.Current.PomoStudy} phút học · {PomodoroService.Rounds} cây mới trong vườn",
+                Glyph = "\uE735", GlyphColor = "#FFD60A", SourceKey = "system:focus", OnClick = () => _notch?.OpenTab("focus")
+            }, keepInHistory: false);
+        };
         _notch.Distracted += name => _focusWidget?.Nudge(name);
         _notch.Notice += (title, body) => ShowOnIsland(new NotificationData
         {
@@ -142,12 +176,27 @@ public partial class App : Application
             OnClick = () => _notch?.Dispatcher.BeginInvoke(new Action(() => _notch.OpenTab("deadlines")))
         }, keepInHistory: false, bypassDnd: AppSettings.Current.DeadlinesBypassDnd);
 
+        _deadlines.ExamNotice += exams => ShowOnIsland(new NotificationData
+        {
+            AppName = "Lịch thi",
+            Title   = exams.Count == 1 ? $"{exams[0].Title} · {DeadlineService.DaysLeft(exams[0].Due, DateTime.Now)}"
+                                       : $"{exams.Count} kỳ thi sắp tới",
+            Body    = exams.Count == 1
+                ? ((exams[0].Due.Date - DateTime.Today).Days == 0 ? $"Hôm nay lúc {exams[0].Due:HH:mm} · thi tốt nhé!" : $"{exams[0].Due:dd/MM · HH:mm} · ôn dần là kịp")
+                : string.Join("  ·  ", exams.Select(e => $"{e.Title} ({DeadlineService.DaysLeft(e.Due, DateTime.Now)})")),
+            Glyph   = "\uE7BE",
+            GlyphColor = (exams[0].Due.Date - DateTime.Today).Days switch { <= 0 => "#FF5C5C", <= 3 => "#FF9F0A", _ => "#4DA3FF" },
+            OnClick = () => _notch?.Dispatcher.BeginInvoke(new Action(() => _notch.OpenTab("deadlines")))
+        }, keepInHistory: false, bypassDnd: true);
+
         _focusWidget = new FocusWidget(_focus);   // the small floating timer while a tree grows
         _ = _history.RestoreIconsAsync();   // site logos for notifications kept from last time
         _media.Changed += (state, newTrack) => _notch.Dispatcher.BeginInvoke(new Action(() => _notch.UpdateMedia(state, newTrack)));
         _focus.Finished += session => _island.Dispatcher.BeginInvoke(new Action(() =>
         {
-            ShowOnIsland(MakeFocusNotification(session), keepInHistory: false);
+            // In Pomodoro the "rest now" notice says the tree grew; one notice, not two
+            if (!(session.Success && _pomo?.OnBreak == true))
+                ShowOnIsland(MakeFocusNotification(session), keepInHistory: false);
             ReleaseHeld("trong lúc bạn tập trung");
         }));
         _notch.Show();
@@ -400,6 +449,7 @@ public partial class App : Application
             if (obj is MenuItem { Tag: "notch" } item)   item.IsChecked = _notch?.NotchEnabled == true;
             if (obj is MenuItem { Tag: "maywalk" } walk) walk.IsChecked = AppSettings.Current.MayWalks;
             if (obj is MenuItem { Tag: "showcat" } cat) cat.IsChecked = AppSettings.Current.ShowCat;
+            if (obj is MenuItem { Tag: "pin" } pin) pin.IsChecked = _notch?.Pinned == true;
             if (obj is MenuItem { Tag: "banners" } banners) banners.IsChecked = ToastSuppressor.Enabled;
             if (obj is MenuItem { Tag: "maywalk" } walk2) walk2.IsEnabled = AppSettings.Current.ShowCat;
             if (obj is MenuItem { Tag: "fullscreen" } fs) fs.IsChecked = AppSettings.Current.HideInFullscreen;
@@ -434,6 +484,13 @@ public partial class App : Application
         ToastSuppressor.Enabled = !ToastSuppressor.Enabled;
         if (ToastSuppressor.Enabled) _suppressor?.HideKnownApps();
         else _suppressor?.RestoreAll();
+        UpdateNotchMenu();
+    }
+
+    /// <summary>Giữ im Dynamic: pin the panel open (from the tray it also opens it).</summary>
+    private void Pin_Click(object sender, RoutedEventArgs e)
+    {
+        _notch?.SetPinned(!_notch.Pinned);
         UpdateNotchMenu();
     }
 
@@ -502,6 +559,7 @@ public partial class App : Application
     {
         _listener?.Stop();
         _clips?.Stop();
+        NotchWindow.ClearDragFolder();
         _focusWidget?.Shutdown();
         var tray = (Hardcodet.Wpf.TaskbarNotification.TaskbarIcon?)Current.Resources["TrayIcon"];
         tray?.Dispose();

@@ -25,6 +25,9 @@ public sealed class DeadlineService
     private DateTime _lastReminder;
     public event Action? Changed;
 
+    /// <summary>Once a day (from 7:00): exams in the next 14 days, nearest first.</summary>
+    public event Action<IReadOnlyList<Deadline>>? ExamNotice;
+
     public DeadlineService()
     {
         _timer.Tick += (_, _) => Check();
@@ -46,7 +49,7 @@ public sealed class DeadlineService
         }
         var (title, due) = parsed.Value;
         if (title.Length == 0) { problem = "Thêm tên công việc nhé"; return null; }
-        var d = new Deadline { Title = title, Due = due };
+        var d = new Deadline { Title = title, Due = due, Exam = IsExamTitle(title) };
         // Already within a window: don't fire that reminder at once
         var left = due - DateTime.Now;
         d.Warned24h = left <= TimeSpan.FromHours(24);
@@ -68,6 +71,7 @@ public sealed class DeadlineService
         if (parsed == null) { problem = "Thêm ngày nhé, vd: 15/11 17h · mai 9h · thứ 6"; return false; }
         if (parsed.Value.Title.Length == 0) { problem = "Thêm tên công việc nhé"; return false; }
         d.Title = parsed.Value.Title;
+        d.Exam  = IsExamTitle(d.Title);
         if (d.Due != parsed.Value.Due)
         {
             d.Due = parsed.Value.Due;
@@ -84,6 +88,67 @@ public sealed class DeadlineService
 
     /// <summary>The text that puts a deadline back in the box for editing: "Nộp báo cáo 15/11/2026 17:00".</summary>
     public static string EditText(Deadline d) => $"{d.Title} {d.Due:dd/MM/yyyy} {d.Due:HH:mm}";
+
+    /// <summary>"Thi PE PRO192 20/11 7h30", "Kiểm tra giữa kỳ MAD 18/11": counted down by days, not hours.</summary>
+    internal static bool IsExamTitle(string title) =>
+        Regex.IsMatch(title, @"^(thi|kiểm tra|ktra|exam|pe|fe)(?!\p{L})", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    /// <summary>Exams not over yet, nearest first.</summary>
+    public IReadOnlyList<Deadline> Exams =>
+        AppSettings.Current.Deadlines.Where(d => d.Exam && d.Due > DateTime.Now.AddHours(-3)).OrderBy(d => d.Due).ToList();
+
+    /// <summary>Something to worry about: a deadline within the hour, or an exam today.</summary>
+    public bool Pressing
+    {
+        get
+        {
+            var now = DateTime.Now;
+            return AppSettings.Current.Deadlines.Any(d =>
+                (d.Due > now && d.Due - now <= TimeSpan.FromHours(1)) ||
+                (d.Exam && d.Due.Date == now.Date && d.Due > now.AddHours(-3)));
+        }
+    }
+
+    /// <summary>"còn 6 ngày", "ngày mai", "hôm nay 7:30" for an exam.</summary>
+    public static string DaysLeft(DateTime due, DateTime now)
+    {
+        int days = (due.Date - now.Date).Days;
+        return days switch
+        {
+            < 0  => "đã thi",
+            0    => due > now ? $"hôm nay {due:HH:mm}" : "đang thi",
+            1    => "ngày mai",
+            _    => $"còn {days} ngày"
+        };
+    }
+
+    // ── Quick notes (no time: kept as a note) ─────────────────────────
+    public IReadOnlyList<QuickNote> Notes => AppSettings.Current.Notes.OrderByDescending(n => n.Time).ToList();
+
+    public void AddNote(string text)
+    {
+        text = text.Trim();
+        if (text.Length == 0) return;
+        AppSettings.Current.Notes.Add(new QuickNote { Text = text });
+        AppSettings.Current.Save();
+        Changed?.Invoke();
+    }
+
+    public void UpdateNote(Guid id, string text)
+    {
+        var n = AppSettings.Current.Notes.FirstOrDefault(x => x.Id == id);
+        if (n == null || text.Trim().Length == 0) return;
+        n.Text = text.Trim();
+        AppSettings.Current.Save();
+        Changed?.Invoke();
+    }
+
+    public void RemoveNote(Guid id)
+    {
+        AppSettings.Current.Notes.RemoveAll(n => n.Id == id);
+        AppSettings.Current.Save();
+        Changed?.Invoke();
+    }
 
     public void Remove(Guid id)
     {
@@ -124,6 +189,16 @@ public sealed class DeadlineService
             _lastSummaryHour = now.Hour;
             var next = AppSettings.Current.Deadlines.Where(d => d.Due > now.AddHours(-12)).OrderBy(d => d.Due).Take(3).ToList();
             if (next.Count > 0 && (now - _lastReminder).TotalMinutes > 15) Summary?.Invoke(next);
+        }
+        // Exams: once a day from 7:00, how many days are left
+        if (now.Hour >= 7 && AppSettings.Current.ExamNoticeDay?.Date != now.Date)
+        {
+            var exams = AppSettings.Current.Deadlines
+                .Where(d => d.Exam && d.Due > now && (d.Due.Date - now.Date).TotalDays <= 14)
+                .OrderBy(d => d.Due).Take(2).ToList();
+            AppSettings.Current.ExamNoticeDay = now.Date;
+            dirty = true;
+            if (exams.Count > 0) ExamNotice?.Invoke(exams);
         }
         if (dirty)
         {
