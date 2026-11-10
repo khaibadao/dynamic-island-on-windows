@@ -262,6 +262,10 @@ public static class NativeInterop
     [DllImport("user32.dll")] private static extern bool GetLastInputInfo(ref LASTINPUTINFO info);
 
     [DllImport("user32.dll")] private static extern short GetAsyncKeyState(int key);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr FindWindow(string? className, string? title);
+
+    /// <summary>The taskbar (and with it the tray) is there: right after sign-in it can take a while.</summary>
+    public static bool TaskbarReady() => FindWindow("Shell_TrayWnd", null) != IntPtr.Zero;
     [DllImport("user32.dll")] private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint modifiers, uint key);
 
     public const int WM_HOTKEY = 0x0312, QuickNoteHotkey = 0xB001;

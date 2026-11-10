@@ -69,7 +69,18 @@ public partial class App : Application
 
         // Right after sign-in Windows is still busy (notifications, media and
         // Bluetooth services may not answer yet), so give it a few seconds.
-        if (atBoot) await System.Threading.Tasks.Task.Delay(TimeSpan.FromSeconds(6));
+        if (atBoot)
+        {
+            await System.Threading.Tasks.Task.Delay(TimeSpan.FromSeconds(6));
+            // The sign-in task can start the app before the taskbar exists; the tray icon and
+            // the windows need it, so wait for it (up to a minute and a half)
+            var waited = System.Diagnostics.Stopwatch.StartNew();
+            while (!NativeInterop.TaskbarReady() && waited.Elapsed < TimeSpan.FromSeconds(90))
+                await System.Threading.Tasks.Task.Delay(500);
+            if (waited.ElapsedMilliseconds > 600) CrashLog.Write($"Waited {waited.Elapsed.TotalSeconds:0} s for the taskbar");
+            await System.Threading.Tasks.Task.Delay(TimeSpan.FromSeconds(1));
+        }
+        _ = System.Threading.Tasks.Task.Run(AutoStart.LogState);
 
         // Create the overlay pill window (invisible until a notification arrives)
         _island = new IslandWindow();

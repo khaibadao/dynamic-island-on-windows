@@ -1,6 +1,7 @@
 namespace DynamicIslandNotifier.Services;
 
 using System;
+using System.Linq;
 using Microsoft.Win32;
 
 /// <summary>
@@ -16,7 +17,74 @@ public static class AutoStart
     private const string RunKey    = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string ValueName = "DynamicIslandNotifier";
 
-    private static string? ExePath => Environment.ProcessPath;
+    /// <summary>The copy Windows starts: the installed one (a copy run from Downloads, the desktop or a temp folder is copied there first).</summary>
+    private static string? ExePath => _exePath ??= StableCopy();
+    private static string? _exePath;
+
+    /// <summary>Where the installer and the install command put the app.</summary>
+    private static string InstallDir => System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "DynamicIsland");
+
+    /// <summary>
+    /// A copy run from Downloads, the desktop, a zip or a temp folder tends to be moved or
+    /// cleaned away later, and then Windows has nothing to start at sign-in. So that copy
+    /// is also put in the install folder, and that's the one registered.
+    /// </summary>
+    private static string? StableCopy()
+    {
+        var exe = Environment.ProcessPath;
+        if (string.IsNullOrEmpty(exe)) return null;
+        Unblock(exe);
+        try
+        {
+            string dir = System.IO.Path.GetDirectoryName(exe) ?? "";
+            string target = System.IO.Path.Combine(InstallDir, "DynamicIslandNotifier.exe");
+            if (string.Equals(System.IO.Path.GetFullPath(dir).TrimEnd('\\'), System.IO.Path.GetFullPath(InstallDir).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
+                return exe;
+            string lower = exe.ToLowerInvariant();
+            bool fragile = lower.Contains(@"\downloads\") || lower.Contains(@"\desktop\") || lower.Contains(@"\onedrive")
+                        || lower.StartsWith(System.IO.Path.GetTempPath().ToLowerInvariant()) || lower.Contains(@"\appdata\local\temp\");
+            if (!fragile) return exe;   // a folder the user chose on purpose: keep it
+            System.IO.Directory.CreateDirectory(InstallDir);
+            var have = System.IO.File.Exists(target) ? System.Diagnostics.FileVersionInfo.GetVersionInfo(target).FileVersion : null;
+            var mine = System.Diagnostics.FileVersionInfo.GetVersionInfo(exe).FileVersion;
+            if (have == null || Version.TryParse(have, out var h) && Version.TryParse(mine, out var m) && m > h)
+                System.IO.File.Copy(exe, target, overwrite: true);
+            Unblock(target);
+            CrashLog.Write("Start at sign-in: using the copy in the install folder (this one runs from Downloads / desktop / temp)");
+            return target;
+        }
+        catch (Exception ex)
+        {
+            CrashLog.Write($"Start at sign-in: couldn't copy to the install folder ({ex.GetType().Name})");
+            return exe;
+        }
+    }
+
+    /// <summary>
+    /// Drops the "downloaded from the Internet" mark: with it, Windows may hold the app at
+    /// sign-in behind a security prompt nobody sees.
+    /// </summary>
+    private static void Unblock(string file)
+    {
+        try { System.IO.File.Delete(file + ":Zone.Identifier"); } catch { }
+    }
+
+    /// <summary>One line in startup.log: what's set up to start the app, to find out why it didn't.</summary>
+    public static void LogState()
+    {
+        try
+        {
+            string? run = null;
+            using (var key = Registry.CurrentUser.OpenSubKey(RunKey)) run = key?.GetValue(ValueName) as string;
+            string? path = run?.Split('"', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+            bool exists = path != null && System.IO.File.Exists(path);
+            bool marked = exists && System.IO.File.Exists(path + ":Zone.Identifier");
+            int task = Schtasks($"/Query /TN \"{TaskName}\"");
+            CrashLog.Write($"Start at sign-in: list {(run == null ? "missing" : exists ? "ok" : "points to a missing file")}" +
+                           $"{(marked ? ", marked as downloaded" : "")}, Task Manager {(IsBlockedInTaskManager ? "OFF" : "on")}, task {(task == 0 ? "ok" : "missing")}");
+        }
+        catch { }
+    }
 
     public static bool IsEnabled
     {

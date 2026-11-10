@@ -1,5 +1,9 @@
 Bản chỉnh sửa từ [sadeeshasathsara/dynamic-island-on-windows](https://github.com/sadeeshasathsara/dynamic-island-on-windows) (MIT).
 
+### Sửa trong v2.8.0
+- **Tự mở khi bật máy chắc hơn**: lúc đăng nhập, app đợi thanh taskbar sẵn sàng rồi mới mở (trước đây trên vài máy nó mở quá sớm, kẹt lại, và bản mở sau bị chặn vì "đã có một bản đang chạy"); bỏ dấu "tải từ Internet" trên file (có thể làm Windows giữ app lại sau một hộp cảnh báo không ai thấy); app chạy từ Downloads / desktop / thư mục tạm thì được chép vào thư mục cài, để khỏi mất khi file bị xoá hay di chuyển
+- startup.log ghi thêm một dòng về tự mở (danh sách khởi động, Task Manager, lịch hẹn) để tìm nguyên nhân nếu vẫn còn máy không tự mở
+
 ### Mới trong v2.8.0
 - **Lịch học nền đen**: tab Lịch học không còn màu loang / nốt nhạc phía sau, các khối dễ đọc hơn
 - **Đổi loại buổi**: bấm vào một buổi để chọn lại Trên lớp / Học thêm / Tự học / Đi dạy, hoặc "+ Loại mới…" (tự đặt tên, có màu riêng). Đổi một buổi là mọi buổi cùng tên đổi theo, và vẫn giữ khi sheet được đọc lại
