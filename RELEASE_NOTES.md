@@ -3,6 +3,10 @@ Bản chỉnh sửa từ [sadeeshasathsara/dynamic-island-on-windows](https://gi
 ### Mới trong v2.8.0
 - **Lịch học nền đen**: tab Lịch học không còn màu loang / nốt nhạc phía sau, các khối dễ đọc hơn
 - **Đổi loại buổi**: bấm vào một buổi để chọn lại Trên lớp / Học thêm / Tự học / Đi dạy, hoặc "+ Loại mới…" (tự đặt tên, có màu riêng). Đổi một buổi là mọi buổi cùng tên đổi theo, và vẫn giữ khi sheet được đọc lại
+- **Đọc được nhiều kiểu sheet**: thời khoá biểu theo tuần (lưới hoặc danh sách theo thứ), lịch theo ngày (Ngày · Giờ · Môn, có hay không có hàng tiêu đề), lưới theo ngày (18/11, 19/11… nằm ngang). Ngày không ghi năm được hiểu là gần hôm nay nhất
+- **Lịch thi tự vào Hạn chót**: dòng có "thi / kiểm tra / PE / FE…" hoặc sheet tên "Lịch thi" được đếm ngược theo ngày như các kỳ thi bạn tự gõ
+- **Xem trước khi lưu**: dán link xong app cho biết đọc được gì (vd "70 buổi hằng tuần · 5 lịch thi"), chọn lại cách đọc nếu đoán sai (Tự nhận / Tất cả là buổi học / Ngày cụ thể là lịch thi), rồi mới Lưu
+- **Nhiều sheet cùng lúc**: vd một sheet thời khoá biểu và một sheet lịch thi; dán link mới không xoá link cũ, mỗi sheet gỡ riêng được
 - **Thêm buổi đột xuất ngay trên tai thỏ**: nút "+ Thêm buổi", gõ vd "Họp nhóm SWP 15h-16h30 phòng 304", chọn Chỉ ngày này hoặc Mỗi tuần. Buổi tự thêm có viền nét đứt, sửa được, và không bị mất khi sheet cập nhật. Trùng giờ với buổi trong sheet thì hiện cả hai
 
 ### Mới trong v2.7.4

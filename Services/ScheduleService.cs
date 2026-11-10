@@ -26,8 +26,18 @@ public sealed class ScheduleService
     public event Action<IReadOnlyList<ClassSlot>>? Tomorrow;
     public event Action? Changed;
 
+    /// <summary>Where exams from a sheet go (Hạn chót, counted down by days). Set by the app.</summary>
+    public DeadlineService? Deadlines { get; set; }
+
     public ScheduleService()
     {
+        // The one sheet of earlier versions becomes the first linked sheet
+        if (S.ScheduleSheetUrl is { } oldLink && S.ScheduleSources.Count == 0)
+        {
+            S.ScheduleSources.Add(new ScheduleSource { Key = "sheet", Url = oldLink, Name = "Google Sheet", SyncedUtc = S.ScheduleSyncedUtc });
+            S.ScheduleSheetUrl = null;
+            S.Save();
+        }
         // One-day sessions typed in by hand go away a week after their day
         if (S.Schedule.RemoveAll(c => c.Origin == "typed" && c.Date is { } d && d < DateTime.Today.AddDays(-7)) > 0) S.Save();
         _timer.Tick += async (_, _) => await TickAsync();
@@ -53,8 +63,8 @@ public sealed class ScheduleService
     /// <summary>Puts in a new timetable from one source (the old one from that source goes).</summary>
     public int Replace(IReadOnlyList<ClassSlot> slots, string origin)
     {
-        // A new timetable replaces the one imported before (from any source)
-        S.Schedule.RemoveAll(c => c.Origin != "typed");
+        // A source's new timetable replaces only what that source gave before
+        S.Schedule.RemoveAll(c => c.Origin == origin);
         S.Schedule.AddRange(slots);
         S.Save();
         _reminded.Clear();
@@ -114,37 +124,110 @@ public sealed class ScheduleService
     public void Clear()
     {
         S.Schedule.Clear();
+        foreach (var src in S.ScheduleSources) Deadlines?.ReplaceFromSource(src.Key, Array.Empty<Deadline>());
+        S.ScheduleSources.Clear();
         S.ScheduleSheetUrl = null;
         S.Save();
         Changed?.Invoke();
     }
 
     // ── Sources ───────────────────────────────────────────────────────
-    /// <summary>Reads a Google Sheet by its link ("Anyone with the link can view"). Returns a message for the user.</summary>
-    public async Task<string> FromSheetAsync(string link, bool quiet = false)
+    // ── Linked Google Sheets ──────────────────────────────────────────
+    /// <summary>What a sheet holds, before it's saved: so a wrong guess can be fixed.</summary>
+    public sealed record SheetPreview(string Url, string Title, IReadOnlyList<ClassSlot> Weekly, IReadOnlyList<ClassSlot> Dated, IReadOnlyList<ClassSlot> Exams, string Mode)
+    {
+        public bool Empty => Weekly.Count + Dated.Count + Exams.Count == 0;
+
+        /// <summary>"70 buổi hằng tuần · 5 lịch thi (18/11 Thi Toán…) · 3 buổi theo ngày".</summary>
+        public string Summary
+        {
+            get
+            {
+                var parts = new List<string>();
+                if (Weekly.Count > 0) parts.Add($"{Weekly.Count} buổi hằng tuần");
+                if (Exams.Count > 0)
+                    parts.Add($"{Exams.Count} lịch thi (" + string.Join(", ", Exams.OrderBy(e => e.Date).Take(2).Select(e => $"{e.Date:dd/MM} {e.Subject}")) + (Exams.Count > 2 ? "…" : "") + ")");
+                if (Dated.Count > 0) parts.Add($"{Dated.Count} buổi theo ngày");
+                return string.Join(" · ", parts);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Reads a sheet ("Anyone with the link can view") and sorts what's in it: weekly
+    /// sessions, sessions on a given date, and exams (by their name, or the sheet's title
+    /// "Lịch thi"). Mode: "auto", "classes" (no exams), "exams" (every dated row is one).
+    /// Returns the preview, or a message saying what went wrong.
+    /// </summary>
+    public static async Task<(SheetPreview? Preview, string? Problem)> PreviewSheetAsync(string link, string mode = "auto")
     {
         var csv = ScheduleImport.SheetCsvUrl(link);
-        if (csv == null) return "Link này không phải Google Sheet. Dán link dạng docs.google.com/spreadsheets/…";
+        if (csv == null) return (null, "Link này không phải Google Sheet. Dán link dạng docs.google.com/spreadsheets/…");
         try
         {
             using var resp = await Http.GetAsync(csv);
             var type = resp.Content.Headers.ContentType?.MediaType ?? "";
             if (!resp.IsSuccessStatusCode || type.Contains("html"))
-                return "Không đọc được sheet. Mở sheet → Chia sẻ → “Bất kỳ ai có đường liên kết” → Người xem, rồi thử lại.";
+                return (null, "Không đọc được sheet. Mở sheet → Chia sẻ → \u201CBất kỳ ai có đường liên kết\u201D → Người xem, rồi thử lại.");
             var rows = ScheduleImport.ParseCsv(await resp.Content.ReadAsStringAsync());
-            var slots = ScheduleImport.FromTable(rows, "sheet");
-            if (slots.Count == 0) return "Sheet không có buổi học nào đọc được. Cần các cột: Thứ · Bắt đầu · Kết thúc · Môn · Phòng.";
-            S.ScheduleSheetUrl = link.Trim();
-            S.ScheduleSyncedUtc = DateTime.UtcNow;
-            Replace(slots, "sheet");
-            CrashLog.Write($"Schedule: {slots.Count} classes from a Google Sheet");
-            return $"Đã thêm {slots.Count} buổi học từ Google Sheet · tự cập nhật mỗi 6 giờ";
+            var all = ScheduleImport.FromTable(rows, "sheet");
+            var preview = Sort(link.Trim(), ScheduleImport.TitleOf(rows), all, mode, ScheduleImport.IsExamSheet(rows));
+            return preview.Empty
+                ? (null, "Sheet không có buổi nào đọc được. Cần có cột giờ, và cột thứ hoặc ngày (vd: Thứ · Giờ · Môn, hoặc Ngày · Giờ · Môn thi).")
+                : (preview, null);
         }
         catch (Exception ex)
         {
             CrashLog.Write($"Schedule sheet failed: {ex.GetType().Name}");
-            return quiet ? "" : "Không tải được sheet, kiểm tra mạng rồi thử lại nhé.";
+            return (null, "Không tải được sheet, kiểm tra mạng rồi thử lại nhé.");
         }
+    }
+
+    internal static SheetPreview Sort(string url, string title, IReadOnlyList<ClassSlot> all, string mode, bool examSheet)
+    {
+        bool Exam(ClassSlot c) => c.Date != null && mode != "classes" && (mode == "exams" || examSheet || ScheduleImport.LooksLikeExam(c.Subject));
+        var exams = all.Where(Exam).ToList();
+        return new SheetPreview(url, title,
+            all.Where(c => c.Date == null).ToList(),
+            all.Where(c => c.Date != null && !Exam(c)).ToList(),
+            exams, mode);
+    }
+
+    /// <summary>Saves a sheet's sessions (exams go to Hạn chót) and keeps the link to re-read it.</summary>
+    public string Apply(SheetPreview p)
+    {
+        var src = S.ScheduleSources.FirstOrDefault(x => x.Url == p.Url);
+        if (src == null)
+        {
+            src = new ScheduleSource { Key = "sheet:" + Guid.NewGuid().ToString("N")[..8], Url = p.Url };
+            S.ScheduleSources.Add(src);
+        }
+        src.Name = p.Title;
+        src.Mode = p.Mode;
+        src.SyncedUtc = DateTime.UtcNow;
+        src.Classes = p.Weekly.Count + p.Dated.Count;
+        src.Exams = p.Exams.Count;
+
+        var slots = p.Weekly.Concat(p.Dated).ToList();
+        foreach (var c in slots) c.Origin = src.Key;
+        Replace(slots, src.Key);
+        Deadlines?.ReplaceFromSource(src.Key, p.Exams.Select(e => new Deadline
+        {
+            Title = DeadlineService.IsExamTitle(e.Subject) ? e.Subject : "Thi " + e.Subject,
+            Due = e.Date!.Value + e.Start
+        }).ToList());
+        CrashLog.Write($"Schedule: sheet read, {slots.Count} sessions, {p.Exams.Count} exams");
+        return $"Đã lưu: {p.Summary}" + (p.Exams.Count > 0 ? " · lịch thi nằm ở Hạn chót" : "") + " · tự cập nhật mỗi 6 giờ";
+    }
+
+    /// <summary>Unlinks a sheet and takes away what it brought.</summary>
+    public void RemoveSource(string key)
+    {
+        S.ScheduleSources.RemoveAll(x => x.Key == key);
+        S.Schedule.RemoveAll(c => c.Origin == key);
+        S.Save();
+        Deadlines?.ReplaceFromSource(key, Array.Empty<Deadline>());
+        Changed?.Invoke();
     }
 
     /// <summary>A .xlsx, .csv or .ics file.</summary>
@@ -225,11 +308,13 @@ public sealed class ScheduleService
     {
         var now = DateTime.Now;
 
-        // Keep a sheet up to date
-        if (S.ScheduleSheetUrl is { } link && (S.ScheduleSyncedUtc == null || DateTime.UtcNow - S.ScheduleSyncedUtc > TimeSpan.FromHours(6)))
+        // Keep the linked sheets up to date (each once per 6 h, even when reading fails)
+        foreach (var src in S.ScheduleSources.ToList())
         {
-            S.ScheduleSyncedUtc = DateTime.UtcNow;   // once per 6 h even when it fails
-            await FromSheetAsync(link, quiet: true);
+            if (src.SyncedUtc != null && DateTime.UtcNow - src.SyncedUtc < TimeSpan.FromHours(6)) continue;
+            src.SyncedUtc = DateTime.UtcNow;
+            var (preview, _) = await PreviewSheetAsync(src.Url, src.Mode);
+            if (preview != null) Apply(preview);
         }
 
         if (!S.ScheduleReminders || S.Schedule.Count == 0) return;

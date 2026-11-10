@@ -168,4 +168,57 @@ public class ScheduleImportTests
         Assert.Equal(new TimeSpan(19, 0, 0), b.End);
         Assert.Null(ScheduleImport.FromLine("không có giờ"));
     }
+
+    [Fact]
+    public void ExamListWithHeader()
+    {
+        var csv = "LỊCH THI HỌC KỲ FALL 2026\nSTT,Ngày thi,Môn thi,Giờ thi,Phòng thi\n1,18/11/2026,MAD101,7h30-9h00,DE-201\n2,Thứ 6 20/11/2026,PRO192,13:00 - 14:30,BE-305\n";
+        var rows = ScheduleImport.ParseCsv(csv);
+        var slots = ScheduleImport.FromTable(rows, "sheet");
+        Assert.Equal(2, slots.Count);
+        Assert.Equal(new DateTime(2026, 11, 18), slots[0].Date);
+        Assert.Equal(new TimeSpan(7, 30, 0), slots[0].Start);
+        Assert.Equal("DE-201", slots[0].Room);
+        Assert.True(ScheduleImport.IsExamSheet(rows));
+        var preview = ScheduleService.Sort("u", "t", slots, "auto", examSheet: true);
+        Assert.Equal(2, preview.Exams.Count);
+        Assert.Empty(preview.Weekly);
+    }
+
+    [Fact]
+    public void DatedRowsWithoutHeader()
+    {
+        var csv = "18/11 | Thi Toán | 7h30\n20/11 | Thi Văn | 9h-11h\n25/11 | Nộp đồ án SWP\n".Replace(" | ", ",");
+        var slots = ScheduleImport.FromTable(ScheduleImport.ParseCsv(csv), "sheet");
+        Assert.Equal(3, slots.Count);
+        var toan = slots.Single(s => s.Subject == "Thi Toán");
+        Assert.Equal(11, toan.Date!.Value.Month);
+        Assert.Equal(new TimeSpan(7, 30, 0), toan.Start);
+        // Sorted: names with "thi" are exams, the rest stay dated sessions
+        var preview = ScheduleService.Sort("u", "t", slots, "auto", examSheet: false);
+        Assert.Equal(2, preview.Exams.Count);
+        Assert.Single(preview.Dated);
+        // Read as classes on request: no exams
+        Assert.Empty(ScheduleService.Sort("u", "t", slots, "classes", examSheet: false).Exams);
+    }
+
+    [Fact]
+    public void GridByDate()
+    {
+        var csv = "Giờ,18/11,19/11,20/11\n7h-9h,Toán,,Văn\n13h-15h,,Lý,\n";
+        var slots = ScheduleImport.FromTable(ScheduleImport.ParseCsv(csv), "sheet");
+        Assert.Equal(3, slots.Count);
+        Assert.Contains(slots, s => s.Subject == "Lý" && s.Date!.Value.Day == 19 && s.Start == new TimeSpan(13, 0, 0));
+    }
+
+    [Theory]
+    [InlineData("18/11", 11, 18)]
+    [InlineData("Thứ 3, 18-11", 11, 18)]
+    [InlineData("2026-11-18", 11, 18)]
+    public void Dates(string text, int month, int day)
+    {
+        var d = ScheduleImport.DateIn(text)!.Value;
+        Assert.Equal(month, d.Month);
+        Assert.Equal(day, d.Day);
+    }
 }

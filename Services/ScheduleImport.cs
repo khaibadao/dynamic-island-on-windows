@@ -103,6 +103,17 @@ public static class ScheduleImport
             if (dayCols.Count >= 5) return FromGrid(rows.Skip(r + 1).ToList(), dayCols.ToDictionary(x => x.Col, x => x.Day), origin);
         }
 
+        // Grid by date: a row with at least 3 dates across ("18/11", "Thứ 3 19/11"…)
+        for (int r = 0; r < Math.Min(rows.Count, 6); r++)
+        {
+            var dateCols = rows[r].Select((c, i) => (Date: c.Trim().Length <= 20 ? DateIn(c) : null, Col: i)).Where(x => x.Date != null).ToList();
+            if (dateCols.Count >= 3)
+            {
+                var dates = dateCols.ToDictionary(x => x.Col, x => x.Date!.Value);
+                return FromGrid(rows.Skip(r + 1).ToList(), dates.ToDictionary(kv => kv.Key, kv => Iso(kv.Value.DayOfWeek)), origin, dates);
+            }
+        }
+
         // Find the header row
         int header = -1;
         int cDay = -1, cStart = -1, cEnd = -1, cSubject = -1, cRoom = -1, cTime = -1, cDate = -1;
@@ -123,7 +134,12 @@ public static class ScheduleImport
             if (cSubject >= 0 && (cDay >= 0 || cDate >= 0) && (cStart >= 0 || cTime >= 0)) header = r;
             else cDay = cStart = cEnd = cSubject = cRoom = cTime = cDate = -1;
         }
-        if (header < 0) return FromText(string.Join("\n", rows.Select(r => string.Join("\t", r))), origin);
+        if (header < 0)
+        {
+            // No header: rows that hold a date and a time ("18/11 | 7h30 | Thi Toán | P.201")
+            var dated = FromDatedRows(rows, origin);
+            return dated.Count > 0 ? dated : FromText(string.Join("\n", rows.Select(r => string.Join("\t", r))), origin);
+        }
 
         foreach (var row in rows.Skip(header + 1))
         {
@@ -139,14 +155,7 @@ public static class ScheduleImport
             if (start == null) continue;
             end ??= start.Value + TimeSpan.FromMinutes(90);
 
-            DateTime? date = null;
-            if (cDate >= 0 && DayMonthRx.Match(Cell(cDate)) is { Success: true } dm)
-            {
-                int d = int.Parse(dm.Groups[1].Value), mo = int.Parse(dm.Groups[2].Value);
-                int y = dm.Groups[3].Success ? int.Parse(dm.Groups[3].Value) : DateTime.Today.Year;
-                if (y < 100) y += 2000;
-                if (mo is >= 1 and <= 12 && d >= 1 && d <= DateTime.DaysInMonth(y, mo)) date = new DateTime(y, mo, d);
-            }
+            DateTime? date = cDate >= 0 ? DateIn(Cell(cDate)) : null;
             int weekday = date is { } dd ? Iso(dd.DayOfWeek) : Weekday(Cell(cDay));
             if (weekday == 0) continue;
 
@@ -159,7 +168,7 @@ public static class ScheduleImport
         return result;
     }
 
-    private static List<ClassSlot> FromGrid(List<string[]> rows, Dictionary<int, int> dayOfColumn, string origin)
+    private static List<ClassSlot> FromGrid(List<string[]> rows, Dictionary<int, int> dayOfColumn, string origin, Dictionary<int, DateTime>? dateOfColumn = null)
     {
         var result = new List<ClassSlot>();
         int firstDay = dayOfColumn.Keys.Min();
@@ -187,12 +196,91 @@ public static class ScheduleImport
                 foreach (var found in FromCell(row[col], rowTime))
                 {
                     found.Weekday = day;
+                    if (dateOfColumn != null && dateOfColumn.TryGetValue(col, out var on)) found.Date = on;
                     found.Origin = origin;
                     result.Add(found);
                 }
             }
         }
         return Merge(Dedupe(result));
+    }
+
+    /// <summary>
+    /// The date in a cell: "18/11", "18/11/2026", "Thứ 3, 18-11", "2026-11-18". Without a
+    /// year, the one that puts it nearest today (so January is next year when it's December).
+    /// </summary>
+    internal static DateTime? DateIn(string cell)
+    {
+        var iso = Regex.Match(cell, @"(?<!\d)(\d{4})-(\d{1,2})-(\d{1,2})(?!\d)");
+        int d, mo, y;
+        if (iso.Success) { y = int.Parse(iso.Groups[1].Value); mo = int.Parse(iso.Groups[2].Value); d = int.Parse(iso.Groups[3].Value); }
+        else
+        {
+            var m = Regex.Match(cell, @"(?<![\d:h])(\d{1,2})[/\-.](\d{1,2})(?:[/\-.](\d{2,4}))?(?![\d:])");
+            if (!m.Success) return null;
+            d = int.Parse(m.Groups[1].Value); mo = int.Parse(m.Groups[2].Value);
+            if (m.Groups[3].Success) { y = int.Parse(m.Groups[3].Value); if (y < 100) y += 2000; }
+            else
+            {
+                var today = DateTime.Today;
+                y = today.Year;
+                if (mo is >= 1 and <= 12)
+                {
+                    if (new DateTime(y, mo, 1) < today.AddMonths(-6)) y++;
+                    else if (new DateTime(y, mo, 1) > today.AddMonths(7)) y--;
+                }
+            }
+        }
+        if (mo is < 1 or > 12 || y is < 2000 or > 2100 || d < 1 || d > DateTime.DaysInMonth(y, mo)) return null;
+        return new DateTime(y, mo, d);
+    }
+
+    /// <summary>Rows without a header that each hold a date, a time and a name (an exam list, a plan).</summary>
+    private static List<ClassSlot> FromDatedRows(IReadOnlyList<string[]> rows, string origin)
+    {
+        var result = new List<ClassSlot>();
+        foreach (var row in rows)
+        {
+            var cells = row.Select(c => c.Trim()).Where(c => c.Length > 0).ToList();
+            if (cells.Count == 0) continue;
+            var dateCell = cells.FirstOrDefault(c => DateIn(c) != null);
+            if (dateCell == null) continue;
+            var date = DateIn(dateCell)!.Value;
+            var line = string.Join("  ", cells.Where(c => c != dateCell));
+            // A date with a time in the same cell ("18/11 7h30") leaves the time
+            var rest = Regex.Replace(dateCell, @"(?<![\d:h])\d{1,2}[/\-.]\d{1,2}(?:[/\-.]\d{2,4})?(?![\d:])", "");
+            rest = Regex.Replace(rest, @"^\s*(thứ\s*\S+|chủ nhật|cn)[,\s]*", "", RegexOptions.IgnoreCase).Trim(' ', ',', '-');
+            var slot = FromLine((rest.Length > 0 ? rest + " " : "") + line);
+            if (slot == null)
+            {
+                // No time written: a whole-day item at 7:00 (exams usually say their time, plans may not)
+                var name = Regex.Replace(line, @"\s+", " ").Trim();
+                if (name.Length == 0 || NotAClass.IsMatch(name)) continue;
+                slot = new ClassSlot { Subject = name, Start = new TimeSpan(7, 0, 0), End = new TimeSpan(8, 0, 0) };
+            }
+            slot.Date = date;
+            slot.Weekday = Iso(date.DayOfWeek);
+            slot.Origin = origin;
+            result.Add(slot);
+        }
+        // Only a real list: a couple of lines, not one stray date in a timetable
+        return result.Count >= 2 || (result.Count == 1 && rows.Count <= 3) ? Dedupe(result) : new();
+    }
+
+    private static readonly Regex ExamRx = new(@"(?<!\p{L})(thi|kiểm tra|ktra|exam|final|midterm|giữa kỳ|cuối kỳ|bảo vệ|pe|fe)(?!\p{L})", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>An exam by its name: "Thi Toán", "PE PRO192", "Kiểm tra giữa kỳ".</summary>
+    public static bool LooksLikeExam(string subject) => ExamRx.IsMatch(subject);
+
+    /// <summary>The sheet says it's an exam schedule ("LỊCH THI HỌC KỲ I").</summary>
+    public static bool IsExamSheet(IReadOnlyList<string[]> rows) =>
+        rows.Take(3).SelectMany(r => r).Any(c => Regex.IsMatch(c, @"lịch\s*thi|exam\s*schedule|kiểm tra", RegexOptions.IgnoreCase));
+
+    /// <summary>"THỜI KHÓA BIỂU NĂM HỌC 2026-2027", or the first words in the sheet.</summary>
+    public static string TitleOf(IReadOnlyList<string[]> rows)
+    {
+        var first = rows.SelectMany(r => r).Select(c => c.Trim()).FirstOrDefault(c => c.Length > 0) ?? "Google Sheet";
+        return first.Length > 48 ? first[..47] + "…" : first;
     }
 
     /// <summary>"SÁNG 6h45" → "6h45": the last thing in the side cells that looks like a time.</summary>

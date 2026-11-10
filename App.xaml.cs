@@ -193,6 +193,7 @@ public partial class App : Application
 
         // Lịch học: 15 minutes before each class, and at 20:00 what's on tomorrow
         _schedule = new ScheduleService();
+        _schedule.Deadlines = _deadlines;
         _notch.UseSchedule(_schedule);
         _schedule.Upcoming += (c, start) => ShowOnIsland(new NotificationData
         {

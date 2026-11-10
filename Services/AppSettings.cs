@@ -61,8 +61,10 @@ public sealed class AppSettings
     // ── Lịch học ──
     /// <summary>Classes, each a weekly slot (or one date).</summary>
     public List<ClassSlot> Schedule { get; set; } = new();
-    /// <summary>A Google Sheet link the schedule is read from (refreshed every few hours).</summary>
+    /// <summary>Old single sheet link (before several sheets could be linked); moved into <see cref="ScheduleSources"/>.</summary>
     public string? ScheduleSheetUrl { get; set; }
+    /// <summary>Linked Google Sheets (a timetable, an exam schedule…), each re-read every 6 hours.</summary>
+    public List<ScheduleSource> ScheduleSources { get; set; } = new();
     public DateTime? ScheduleSyncedUtc { get; set; }
     /// <summary>Remind 15 minutes before each class; the evening line about tomorrow.</summary>
     public bool ScheduleReminders { get; set; } = true;
@@ -158,6 +160,19 @@ public sealed class AppSettings
     }
 }
 
+/// <summary>A linked sheet: its link, how it's read, when it was last read.</summary>
+public sealed class ScheduleSource
+{
+    public string Key { get; set; } = "";
+    public string Url { get; set; } = "";
+    public string Name { get; set; } = "";
+    /// <summary>"auto" (exams to Hạn chót, the rest to Lịch học), "classes" (all to Lịch học), "exams" (dated rows are exams).</summary>
+    public string Mode { get; set; } = "auto";
+    public DateTime? SyncedUtc { get; set; }
+    public int Classes { get; set; }
+    public int Exams { get; set; }
+}
+
 /// <summary>A kind of session the user named, with its colour (#RRGGBB).</summary>
 public sealed class SessionKind
 {
@@ -193,6 +208,8 @@ public sealed class Deadline
     public bool WarnedDue { get; set; }
     /// <summary>An exam ("Thi …"): counted down in days, a notice each morning.</summary>
     public bool Exam { get; set; }
+    /// <summary>Brought in from a linked sheet (its key); replaced when that sheet is read again.</summary>
+    public string? Source { get; set; }
 }
 
 /// <summary>A line typed without a time: kept as a note.</summary>

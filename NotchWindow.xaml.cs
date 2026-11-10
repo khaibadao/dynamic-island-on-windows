@@ -2487,7 +2487,7 @@ public partial class NotchWindow : Window
         var remind = AppSettings.Current.ScheduleReminders;
         ScheduleRemindSwitch.Background = remind ? Frozen(Color.FromRgb(0x34, 0xC7, 0xC7)) : Frozen(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF));
         ScheduleRemindKnob.HorizontalAlignment = remind ? HorizontalAlignment.Right : HorizontalAlignment.Left;
-        if (on && SheetLink.Text.Length == 0 && AppSettings.Current.ScheduleSheetUrl is { } link) SheetLink.Text = link;
+        if (on) RebuildSources();
         RebuildSchedule();
     }
 
@@ -2883,9 +2883,78 @@ public partial class NotchWindow : Window
         var link = SheetLink.Text.Trim();
         if (link.Length == 0) return;
         EndTyping(collapse: false);
+        await LoadSheetPreview(link, "auto");
+    }
+
+    // ── A sheet's preview: what was found, how to read it, save / cancel ──
+    private ScheduleService.SheetPreview? _sheetPreview;
+
+    private async System.Threading.Tasks.Task LoadSheetPreview(string link, string mode)
+    {
         SayScheduleHint("Đang đọc sheet…");
-        var msg = await _schedule.FromSheetAsync(link);
-        ScheduleImported(msg, msg.StartsWith("Đã"));
+        var (preview, problem) = await ScheduleService.PreviewSheetAsync(link, mode);
+        if (preview == null) { SayScheduleHint(problem ?? "", ok: false); return; }
+        SayScheduleHint("");
+        _sheetPreview = preview;
+        ResizeAfter(() =>
+        {
+            SchedulePreview.Visibility = Visibility.Visible;
+            SchedulePreviewTitle.Text = $"Đọc được từ \u201C{preview.Title}\u201D";
+            SchedulePreviewText.Text = preview.Summary + (preview.Exams.Count > 0 ? " · lịch thi sẽ vào Hạn chót và được đếm ngược theo ngày" : "");
+            SchedulePreviewModes.Children.Clear();
+            foreach (var (key, label) in new[] { ("auto", "Tự nhận"), ("classes", "Tất cả là buổi học"), ("exams", "Ngày cụ thể là lịch thi") })
+            {
+                var seg = Segment(label, preview.Mode == key, () => { if (preview.Mode != key) _ = LoadSheetPreview(link, key); });
+                seg.Padding = new Thickness(9, 3, 9, 3);
+                seg.Margin = new Thickness(0, 0, 4, 0);
+                SchedulePreviewModes.Children.Add(seg);
+            }
+        });
+    }
+
+    private void SchedulePreviewSave_Click(object sender, RoutedEventArgs e)
+    {
+        if (_sheetPreview == null || _schedule == null) return;
+        var msg = _schedule.Apply(_sheetPreview);
+        _sheetPreview = null;
+        SchedulePreview.Visibility = Visibility.Collapsed;
+        SheetLink.Text = "";
+        ScheduleImported(msg, ok: true);
+    }
+
+    private void SchedulePreviewCancel_Click(object sender, RoutedEventArgs e)
+    {
+        _sheetPreview = null;
+        ResizeAfter(() => SchedulePreview.Visibility = Visibility.Collapsed);
+    }
+
+    /// <summary>The linked sheets, each with what it brought and a way to unlink it.</summary>
+    private void RebuildSources()
+    {
+        ScheduleSources.Children.Clear();
+        foreach (var src in AppSettings.Current.ScheduleSources)
+        {
+            var key = src.Key;
+            string ago = src.SyncedUtc is { } t ? Ago(t.ToLocalTime()) : "chưa đọc";
+            var line = $"{src.Name} · {src.Classes} buổi" + (src.Exams > 0 ? $" · {src.Exams} lịch thi" : "") + $" · đọc {ago}";
+            var grid = new Grid { Margin = new Thickness(0, 0, 0, 4) };
+            grid.ColumnDefinitions.Add(new ColumnDefinition());
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            grid.Children.Add(new TextBlock
+            {
+                Text = "\uE8A5  " + line, FontSize = 11, FontFamily = new FontFamily("Segoe UI, Segoe MDL2 Assets"), Foreground = Frozen(Color.FromArgb(0xBB, 0xFF, 0xFF, 0xFF)),
+                VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis
+            });
+            var remove = new TextBlock
+            {
+                Text = "Gỡ", FontSize = 11, FontWeight = FontWeights.SemiBold, FontFamily = new FontFamily("Segoe UI"), Cursor = Cursors.Hand,
+                Foreground = Frozen(Color.FromRgb(0xFF, 0x8A, 0x84)), Padding = new Thickness(8, 2, 2, 2), ToolTip = "Gỡ sheet này và những gì nó thêm vào"
+            };
+            remove.MouseLeftButtonUp += (_, ev) => { ev.Handled = true; _schedule?.RemoveSource(key); SayScheduleHint("Đã gỡ sheet"); ResizeAfter(() => ShowScheduleImport(true)); };
+            Grid.SetColumn(remove, 1);
+            grid.Children.Add(remove);
+            ScheduleSources.Children.Add(grid);
+        }
     }
 
     private void SheetLink_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)

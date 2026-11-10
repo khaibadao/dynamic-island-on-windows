@@ -1140,6 +1140,20 @@
                                              KeyDown="SheetLink_KeyDown" TextChanged="SheetLink_TextChanged"/>
                                 </Grid>
                             </Border>
+                            <!-- What a pasted sheet holds, before saving -->
+                            <Border x:Name="SchedulePreview" Background="#1434C7C7" CornerRadius="10" Padding="10,8" Margin="0,8,0,0" Visibility="Collapsed">
+                                <StackPanel>
+                                    <TextBlock x:Name="SchedulePreviewTitle" Foreground="White" FontSize="12.5" FontWeight="SemiBold" FontFamily="Segoe UI" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock x:Name="SchedulePreviewText" Foreground="#CCFFFFFF" FontSize="11.5" FontFamily="Segoe UI" TextWrapping="Wrap" Margin="0,2,0,6"/>
+                                    <WrapPanel x:Name="SchedulePreviewModes" Margin="0,0,0,6"/>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button Content="Lưu" Style="{StaticResource ActionButton}" Background="White" Foreground="#0B3B3B" Padding="16,4" Click="SchedulePreviewSave_Click"/>
+                                        <Button Content="Huỷ" Style="{StaticResource ActionButton}" Background="#1AFFFFFF" Foreground="White" Padding="14,4" Margin="6,0,0,0" Click="SchedulePreviewCancel_Click"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                            <!-- Sheets already linked -->
+                            <StackPanel x:Name="ScheduleSources" Margin="0,6,0,0"/>
                             <UniformGrid Columns="2" Margin="0,8,0,0">
                                 <Button Content="Dán ảnh lịch" Style="{StaticResource ActionButton}" Background="#1AFFFFFF" Foreground="White"
                                         Margin="0,0,6,0" Click="SchedulePasteImage_Click"

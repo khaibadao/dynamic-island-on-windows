@@ -150,6 +150,34 @@ public sealed class DeadlineService
         Changed?.Invoke();
     }
 
+    /// <summary>The exams brought in from one linked sheet take the place of the ones it gave before.</summary>
+    public void ReplaceFromSource(string source, IEnumerable<Deadline> exams)
+    {
+        var old = AppSettings.Current.Deadlines.Where(d => d.Source == source).ToList();
+        AppSettings.Current.Deadlines.RemoveAll(d => d.Source == source);
+        var now = DateTime.Now;
+        foreach (var d in exams)
+        {
+            d.Source = source;
+            d.Exam = true;
+            // The same exam read again keeps what was already said about it; a new one
+            // that's already close isn't announced as if it were news
+            if (old.FirstOrDefault(o => o.Title == d.Title && o.Due == d.Due) is { } same)
+            {
+                d.Id = same.Id; d.Warned24h = same.Warned24h; d.Warned1h = same.Warned1h; d.WarnedDue = same.WarnedDue;
+            }
+            else
+            {
+                d.Warned24h = d.Due <= now.AddHours(24);
+                d.Warned1h = d.Due <= now.AddHours(1);
+                d.WarnedDue = d.Due <= now;
+            }
+            AppSettings.Current.Deadlines.Add(d);
+        }
+        AppSettings.Current.Save();
+        Changed?.Invoke();
+    }
+
     public void Remove(Guid id)
     {
         AppSettings.Current.Deadlines.RemoveAll(d => d.Id == id);
