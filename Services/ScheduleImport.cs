@@ -329,6 +329,35 @@ public static class ScheduleImport
         return Dedupe(result);
     }
 
+    /// <summary>
+    /// One line typed by hand: "Họp nhóm SWP 15h-16h30 phòng 304", "Gym 18h" (an hour long),
+    /// "15:00 - 16:30 Họp nhóm". The day comes from where it was typed.
+    /// </summary>
+    public static ClassSlot? FromLine(string text)
+    {
+        text = text.Trim();
+        if (text.Length == 0) return null;
+        (TimeSpan, TimeSpan)? when = RangeAt(text, out var at);
+        string rest;
+        if (when != null) rest = text.Remove(at.Index, at.Length);
+        else
+        {
+            var one = Regex.Match(text, @"(?<!\d)(\d{1,2})\s*(?:[:.]\s*(\d{2})|[hg]\s*(\d{2})?)(?!\d)", RegexOptions.IgnoreCase);
+            if (!one.Success) return null;
+            int h = int.Parse(one.Groups[1].Value);
+            int m = one.Groups[2].Success ? int.Parse(one.Groups[2].Value) : one.Groups[3].Success ? int.Parse(one.Groups[3].Value) : 0;
+            if (h > 23 || m > 59) return null;
+            var start = new TimeSpan(h, m, 0);
+            when = (start, start + TimeSpan.FromHours(1));
+            rest = text.Remove(one.Index, one.Length);
+        }
+        string? room = Room(rest);
+        if (room != null) rest = Regex.Replace(rest, @"(?:\bat\s+|\bph(?:ò|o)ng\s*|\broom\s*|\bP\.\s?)" + Regex.Escape(room), "", RegexOptions.IgnoreCase);
+        string subject = Regex.Replace(rest, @"\s+", " ").Trim(' ', ':', '-', '–', ',', '.', '·');
+        if (subject.Length == 0) return null;
+        return new ClassSlot { Subject = subject, Start = when.Value.Item1, End = when.Value.Item2, Room = room };
+    }
+
     // ── Words read from a photo (with where each word was) ────────────
     public sealed record Word(string Text, double X, double Y, double Width, double Height);
 

@@ -1084,12 +1084,37 @@
                                 <StackPanel x:Name="ScheduleDays" Orientation="Horizontal"/>
                             </Border>
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                <Button x:Name="ScheduleAddBtn" Content="+ Thêm buổi" Style="{StaticResource ActionButton}" Margin="0,0,6,0"
+                                        Background="#1AFFFFFF" Foreground="White" Padding="12,4" Click="ScheduleAdd_Click"/>
                                 <Button x:Name="ScheduleImportBtn" Content="Nhập lịch" Style="{StaticResource ActionButton}"
                                         Background="#2634C7C7" Foreground="#7FE3E3" Padding="12,4" Click="ScheduleImport_Click"/>
                             </StackPanel>
                         </Grid>
-                        <TextBlock x:Name="ScheduleHint" Grid.Row="1" Foreground="#7FE3E3" FontSize="11" FontFamily="Segoe UI"
-                                   Margin="4,6,0,0" TextWrapping="Wrap" Visibility="Collapsed"/>
+                        <StackPanel Grid.Row="1">
+                            <TextBlock x:Name="ScheduleHint" Foreground="#7FE3E3" FontSize="11" FontFamily="Segoe UI"
+                                       Margin="4,6,0,0" TextWrapping="Wrap" Visibility="Collapsed"/>
+                            <!-- A session typed in by hand (one day, or every week) -->
+                            <StackPanel x:Name="ScheduleAddRow" Margin="0,8,0,0" Visibility="Collapsed">
+                                <Border Background="#1AFFFFFF" CornerRadius="10" Height="32" Padding="10,0">
+                                    <Grid>
+                                        <TextBlock x:Name="ScheduleAddPlaceholder" IsHitTestVisible="False"
+                                                   Text="vd: Họp nhóm SWP 15h-16h30 phòng 304 · Enter để lưu"
+                                                   Foreground="#88FFFFFF" FontSize="12" FontFamily="Segoe UI" VerticalAlignment="Center"/>
+                                        <TextBox x:Name="ScheduleAddBox" Background="Transparent" BorderThickness="0" Foreground="White"
+                                                 CaretBrush="White" FontSize="12" FontFamily="Segoe UI" VerticalContentAlignment="Center"
+                                                 PreviewMouseLeftButtonDown="ScheduleAddBox_PreviewMouseLeftButtonDown"
+                                                 KeyDown="ScheduleAddBox_KeyDown" TextChanged="ScheduleAddBox_TextChanged"/>
+                                    </Grid>
+                                </Border>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <Border Background="#1AFFFFFF" CornerRadius="10" Padding="3">
+                                        <StackPanel x:Name="ScheduleRepeatNav" Orientation="Horizontal"/>
+                                    </Border>
+                                    <TextBlock x:Name="ScheduleAddNote" Foreground="#88FFFFFF" FontSize="11" FontFamily="Segoe UI"
+                                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </StackPanel>
 
                         <!-- The day's classes -->
                         <ScrollViewer x:Name="ScheduleScroll" Grid.Row="2" MaxHeight="190" Margin="0,8,0,0" VerticalScrollBarVisibility="Hidden" Focusable="False">

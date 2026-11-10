@@ -28,6 +28,8 @@ public sealed class ScheduleService
 
     public ScheduleService()
     {
+        // One-day sessions typed in by hand go away a week after their day
+        if (S.Schedule.RemoveAll(c => c.Origin == "typed" && c.Date is { } d && d < DateTime.Today.AddDays(-7)) > 0) S.Save();
         _timer.Tick += async (_, _) => await TickAsync();
         _timer.Start();
     }
@@ -58,6 +60,48 @@ public sealed class ScheduleService
         _reminded.Clear();
         Changed?.Invoke();
         return slots.Count;
+    }
+
+    // ── By hand ───────────────────────────────────────────────────────
+    /// <summary>A session typed in on the notch (kept when the sheet is read again).</summary>
+    public void AddTyped(ClassSlot slot)
+    {
+        slot.Origin = "typed";
+        S.Schedule.Add(slot);
+        S.Save();
+        Changed?.Invoke();
+    }
+
+    public void UpdateTyped(Guid id, ClassSlot with)
+    {
+        var c = S.Schedule.FirstOrDefault(x => x.Id == id);
+        if (c == null) return;
+        c.Subject = with.Subject; c.Start = with.Start; c.End = with.End; c.Room = with.Room;
+        c.Date = with.Date; c.Weekday = with.Weekday;
+        S.Save();
+        Changed?.Invoke();
+    }
+
+    /// <summary>Every session with this name gets this kind (kept when the sheet is read again).</summary>
+    public void SetKind(string subject, string kind)
+    {
+        S.ScheduleKinds[subject.Trim().ToLowerInvariant()] = kind;
+        S.Save();
+        Changed?.Invoke();
+    }
+
+    private static readonly string[] KindPalette = { "#FF6482", "#64D2FF", "#FFD60A", "#AC8E68", "#5E5CE6", "#FF375F", "#66D4CF" };
+
+    /// <summary>A new kind of session; returns its key (an existing one if the name is taken).</summary>
+    public static string AddKind(string name)
+    {
+        name = name.Trim();
+        var same = S.CustomKinds.FirstOrDefault(k => string.Equals(k.Name, name, StringComparison.OrdinalIgnoreCase));
+        if (same != null) return same.Key;
+        var kind = new SessionKind { Key = "k" + Guid.NewGuid().ToString("N")[..8], Name = name, Color = KindPalette[S.CustomKinds.Count % KindPalette.Length] };
+        S.CustomKinds.Add(kind);
+        S.Save();
+        return kind.Key;
     }
 
     public void Remove(Guid id)
@@ -215,6 +259,7 @@ public sealed class ScheduleService
     public static string Kind(string subject)
     {
         var s = subject.Trim().ToLowerInvariant();
+        if (S.ScheduleKinds.TryGetValue(s, out var picked)) return picked;
         if (System.Text.RegularExpressions.Regex.IsMatch(s, @"^(dạy|day)\b")) return "teach";
         if (System.Text.RegularExpressions.Regex.IsMatch(s, @"^(luyện|luyen|btvn|tự học|tu hoc|ôn|on tap|bù|làm bài)")) return "self";
         if (System.Text.RegularExpressions.Regex.IsMatch(s, @"(?<!\p{L})(thầy|cô)(?!\p{L})")) return "extra";

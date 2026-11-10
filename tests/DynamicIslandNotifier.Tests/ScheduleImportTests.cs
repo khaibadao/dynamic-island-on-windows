@@ -154,4 +154,18 @@ public class ScheduleImportTests
     [InlineData("Dạy IELTS Writing", "teach")]
     [InlineData("OSG202", "class")]
     public void Kinds(string subject, string kind) => Assert.Equal(kind, ScheduleService.Kind(subject));
+
+    [Fact]
+    public void LineTypedByHand()
+    {
+        var a = ScheduleImport.FromLine("Họp nhóm SWP 15h-16h30 phòng 304")!;
+        Assert.Equal("Họp nhóm SWP", a.Subject);
+        Assert.Equal(new TimeSpan(15, 0, 0), a.Start);
+        Assert.Equal(new TimeSpan(16, 30, 0), a.End);
+        Assert.Equal("304", a.Room);
+        var b = ScheduleImport.FromLine("Gym 18h")!;
+        Assert.Equal("Gym", b.Subject);
+        Assert.Equal(new TimeSpan(19, 0, 0), b.End);
+        Assert.Null(ScheduleImport.FromLine("không có giờ"));
+    }
 }

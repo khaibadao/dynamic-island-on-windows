@@ -791,6 +791,7 @@ public partial class NotchWindow : Window
         ClipboardTab.Visibility     = tab == "clipboard"     ? Visibility.Visible : Visibility.Collapsed;
         DeadlinesTab.Visibility     = tab == "deadlines"     ? Visibility.Visible : Visibility.Collapsed;
         ScheduleTab.Visibility      = tab == "schedule"      ? Visibility.Visible : Visibility.Collapsed;
+        ApplyAmbient();
         UpdateSideBar();
 
         // Slide in from the side we're moving to, with a soft fade
@@ -1163,7 +1164,10 @@ public partial class NotchWindow : Window
     {
         Ambient.FrameRate = _energySaver ? 30 : 60;   // battery saver: still drifting, just fewer frames
         Ambient.Level = AmbientLevelNow();
-        Ambient.Play(_ambientOpen);
+        // Lịch học keeps a plain black background: the blocks are easier to read
+        bool plain = _tab == "schedule";
+        Ambient.Visibility = plain ? Visibility.Hidden : Visibility.Visible;
+        Ambient.Play(_ambientOpen && !plain);
         // (no frame counting: listening to every frame makes WPF redraw the whole window non-stop)
     }
 
@@ -2513,7 +2517,7 @@ public partial class NotchWindow : Window
         {
             var day = monday.AddDays(i);
             bool count = ScheduleService.On(day).Count > 0;
-            var seg = Segment(ShortDays[(int)day.DayOfWeek], day == _scheduleDay, () => { _scheduleDay = day; if (_scheduleImporting) ShowScheduleImport(false); else ResizeAfter(RebuildSchedule); });
+            var seg = Segment(ShortDays[(int)day.DayOfWeek], day == _scheduleDay, () => { _scheduleDay = day; _kindPickerFor = null; if (ScheduleAddRow.Visibility == Visibility.Visible) BuildRepeatNav(); if (_scheduleImporting) ShowScheduleImport(false); else ResizeAfter(RebuildSchedule); });
             seg.Padding = new Thickness(8, 3, 8, 3);
             if (day == DateTime.Today && seg.Child is TextBlock tb) tb.TextDecorations = TextDecorations.Underline;
             if (!count) seg.Opacity = 0.55;
@@ -2590,7 +2594,11 @@ public partial class NotchWindow : Window
     }
 
     /// <summary>Colours by kind of session: on the timetable at school, extra class, self-study, teaching.</summary>
-    private static Color KindColour(string kind) => kind switch
+    private static Color KindColour(string kind) =>
+        AppSettings.Current.CustomKinds.FirstOrDefault(k => k.Key == kind) is { } custom && ColorConverter.ConvertFromString(custom.Color) is Color c ? c
+        : BuiltInColour(kind);
+
+    private static Color BuiltInColour(string kind) => kind switch
     {
         "extra" => Color.FromRgb(0xFF, 0x9F, 0x0A),
         "self"  => Color.FromRgb(0xBF, 0x8C, 0xFF),
@@ -2598,7 +2606,10 @@ public partial class NotchWindow : Window
         _       => Color.FromRgb(0x4D, 0xA3, 0xFF),
     };
 
-    private static string KindName(string kind) => kind switch
+    private static string KindName(string kind) =>
+        AppSettings.Current.CustomKinds.FirstOrDefault(k => k.Key == kind)?.Name ?? BuiltInName(kind);
+
+    private static string BuiltInName(string kind) => kind switch
     {
         "extra" => "Học thêm", "self" => "Tự học", "teach" => "Đi dạy", _ => "Trên lớp"
     };
@@ -2646,7 +2657,9 @@ public partial class NotchWindow : Window
         int length = (int)(c.End - c.Start).TotalMinutes;
         text.Children.Add(new TextBlock
         {
-            Text = $"{ScheduleService.Hm(c.Start)} – {ScheduleService.Hm(c.End)} · {length} phút" + (c.Room != null ? $" · {c.Room}" : "") + (c.Date == null ? "" : $" · chỉ ngày {c.Date:dd/MM}"),
+            Text = $"{ScheduleService.Hm(c.Start)} – {ScheduleService.Hm(c.End)} · {length} phút" + (c.Room != null ? $" · {c.Room}" : "")
+                 + (live || isNext ? $" · {KindName(ScheduleService.Kind(c.Subject))}" : "")
+                 + (c.Origin == "typed" ? (c.Date == null ? " · tự thêm, mỗi tuần" : " · tự thêm") : c.Date == null ? "" : $" · chỉ ngày {c.Date:dd/MM}"),
             FontSize = 10.5, FontFamily = new FontFamily("Segoe UI"), Foreground = Frozen(Color.FromArgb(0x99, 0xFF, 0xFF, 0xFF)), TextTrimming = TextTrimming.CharacterEllipsis
         });
         Grid.SetColumn(text, 1);
@@ -2681,9 +2694,165 @@ public partial class NotchWindow : Window
         };
         box.MouseEnter += (_, _) => remove.Visibility = Visibility.Visible;
         box.MouseLeave += (_, _) => remove.Visibility = Visibility.Hidden;
+        box.Cursor = Cursors.Hand;
+        box.ToolTip = "Bấm để đổi loại buổi" + (c.Origin == "typed" ? " hoặc sửa" : "");
+        box.MouseLeftButtonUp += (_, e) => { e.Handled = true; _kindPickerFor = _kindPickerFor == c.Id ? null : c.Id; ResizeAfter(RebuildSchedule); };
         Grid.SetColumn(box, 1);
         grid.Children.Add(box);
-        return grid;
+
+        if (c.Origin == "typed")
+        {
+            // Typed in by hand: a dashed outline
+            var dash = new System.Windows.Shapes.Rectangle
+            {
+                RadiusX = 9, RadiusY = 9, StrokeThickness = 1, StrokeDashArray = new DoubleCollection { 4, 3 },
+                Stroke = Frozen(Color.FromArgb(0xB0, colour.R, colour.G, colour.B)), IsHitTestVisible = false
+            };
+            Grid.SetColumn(dash, 1);
+            grid.Children.Add(dash);
+        }
+
+        if (_kindPickerFor != c.Id) return grid;
+        var wrap = new StackPanel();
+        wrap.Children.Add(grid);
+        wrap.Children.Add(KindPicker(c));
+        return wrap;
+    }
+
+    private Guid? _kindPickerFor;
+
+    /// <summary>Under a session: pick its kind (for every session with that name), make a new kind, or edit it.</summary>
+    private FrameworkElement KindPicker(ClassSlot c)
+    {
+        var row = new WrapPanel { Margin = new Thickness(54, -1, 0, 7) };
+        string now = ScheduleService.Kind(c.Subject);
+        var kinds = new[] { "class", "extra", "self", "teach" }.Concat(AppSettings.Current.CustomKinds.Select(k => k.Key));
+        Border Chip(string text, Color colour, bool on, Action click)
+        {
+            var chip = new Border
+            {
+                CornerRadius = new CornerRadius(9), Padding = new Thickness(9, 2, 9, 3), Margin = new Thickness(0, 0, 5, 5), Cursor = Cursors.Hand,
+                Background = Frozen(Color.FromArgb((byte)(on ? 0x55 : 0x22), colour.R, colour.G, colour.B)),
+                BorderThickness = new Thickness(1), BorderBrush = on ? Frozen(colour) : Brushes.Transparent,
+                Child = new TextBlock { Text = text, FontSize = 11, FontWeight = FontWeights.SemiBold, FontFamily = new FontFamily("Segoe UI"), Foreground = Frozen(colour) }
+            };
+            chip.MouseLeftButtonUp += (_, e) => { e.Handled = true; click(); };
+            return chip;
+        }
+        foreach (var k in kinds)
+        {
+            var key = k;
+            row.Children.Add(Chip(KindName(key), KindColour(key), key == now, () =>
+            {
+                _kindPickerFor = null;
+                _schedule?.SetKind(c.Subject, key);
+                SayScheduleHint($"Mọi buổi \u201C{c.Subject}\u201D giờ là {KindName(key)}");
+            }));
+        }
+        var white = Color.FromRgb(0xEE, 0xEE, 0xF2);
+        row.Children.Add(Chip("+ Loại mới…", white, false, () => OpenScheduleEditor(namingKindFor: c.Subject)));
+        if (c.Origin == "typed")
+            row.Children.Add(Chip("Sửa buổi này", white, false, () => OpenScheduleEditor(editing: c)));
+        return row;
+    }
+
+    // ── Typing a session (or a new kind's name) ──
+    private bool _addOnce = true;          // only on this day / every week
+    private Guid? _editingClass;
+    private string? _namingKindFor;
+
+    private void ScheduleAdd_Click(object sender, RoutedEventArgs e)
+    {
+        if (ScheduleAddRow.Visibility == Visibility.Visible && _editingClass == null && _namingKindFor == null) { CloseScheduleEditor(); return; }
+        OpenScheduleEditor();
+    }
+
+    private void OpenScheduleEditor(ClassSlot? editing = null, string? namingKindFor = null)
+    {
+        if (_scheduleImporting) ShowScheduleImport(false);
+        _editingClass = editing?.Id;
+        _namingKindFor = namingKindFor;
+        _addOnce = editing == null || editing.Date != null;
+        ResizeAfter(() =>
+        {
+            ScheduleAddRow.Visibility = Visibility.Visible;
+            ScheduleAddBox.Text = editing == null ? "" :
+                $"{editing.Subject} {ScheduleService.Hm(editing.Start)}-{ScheduleService.Hm(editing.End)}" + (editing.Room != null ? $" phòng {editing.Room}" : "");
+            ScheduleAddPlaceholder.Text = namingKindFor != null ? "Tên loại mới, vd: Thể thao, CLB, Làm thêm · Enter để lưu"
+                                                                : "vd: Họp nhóm SWP 15h-16h30 phòng 304 · Enter để lưu";
+            BuildRepeatNav();
+        });
+        BeginTyping(ScheduleAddBox);
+        ScheduleAddBox.CaretIndex = ScheduleAddBox.Text.Length;
+    }
+
+    private void BuildRepeatNav()
+    {
+        ScheduleRepeatNav.Children.Clear();
+        bool naming = _namingKindFor != null;
+        ScheduleRepeatNav.Visibility = naming ? Visibility.Collapsed : Visibility.Visible;
+        ScheduleAddNote.Text = naming ? $"cho mọi buổi \u201C{Short(_namingKindFor!, 24)}\u201D · Esc để huỷ"
+                                      : _addOnce ? $"chỉ {Weekdays[(int)_scheduleDay.DayOfWeek]} {_scheduleDay:dd/MM} · Esc để huỷ"
+                                                 : $"mỗi {Weekdays[(int)_scheduleDay.DayOfWeek]} · Esc để huỷ";
+        if (naming) return;
+        foreach (var (once, label) in new[] { (true, "Chỉ ngày này"), (false, "Mỗi tuần") })
+        {
+            var seg = Segment(label, _addOnce == once, () => { _addOnce = once; BuildRepeatNav(); });
+            seg.Padding = new Thickness(9, 3, 9, 3);
+            ScheduleRepeatNav.Children.Add(seg);
+        }
+    }
+
+    private void CloseScheduleEditor()
+    {
+        _editingClass = null;
+        _namingKindFor = null;
+        EndTyping(collapse: false);
+        ResizeAfter(() => ScheduleAddRow.Visibility = Visibility.Collapsed);
+    }
+
+    private void ScheduleAddBox_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (_typing) return;
+        BeginTyping(ScheduleAddBox);
+        e.Handled = true;
+    }
+
+    private void ScheduleAddBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (!_ready) return;
+        ScheduleAddPlaceholder.Visibility = ScheduleAddBox.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void ScheduleAddBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape) { e.Handled = true; CloseScheduleEditor(); return; }
+        if (e.Key != Key.Enter || _schedule == null) return;
+        e.Handled = true;
+        var text = ScheduleAddBox.Text.Trim();
+        if (text.Length == 0) return;
+
+        if (_namingKindFor is { } subject)
+        {
+            var key = ScheduleService.AddKind(text);
+            _kindPickerFor = null;
+            CloseScheduleEditor();
+            _schedule.SetKind(subject, key);
+            SayScheduleHint($"Đã tạo loại \u201C{text}\u201D cho mọi buổi \u201C{subject}\u201D");
+            return;
+        }
+
+        var slot = ScheduleImport.FromLine(text);
+        if (slot == null) { SayScheduleHint("Thiếu giờ rồi, vd: Họp nhóm 15h-16h30 (chỉ giờ bắt đầu thì tính 1 tiếng)", ok: false); return; }
+        slot.Weekday = ScheduleImport.Iso(_scheduleDay.DayOfWeek);
+        slot.Date = _addOnce ? _scheduleDay.Date : null;
+        bool editing = _editingClass is { } id;
+        if (editing) _schedule.UpdateTyped(_editingClass!.Value, slot);
+        else _schedule.AddTyped(slot);
+        _kindPickerFor = null;
+        CloseScheduleEditor();
+        SayScheduleHint((editing ? "Đã sửa: " : "Đã thêm: ") + $"{slot.Subject} {ScheduleService.Hm(slot.Start)}–{ScheduleService.Hm(slot.End)}"
+                        + (slot.Date != null ? $" · {Weekdays[(int)_scheduleDay.DayOfWeek]} {_scheduleDay:dd/MM}" : $" · mỗi {Weekdays[(int)_scheduleDay.DayOfWeek]}"));
     }
 
     private void SayScheduleHint(string text, bool ok = true)

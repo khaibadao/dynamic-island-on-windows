@@ -67,6 +67,10 @@ public sealed class AppSettings
     /// <summary>Remind 15 minutes before each class; the evening line about tomorrow.</summary>
     public bool ScheduleReminders { get; set; } = true;
     public DateTime? TomorrowNoticeDay { get; set; }
+    /// <summary>Kinds picked by hand, by subject (lower case): "class", "extra", "self", "teach" or a custom kind's key.</summary>
+    public Dictionary<string, string> ScheduleKinds { get; set; } = new();
+    /// <summary>Kinds of session made by the user ("Thể thao", "CLB"…).</summary>
+    public List<SessionKind> CustomKinds { get; set; } = new();
 
     /// <summary>Colour wash behind the panel: "full", "light" (still picture) or "off".</summary>
     public string Ambient { get; set; } = "full";
@@ -152,6 +156,14 @@ public sealed class AppSettings
             catch { }
         }
     }
+}
+
+/// <summary>A kind of session the user named, with its colour (#RRGGBB).</summary>
+public sealed class SessionKind
+{
+    public string Key { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string Color { get; set; } = "#FF6482";
 }
 
 /// <summary>One class: a weekday (or a single date), start and end time, subject and room.</summary>

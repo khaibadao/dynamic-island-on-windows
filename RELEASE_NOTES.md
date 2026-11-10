@@ -1,5 +1,10 @@
 Bản chỉnh sửa từ [sadeeshasathsara/dynamic-island-on-windows](https://github.com/sadeeshasathsara/dynamic-island-on-windows) (MIT).
 
+### Mới trong v2.8.0
+- **Lịch học nền đen**: tab Lịch học không còn màu loang / nốt nhạc phía sau, các khối dễ đọc hơn
+- **Đổi loại buổi**: bấm vào một buổi để chọn lại Trên lớp / Học thêm / Tự học / Đi dạy, hoặc "+ Loại mới…" (tự đặt tên, có màu riêng). Đổi một buổi là mọi buổi cùng tên đổi theo, và vẫn giữ khi sheet được đọc lại
+- **Thêm buổi đột xuất ngay trên tai thỏ**: nút "+ Thêm buổi", gõ vd "Họp nhóm SWP 15h-16h30 phòng 304", chọn Chỉ ngày này hoặc Mỗi tuần. Buổi tự thêm có viền nét đứt, sửa được, và không bị mất khi sheet cập nhật. Trùng giờ với buổi trong sheet thì hiện cả hai
+
 ### Mới trong v2.7.4
 - **Kênh thử nghiệm (Beta)**: Cài đặt & quyền riêng tư → "Nhận bản thử nghiệm (Beta)". Bản đang thử được đăng dạng Pre-release trên GitHub; ai không bật mục này sẽ chỉ nhận bản chính thức như trước
 - Dọn trang Releases: chỉ giữ bản v2.6.2 và bản mới nhất; các bản beta cũ tự được dọn, chỉ giữ 3 bản gần nhất
