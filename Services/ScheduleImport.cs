@@ -314,7 +314,7 @@ public static class ScheduleImport
     private static IEnumerable<ClassSlot> FromCell(string cell, (TimeSpan, TimeSpan)? rowTime)
     {
         cell = cell.Trim();
-        if (cell.Length < 3 || cell == "-") yield break;
+        if (cell.Length < 2 || cell == "-") yield break;   // "Lý" is a subject
         var codes = CodeRx.Matches(cell);
         if (codes.Count == 0)
         {
