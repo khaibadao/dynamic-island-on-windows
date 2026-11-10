@@ -116,23 +116,25 @@ public static class ScheduleImport
 
         // Find the header row
         int header = -1;
-        int cDay = -1, cStart = -1, cEnd = -1, cSubject = -1, cRoom = -1, cTime = -1, cDate = -1;
+        int cDay = -1, cStart = -1, cEnd = -1, cSubject = -1, cRoom = -1, cTime = -1, cDate = -1, cDone = -1;
         for (int r = 0; r < Math.Min(rows.Count, 8) && header < 0; r++)
         {
             for (int c = 0; c < rows[r].Length; c++)
             {
                 var h = rows[r][c].Trim().ToLowerInvariant();
                 if (h.Length == 0) continue;
-                if (cDay < 0 && Regex.IsMatch(h, @"^(thứ|thu|day|weekday|ngày trong tuần)")) cDay = c;
+                if (cDate < 0 && Regex.IsMatch(h, @"^(ngày|ngay|date|hạn|han|deadline|due)")) cDate = c;
+                else if (cDay < 0 && Regex.IsMatch(h, @"^(thứ|thu|day|weekday|ngày trong tuần)")) cDay = c;
                 else if (cStart < 0 && Regex.IsMatch(h, @"(bắt đầu|bat dau|start|^từ|^tu$|giờ vào|from)")) cStart = c;
                 else if (cEnd < 0 && Regex.IsMatch(h, @"(kết thúc|ket thuc|end|^đến|^den$|giờ ra|^to$)")) cEnd = c;
-                else if (cSubject < 0 && Regex.IsMatch(h, @"(môn|mon hoc|subject|course|học phần|lớp|class)")) cSubject = c;
+                else if (cSubject < 0 && Regex.IsMatch(h, @"(môn|mon hoc|subject|course|học phần|lớp|class|công việc|cong viec|^việc|nội dung|task|^tên|title|sự kiện|event|bài tập|assignment)")) cSubject = c;
+                else if (cDone < 0 && Regex.IsMatch(h, @"(tiến độ|tien do|trạng thái|trang thai|status|check|xong|done)")) cDone = c;
                 else if (cRoom < 0 && Regex.IsMatch(h, @"(phòng|phong|room|địa điểm|location)")) cRoom = c;
                 else if (cTime < 0 && Regex.IsMatch(h, @"^(giờ|gio|time|thời gian|ca|slot|tiết)")) cTime = c;
-                else if (cDate < 0 && Regex.IsMatch(h, @"^(ngày|ngay|date)")) cDate = c;
             }
-            if (cSubject >= 0 && (cDay >= 0 || cDate >= 0) && (cStart >= 0 || cTime >= 0)) header = r;
-            else cDay = cStart = cEnd = cSubject = cRoom = cTime = cDate = -1;
+            // A timetable (day + time), or a list of things by date (the time may be missing)
+            if (cSubject >= 0 && ((cDay >= 0 || cDate >= 0) && (cStart >= 0 || cTime >= 0) || cDate >= 0)) header = r;
+            else cDay = cStart = cEnd = cSubject = cRoom = cTime = cDate = cDone = -1;
         }
         if (header < 0)
         {
@@ -146,23 +148,26 @@ public static class ScheduleImport
             string Cell(int c) => c >= 0 && c < row.Length ? row[c].Trim() : "";
             var subject = Cell(cSubject);
             if (subject.Length == 0) continue;
+            if (cDone >= 0 && IsDone(Cell(cDone))) continue;   // ticked off / "Hoàn thành"
 
             TimeSpan? start = Time(Cell(cStart)), end = Time(Cell(cEnd));
             if (Range(Cell(cTime)) is { } rg) (start, end) = (rg.Item1, rg.Item2);
             else if (Range(Cell(cStart)) is { } rg2) (start, end) = (rg2.Item1, rg2.Item2);
             else if (start == null && Regex.Match(Cell(cTime), @"\d+") is { Success: true } sm && int.TryParse(sm.Value, out int slot) && slot is >= 1 and < 7)
                 (start, end) = (FptSlots[slot].Start, FptSlots[slot].End);
-            if (start == null) continue;
-            end ??= start.Value + TimeSpan.FromMinutes(90);
-
             DateTime? date = cDate >= 0 ? DateIn(Cell(cDate)) : null;
+            bool allDay = start == null;
+            if (allDay && date == null) continue;   // neither a time nor a date
+            start ??= new TimeSpan(7, 0, 0);
+            end ??= start.Value + TimeSpan.FromMinutes(allDay ? 60 : 90);
+
             int weekday = date is { } dd ? Iso(dd.DayOfWeek) : Weekday(Cell(cDay));
             if (weekday == 0) continue;
 
             result.Add(new ClassSlot
             {
                 Weekday = weekday, Date = date, Start = start.Value, End = end.Value,
-                Subject = subject, Room = NullIfEmpty(Cell(cRoom)), Origin = origin
+                Subject = subject, Room = NullIfEmpty(Cell(cRoom)), Origin = origin, AllDay = allDay
             });
         }
         return result;
@@ -256,7 +261,7 @@ public static class ScheduleImport
                 // No time written: a whole-day item at 7:00 (exams usually say their time, plans may not)
                 var name = Regex.Replace(line, @"\s+", " ").Trim();
                 if (name.Length == 0 || NotAClass.IsMatch(name)) continue;
-                slot = new ClassSlot { Subject = name, Start = new TimeSpan(7, 0, 0), End = new TimeSpan(8, 0, 0) };
+                slot = new ClassSlot { Subject = name, Start = new TimeSpan(7, 0, 0), End = new TimeSpan(8, 0, 0), AllDay = true };
             }
             slot.Date = date;
             slot.Weekday = Iso(date.DayOfWeek);
@@ -271,6 +276,18 @@ public static class ScheduleImport
 
     /// <summary>An exam by its name: "Thi Toán", "PE PRO192", "Kiểm tra giữa kỳ".</summary>
     public static bool LooksLikeExam(string subject) => ExamRx.IsMatch(subject);
+
+    /// <summary>"Hoàn thành", "Xong", "Done", a ticked box (TRUE), "✓" (but not "Chưa hoàn thành").</summary>
+    internal static bool IsDone(string cell)
+    {
+        var t = cell.Trim().ToLowerInvariant();
+        if (t.Length == 0 || Regex.IsMatch(t, @"chưa|chua|not|đang|dang|in progress|todo")) return false;
+        return Regex.IsMatch(t, @"^(✓|✔|☑|x|true|yes|có|done|xong|đã xong|hoàn thành|hoan thanh|completed|finished|100\s*%)$");
+    }
+
+    /// <summary>The sheet is a list of deadlines ("DEADLINE", "Hạn chót", "Hạn nộp").</summary>
+    public static bool IsDeadlineSheet(IReadOnlyList<string[]> rows) =>
+        rows.Take(3).SelectMany(r => r).Any(c => Regex.IsMatch(c, @"dea?l?d?line|dealdine|hạn chót|han chot|hạn nộp|due date", RegexOptions.IgnoreCase));
 
     /// <summary>The sheet says it's an exam schedule ("LỊCH THI HỌC KỲ I").</summary>
     public static bool IsExamSheet(IReadOnlyList<string[]> rows) =>
@@ -423,7 +440,7 @@ public static class ScheduleImport
     /// </summary>
     public static ClassSlot? FromLine(string text)
     {
-        text = text.Trim();
+        text = Regex.Replace(text, @"https?://\S+|www\.\S+", " ").Trim();   // digits inside a link aren't a time
         if (text.Length == 0) return null;
         (TimeSpan, TimeSpan)? when = RangeAt(text, out var at);
         string rest;

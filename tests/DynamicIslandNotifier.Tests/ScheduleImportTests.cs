@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System;
 using System.Linq;
 using DynamicIslandNotifier.Services;
@@ -194,10 +195,11 @@ public class ScheduleImportTests
         var toan = slots.Single(s => s.Subject == "Thi Toán");
         Assert.Equal(11, toan.Date!.Value.Month);
         Assert.Equal(new TimeSpan(7, 30, 0), toan.Start);
-        // Sorted: names with "thi" are exams, the rest stay dated sessions
+        // Sorted: names with "thi" are exams; one with no time is a deadline
         var preview = ScheduleService.Sort("u", "t", slots, "auto", examSheet: false);
         Assert.Equal(2, preview.Exams.Count);
-        Assert.Single(preview.Dated);
+        Assert.Equal("Nộp đồ án SWP", Assert.Single(preview.Due).Subject);
+        Assert.Empty(preview.Dated);
         // Read as classes on request: no exams
         Assert.Empty(ScheduleService.Sort("u", "t", slots, "classes", examSheet: false).Exams);
     }
@@ -220,5 +222,38 @@ public class ScheduleImportTests
         var d = ScheduleImport.DateIn(text)!.Value;
         Assert.Equal(month, d.Month);
         Assert.Equal(day, d.Day);
+    }
+
+    [Fact]
+    public void DeadlineSheetWithoutTimes()
+    {
+        // "Khai's Deadline": a title, a header with STT · Date · CÔNG VIỆC · … · TIẾN ĐỘ, no times
+        var rows = new List<string[]>
+        {
+            new[] { "DEALDINE", "", "", "", "", "", "" },
+            new[] { "STT", "Date", "CÔNG VIỆC", "", "TIẾN ĐỘ", "CHECK", "NOTE" },
+            new[] { "", "", "NỘI DUNG", "", "", "", "CHI TIẾT" },
+            new[] { "1", "18/11", "Kiểm tra cuối kì NWC", "- Kiểm tra PE + FE", "Chưa hoàn thành", "", "" },
+            new[] { "2", "20/11", "Kiểm tra cuối kì MAD", "- Kiêm tra PE", "Chưa hoàn thành", "", "" },
+            new[] { "3", "21/11", "Kiểm tra cuối kì OSG", "- Kiêm tra PE", "Hoàn thành", "", "" },
+            new[] { "4", "25/11", "Nộp báo cáo SWP", "", "Chưa hoàn thành", "", "" },
+            new[] { "5", "", "", "", "\u200B", "", "" },
+        };
+        var slots = ScheduleImport.FromTable(rows, "sheet");
+        Assert.Equal(3, slots.Count);                       // the done one and the empty rows are left out
+        Assert.All(slots, s => Assert.True(s.AllDay));
+        Assert.True(ScheduleImport.IsDeadlineSheet(rows));
+        var p = ScheduleService.Sort("u", "t", slots, "auto", examSheet: false, deadlineSheet: true);
+        Assert.Equal(2, p.Exams.Count);                     // "Kiểm tra cuối kì …"
+        Assert.Equal("Nộp báo cáo SWP", Assert.Single(p.Due).Subject);
+        Assert.Empty(p.Weekly);
+        Assert.Empty(p.Dated);
+    }
+
+    [Fact]
+    public void LinkTypedAsSessionIsNotATime()
+    {
+        Assert.Null(ScheduleImport.FromLine("https://docs.google.com/spreadsheets/d/1k36O0wXSKv559aZRg2H2hl5TJ3uyVEzXocQyv0pS54I/edit?gid=0#gid=0"));
+        Assert.NotNull(ScheduleImport.SheetCsvUrl("https://docs.google.com/spreadsheets/d/1k36O0wXSKv559aZRg2H2hl5TJ3uyVEzXocQyv0pS54I/edit?gid=0#gid=0"));
     }
 }

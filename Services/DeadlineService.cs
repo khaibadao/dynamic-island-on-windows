@@ -150,7 +150,7 @@ public sealed class DeadlineService
         Changed?.Invoke();
     }
 
-    /// <summary>The exams brought in from one linked sheet take the place of the ones it gave before.</summary>
+    /// <summary>The exams and deadlines brought in from one linked sheet take the place of the ones it gave before.</summary>
     public void ReplaceFromSource(string source, IEnumerable<Deadline> exams)
     {
         var old = AppSettings.Current.Deadlines.Where(d => d.Source == source).ToList();
@@ -159,7 +159,6 @@ public sealed class DeadlineService
         foreach (var d in exams)
         {
             d.Source = source;
-            d.Exam = true;
             // The same exam read again keeps what was already said about it; a new one
             // that's already close isn't announced as if it were news
             if (old.FirstOrDefault(o => o.Title == d.Title && o.Due == d.Due) is { } same)
@@ -172,6 +171,8 @@ public sealed class DeadlineService
                 d.Warned1h = d.Due <= now.AddHours(1);
                 d.WarnedDue = d.Due <= now;
             }
+            // An exam with only a day: no "in 1 hour" at 6:00 (the morning countdown says it)
+            if (d.Exam && d.NoTime) d.Warned1h = d.WarnedDue = true;
             AppSettings.Current.Deadlines.Add(d);
         }
         AppSettings.Current.Save();

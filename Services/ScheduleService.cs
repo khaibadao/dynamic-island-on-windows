@@ -134,9 +134,10 @@ public sealed class ScheduleService
     // ── Sources ───────────────────────────────────────────────────────
     // ── Linked Google Sheets ──────────────────────────────────────────
     /// <summary>What a sheet holds, before it's saved: so a wrong guess can be fixed.</summary>
-    public sealed record SheetPreview(string Url, string Title, IReadOnlyList<ClassSlot> Weekly, IReadOnlyList<ClassSlot> Dated, IReadOnlyList<ClassSlot> Exams, string Mode)
+    public sealed record SheetPreview(string Url, string Title, IReadOnlyList<ClassSlot> Weekly, IReadOnlyList<ClassSlot> Dated,
+                                      IReadOnlyList<ClassSlot> Exams, IReadOnlyList<ClassSlot> Due, string Mode)
     {
-        public bool Empty => Weekly.Count + Dated.Count + Exams.Count == 0;
+        public bool Empty => Weekly.Count + Dated.Count + Exams.Count + Due.Count == 0;
 
         /// <summary>"70 buổi hằng tuần · 5 lịch thi (18/11 Thi Toán…) · 3 buổi theo ngày".</summary>
         public string Summary
@@ -147,6 +148,8 @@ public sealed class ScheduleService
                 if (Weekly.Count > 0) parts.Add($"{Weekly.Count} buổi hằng tuần");
                 if (Exams.Count > 0)
                     parts.Add($"{Exams.Count} lịch thi (" + string.Join(", ", Exams.OrderBy(e => e.Date).Take(2).Select(e => $"{e.Date:dd/MM} {e.Subject}")) + (Exams.Count > 2 ? "…" : "") + ")");
+                if (Due.Count > 0)
+                    parts.Add($"{Due.Count} hạn chót (" + string.Join(", ", Due.OrderBy(e => e.Date).Take(2).Select(e => $"{e.Date:dd/MM} {e.Subject}")) + (Due.Count > 2 ? "…" : "") + ")");
                 if (Dated.Count > 0) parts.Add($"{Dated.Count} buổi theo ngày");
                 return string.Join(" · ", parts);
             }
@@ -171,7 +174,7 @@ public sealed class ScheduleService
                 return (null, "Không đọc được sheet. Mở sheet → Chia sẻ → \u201CBất kỳ ai có đường liên kết\u201D → Người xem, rồi thử lại.");
             var rows = ScheduleImport.ParseCsv(await resp.Content.ReadAsStringAsync());
             var all = ScheduleImport.FromTable(rows, "sheet");
-            var preview = Sort(link.Trim(), ScheduleImport.TitleOf(rows), all, mode, ScheduleImport.IsExamSheet(rows));
+            var preview = Sort(link.Trim(), ScheduleImport.TitleOf(rows), all, mode, ScheduleImport.IsExamSheet(rows), ScheduleImport.IsDeadlineSheet(rows));
             return preview.Empty
                 ? (null, "Sheet không có buổi nào đọc được. Cần có cột giờ, và cột thứ hoặc ngày (vd: Thứ · Giờ · Môn, hoặc Ngày · Giờ · Môn thi).")
                 : (preview, null);
@@ -183,14 +186,20 @@ public sealed class ScheduleService
         }
     }
 
-    internal static SheetPreview Sort(string url, string title, IReadOnlyList<ClassSlot> all, string mode, bool examSheet)
+    /// <summary>
+    /// Weekly sessions stay in the timetable. Dated items: exams (by name, or an exam sheet)
+    /// and deadlines (no time written, or a deadline sheet) go to Hạn chót; the rest are
+    /// sessions on that day. "classes" keeps everything in the timetable.
+    /// </summary>
+    internal static SheetPreview Sort(string url, string title, IReadOnlyList<ClassSlot> all, string mode, bool examSheet, bool deadlineSheet = false)
     {
         bool Exam(ClassSlot c) => c.Date != null && mode != "classes" && (mode == "exams" || examSheet || ScheduleImport.LooksLikeExam(c.Subject));
-        var exams = all.Where(Exam).ToList();
+        bool Due(ClassSlot c) => c.Date != null && mode != "classes" && !Exam(c) && (c.AllDay || deadlineSheet);
         return new SheetPreview(url, title,
             all.Where(c => c.Date == null).ToList(),
-            all.Where(c => c.Date != null && !Exam(c)).ToList(),
-            exams, mode);
+            all.Where(c => c.Date != null && !Exam(c) && !Due(c)).ToList(),
+            all.Where(Exam).ToList(),
+            all.Where(Due).ToList(), mode);
     }
 
     /// <summary>Saves a sheet's sessions (exams go to Hạn chót) and keeps the link to re-read it.</summary>
@@ -206,18 +215,23 @@ public sealed class ScheduleService
         src.Mode = p.Mode;
         src.SyncedUtc = DateTime.UtcNow;
         src.Classes = p.Weekly.Count + p.Dated.Count;
-        src.Exams = p.Exams.Count;
+        src.Exams = p.Exams.Count + p.Due.Count;
 
         var slots = p.Weekly.Concat(p.Dated).ToList();
         foreach (var c in slots) c.Origin = src.Key;
         Replace(slots, src.Key);
-        Deadlines?.ReplaceFromSource(src.Key, p.Exams.Select(e => new Deadline
+        // Exams: at their time (7:00 when none is written); deadlines: end of that day
+        var dues = p.Exams.Select(e => new Deadline
         {
-            Title = DeadlineService.IsExamTitle(e.Subject) ? e.Subject : "Thi " + e.Subject,
-            Due = e.Date!.Value + e.Start
-        }).ToList());
-        CrashLog.Write($"Schedule: sheet read, {slots.Count} sessions, {p.Exams.Count} exams");
-        return $"Đã lưu: {p.Summary}" + (p.Exams.Count > 0 ? " · lịch thi nằm ở Hạn chót" : "") + " · tự cập nhật mỗi 6 giờ";
+            Title = DeadlineService.IsExamTitle(e.Subject) || ScheduleImport.LooksLikeExam(e.Subject) ? e.Subject : "Thi " + e.Subject,
+            Due = e.Date!.Value + (e.AllDay ? new TimeSpan(7, 0, 0) : e.Start), Exam = true, NoTime = e.AllDay
+        }).Concat(p.Due.Select(d => new Deadline
+        {
+            Title = d.Subject, Due = d.Date!.Value + (d.AllDay ? new TimeSpan(23, 59, 0) : d.Start), Exam = false, NoTime = d.AllDay
+        })).ToList();
+        Deadlines?.ReplaceFromSource(src.Key, dues);
+        CrashLog.Write($"Schedule: sheet read, {slots.Count} sessions, {dues.Count} deadlines/exams");
+        return $"Đã lưu: {p.Summary}" + (dues.Count > 0 ? " · lịch thi và hạn chót nằm ở tab Hạn chót" : "") + " · tự cập nhật mỗi 6 giờ";
     }
 
     /// <summary>Unlinks a sheet and takes away what it brought.</summary>

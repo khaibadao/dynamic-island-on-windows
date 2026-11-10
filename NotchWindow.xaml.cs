@@ -2244,8 +2244,8 @@ public partial class NotchWindow : Window
                        : Color.FromRgb(0x4D, 0xA3, 0xFF);
             var editing = d;
             DeadlineList.Children.Add(PlannerRow(colour, "\uE7BE", d.Title,
-                $"Thi · {Weekdays[(int)d.Due.DayOfWeek]}, {d.Due:dd/MM} · {d.Due:HH:mm}",
-                days == 0 && d.Due > now ? "Hôm nay · thi tốt nhé!" : DeadlineService.DaysLeft(d.Due, now),
+                $"Thi · {Weekdays[(int)d.Due.DayOfWeek]}, {d.Due:dd/MM}" + (d.NoTime ? "" : $" · {d.Due:HH:mm}"),
+                days == 0 && (d.Due > now || d.NoTime) ? "Hôm nay · thi tốt nhé!" : DeadlineService.DaysLeft(d.Due, now),
                 strike: d.Due < now.AddHours(-3), highlighted: d.Id == _editingDeadline,
                 remove: () => _deadlines?.Remove(editing.Id), click: () => BeginEditDeadline(editing)));
         }
@@ -2259,7 +2259,7 @@ public partial class NotchWindow : Window
                        : Color.FromRgb(0xB3, 0x8C, 0xFF);
             var editing = d;
             DeadlineList.Children.Add(PlannerRow(colour, null, d.Title,
-                $"{Weekdays[(int)d.Due.DayOfWeek]}, {d.Due:dd/MM} · {d.Due:HH:mm}",
+                $"{Weekdays[(int)d.Due.DayOfWeek]}, {d.Due:dd/MM}" + (d.NoTime ? " · cả ngày" : $" · {d.Due:HH:mm}"),
                 DeadlineService.Left(d.Due, now), strike: left < TimeSpan.Zero, highlighted: d.Id == _editingDeadline,
                 remove: () => _deadlines?.Remove(editing.Id), click: () => BeginEditDeadline(editing)));
         }
@@ -2832,6 +2832,16 @@ public partial class NotchWindow : Window
         var text = ScheduleAddBox.Text.Trim();
         if (text.Length == 0) return;
 
+        // A sheet link pasted here: read it as a sheet, not as a session
+        if (_namingKindFor == null && _editingClass == null && ScheduleImport.SheetCsvUrl(text) != null)
+        {
+            CloseScheduleEditor();
+            ResizeAfter(() => ShowScheduleImport(true));
+            SheetLink.Text = text;
+            _ = LoadSheetPreview(text, "auto");
+            return;
+        }
+
         if (_namingKindFor is { } subject)
         {
             var key = ScheduleService.AddKind(text);
@@ -2900,7 +2910,7 @@ public partial class NotchWindow : Window
         {
             SchedulePreview.Visibility = Visibility.Visible;
             SchedulePreviewTitle.Text = $"Đọc được từ \u201C{preview.Title}\u201D";
-            SchedulePreviewText.Text = preview.Summary + (preview.Exams.Count > 0 ? " · lịch thi sẽ vào Hạn chót và được đếm ngược theo ngày" : "");
+            SchedulePreviewText.Text = preview.Summary + (preview.Exams.Count + preview.Due.Count > 0 ? " · lịch thi và hạn chót sẽ vào tab Hạn chót, được đếm ngược" : "");
             SchedulePreviewModes.Children.Clear();
             foreach (var (key, label) in new[] { ("auto", "Tự nhận"), ("classes", "Tất cả là buổi học"), ("exams", "Ngày cụ thể là lịch thi") })
             {

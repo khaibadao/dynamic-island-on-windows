@@ -195,6 +195,8 @@ public sealed class ClassSlot
     public string? Room { get; set; }
     /// <summary>Where it came from: "sheet", "file", "fap", "photo", "typed".</summary>
     public string? Origin { get; set; }
+    /// <summary>No time was written, only a day (goes to Hạn chót rather than the timetable).</summary>
+    public bool AllDay { get; set; }
 }
 
 /// <summary>A deadline to count down to; reminders already sent are remembered.</summary>
@@ -208,6 +210,8 @@ public sealed class Deadline
     public bool WarnedDue { get; set; }
     /// <summary>An exam ("Thi …"): counted down in days, a notice each morning.</summary>
     public bool Exam { get; set; }
+    /// <summary>Only a day was given (no time): shown as the day, not as 7:00 / 23:59.</summary>
+    public bool NoTime { get; set; }
     /// <summary>Brought in from a linked sheet (its key); replaced when that sheet is read again.</summary>
     public string? Source { get; set; }
 }
