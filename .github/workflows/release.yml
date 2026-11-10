@@ -4,6 +4,10 @@ name: Build & Release
 # - Every push / pull request: build (checks the code compiles).
 # - Push to main with a new number in the VERSION file (e.g. 1.2.0): also
 #   creates the tag v1.2.0 and publishes a GitHub Release with the .exe files.
+# - A VERSION like 2.8.0-beta.1 is published as a pre-release: GitHub's
+#   "latest" link skips it, so only apps with "Nhận bản thử nghiệm (Beta)" on
+#   get it. Only the 3 newest betas are kept; a finished release removes its betas.
+# - Tags listed in .github/prune-releases.txt are removed (release + tag).
 on:
   push:
     branches: [main]
@@ -27,6 +31,10 @@ jobs:
         run: |
           $v = (Get-Content VERSION -Raw).Trim()
           $tag = "v$v"
+          $num = $v.Split('-')[0]
+          $beta = $v -match '-beta'
+          "num=$num"   >> $env:GITHUB_OUTPUT
+          "beta=$($beta.ToString().ToLower())" >> $env:GITHUB_OUTPUT
           $exists = [bool](git tag --list $tag)
           "version=$v"  >> $env:GITHUB_OUTPUT
           "tag=$tag"    >> $env:GITHUB_OUTPUT
@@ -61,9 +69,9 @@ jobs:
           # Installers (per-user, no admin) made with Inno Setup
           if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress | Out-Null }
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-          & $iscc /Qp "/DAppVersion=${{ steps.ver.outputs.version }}" /DArch=x64 installer.iss
+          & $iscc /Qp "/DAppVersion=${{ steps.ver.outputs.num }}" /DArch=x64 installer.iss
           if ($LASTEXITCODE -ne 0) { exit 1 }
-          & $iscc /Qp "/DAppVersion=${{ steps.ver.outputs.version }}" /DArch=arm64 installer.iss
+          & $iscc /Qp "/DAppVersion=${{ steps.ver.outputs.num }}" /DArch=arm64 installer.iss
           if ($LASTEXITCODE -ne 0) { exit 1 }
           # Fingerprints the app's updater checks before installing a new version
           Get-ChildItem release/*.exe | ForEach-Object { "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name } |
@@ -81,8 +89,42 @@ jobs:
         with:
           tag_name: ${{ steps.ver.outputs.tag }}
           target_commitish: ${{ github.sha }}
-          name: Dynamic Island ${{ steps.ver.outputs.tag }}
+          name: Dynamic Island ${{ steps.ver.outputs.tag }}${{ steps.ver.outputs.beta == 'true' && ' (thử nghiệm)' || '' }}
+          prerelease: ${{ steps.ver.outputs.beta == 'true' }}
+          make_latest: ${{ steps.ver.outputs.beta == 'true' && 'false' || 'true' }}
           body_path: RELEASE_NOTES.md
           files: |
             release/*.exe
             release/SHA256SUMS.txt
+
+      - name: Tidy releases
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $remoteTags = git ls-remote --tags origin | ForEach-Object { ($_ -split 'refs/tags/')[1] } | Where-Object { $_ -notmatch '\^\{\}$' }
+          $releases = gh release list --limit 200 --json tagName | ConvertFrom-Json | ForEach-Object { $_.tagName }
+          function Remove-Release($tag) {
+            if (($remoteTags -notcontains $tag) -and ($releases -notcontains $tag)) { return }   # already gone
+            gh release delete $tag --yes --cleanup-tag 2>$null
+            if ($LASTEXITCODE -eq 0) { Write-Host "Removed $tag" }
+            else { git push origin ":refs/tags/$tag" 2>$null }   # a tag without a release
+          }
+          # 1. Tags listed by hand
+          if (Test-Path .github/prune-releases.txt) {
+            Get-Content .github/prune-releases.txt | ForEach-Object { $_.Trim() } |
+              Where-Object { $_ -match '^v\d' } | ForEach-Object { Remove-Release $_ }
+          }
+          # 2. Betas: keep the 3 newest; a finished release removes the betas before it
+          $all = gh release list --limit 200 --json tagName,isPrerelease | ConvertFrom-Json
+          function Key($t) { $m = [regex]::Match($t, '^v(\d+)\.(\d+)\.(\d+)(?:-beta\.?(\d+))?$'); if (-not $m.Success) { return $null }
+            [version]::new([int]$m.Groups[1].Value, [int]$m.Groups[2].Value, [int]$m.Groups[3].Value, $(if ($m.Groups[4].Success) { [int]$m.Groups[4].Value } else { 9999 })) }
+          $stable = $all | Where-Object { -not $_.isPrerelease } | ForEach-Object { Key $_.tagName } | Where-Object { $_ } | Sort-Object | Select-Object -Last 1
+          $betas = $all | Where-Object { $_.isPrerelease } | ForEach-Object { [pscustomobject]@{ Tag = $_.tagName; Key = Key $_.tagName } } | Where-Object { $_.Key } | Sort-Object Key -Descending
+          $i = 0
+          foreach ($b in $betas) {
+            $i++
+            if ($i -gt 3 -or ($stable -and $b.Key -lt $stable)) { Remove-Release $b.Tag }
+          }
+          exit 0

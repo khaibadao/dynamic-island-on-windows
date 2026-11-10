@@ -952,60 +952,6 @@ public partial class NotchWindow : Window
 
     private static string Short(string s, int max) => s.Length <= max ? s : s[..(max - 1)] + "…";
 
-    private string _pillTitle = "";
-
-    /// <summary>A short pill: names that don't fit in ~120 px scroll sideways instead of making it longer.</summary>
-    private void SetPillText(string text)
-    {
-        if (text == _pillTitle) return;
-        _pillTitle = text;
-        PillTextShift.BeginAnimation(TranslateTransform.XProperty, null);
-        PillTextShift.X = 0;
-
-        double full = Measure(text, PillText);
-        const double box = 120;
-        if (full <= box)
-        {
-            PillText.Text = text;
-            PillTitleClip.Width = Math.Max(1, full);
-            return;
-        }
-        PillTitleClip.Width = box;
-        const string gap = "        ";
-        double cycle = Measure(text + gap, PillText);
-        PillText.Text = text + gap + text;
-        PillTextShift.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(0, -cycle, TimeSpan.FromSeconds(cycle / 28))
-        {
-            BeginTime = TimeSpan.FromSeconds(1.2), RepeatBehavior = RepeatBehavior.Forever
-        });
-    }
-
-    private static double Measure(string text, TextBlock like)
-    {
-        var probe = new TextBlock { Text = text, FontSize = like.FontSize, FontWeight = like.FontWeight, FontFamily = like.FontFamily };
-        probe.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-        return Math.Ceiling(probe.DesiredSize.Width);
-    }
-
-    private void UpdatePillProgress()
-    {
-        double frac = 0;
-        if (_hasMusic)
-        {
-            var (pos, dur) = _media.GetTimeline();
-            if (dur > TimeSpan.Zero) frac = pos.TotalSeconds / dur.TotalSeconds;
-        }
-        else if (_focus.IsRunning)
-        {
-            frac = _focus.Progress;
-        }
-        frac = Math.Clamp(frac, 0, 1);
-        // Glide to the new value over the next second, so the line moves smoothly.
-        bool jump = Math.Abs(frac - PillProgressScale.ScaleX) > 0.05;
-        PillProgressScale.BeginAnimation(ScaleTransform.ScaleXProperty,
-            new DoubleAnimation(frac, TimeSpan.FromMilliseconds(jump ? 200 : 1000)));
-    }
-
     /// <summary>The strip takes the song's colour, or green while a tree grows.</summary>
     private void UpdateStrip()
     {
@@ -1128,7 +1074,6 @@ public partial class NotchWindow : Window
         ExpandedGlow.Color   = hasColour ? vivid : Neutral;
         ExpandedGlow.Opacity = hasColour ? 0.4 : 0.3;
         UpdateStrip();
-        UpdateBleed();
     }
 
     // ── Loang màu (colour wash from the cover) ────────────────────────
@@ -1220,7 +1165,6 @@ public partial class NotchWindow : Window
         Ambient.Level = AmbientLevelNow();
         Ambient.Play(_ambientOpen);
         // (no frame counting: listening to every frame makes WPF redraw the whole window non-stop)
-        UpdateBleed();
     }
 
     private void SetAmbientArt(BitmapSource? art)
@@ -1235,49 +1179,6 @@ public partial class NotchWindow : Window
     {
         _ambientOpen = open;
         ApplyAmbient();
-    }
-
-    /// <summary>The panel's own soft glow stays as it always was (the glow outside the panel was dropped).</summary>
-    private void UpdateBleed() { }
-
-    // Too slow for the moving wash? Count frames while it's open.
-    private bool _watchingFps;
-    private int _frames, _slowSeconds, _fpsSkip;
-    private DateTime _fpsStart;
-    private TimeSpan _lastRender;
-
-    private void WatchFps(bool on)
-    {
-        if (on == _watchingFps) return;
-        _watchingFps = on;
-        if (on)
-        {
-            _frames = 0; _slowSeconds = 0; _fpsSkip = 1; _fpsStart = DateTime.UtcNow;
-            CompositionTarget.Rendering += CountFrame;
-        }
-        else CompositionTarget.Rendering -= CountFrame;
-    }
-
-    private void CountFrame(object? sender, EventArgs e)
-    {
-        if (e is RenderingEventArgs r)
-        {
-            if (r.RenderingTime == _lastRender) return;
-            _lastRender = r.RenderingTime;
-        }
-        _frames++;
-        double seconds = (DateTime.UtcNow - _fpsStart).TotalSeconds;
-        if (seconds < 1) return;
-        double fps = _frames / seconds;
-        _frames = 0;
-        _fpsStart = DateTime.UtcNow;
-        if (_fpsSkip-- > 0) return;   // the opening animation isn't a fair test
-        _slowSeconds = fps < (_energySaver ? 10 : 20) ? _slowSeconds + 1 : 0;
-        if (_slowSeconds < 3) return;
-        _ambientSlow = true;
-        CrashLog.Write($"Ambient: {fps:0} fps, switching to the still picture");
-        ApplyAmbient();
-        Notice?.Invoke("Máy hơi yếu, đã giảm hiệu ứng loang màu", "Chỉnh lại ở menu khay → Loang màu");
     }
 
     private bool _leafSwaying;

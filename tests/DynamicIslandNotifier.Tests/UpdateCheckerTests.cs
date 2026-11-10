@@ -11,16 +11,30 @@ public class UpdateCheckerTests
     [InlineData("https://github.com/khaibadao/dynamic-island-on-windows/releases/tag/2.10.1", "2.10.1")]
     public void Reads_the_version_from_the_latest_link(string link, string expected)
     {
-        Assert.Equal(Version.Parse(expected), UpdateChecker.VersionFromLink(link));
+        Assert.Equal(expected, UpdateChecker.VersionFromLink(link)?.ToString(3));
     }
 
     [Theory]
     [InlineData(null)]
     [InlineData("https://github.com/khaibadao/dynamic-island-on-windows/releases")]
-    [InlineData("https://github.com/khaibadao/dynamic-island-on-windows/releases/tag/v2.3.0-beta")]
+    [InlineData("https://github.com/khaibadao/dynamic-island-on-windows/releases/tag/v2.3.0-rc")]
     public void Anything_else_is_not_a_version(string? link)
     {
         Assert.Null(UpdateChecker.VersionFromLink(link));
+    }
+
+    [Fact]
+    public void Betas_come_before_their_release()
+    {
+        var beta1 = UpdateChecker.ParseTag("v2.8.0-beta.1")!;
+        var beta2 = UpdateChecker.ParseTag("v2.8.0-beta.2")!;
+        var final = UpdateChecker.ParseTag("v2.8.0")!;
+        Assert.True(beta1 < beta2 && beta2 < final);
+        Assert.True(UpdateChecker.ParseTag("v2.7.3")! < beta1);
+        Assert.Equal("v2.8.0-beta.2", UpdateChecker.Tag(beta2));
+        Assert.Equal("v2.8.0", UpdateChecker.Tag(final));
+        Assert.Equal("2.8.0 beta 2", UpdateChecker.Show(beta2));
+        Assert.Equal(beta2, UpdateChecker.VersionFromLink("https://github.com/x/y/releases/tag/v2.8.0-beta.2"));
     }
 
     [Fact]

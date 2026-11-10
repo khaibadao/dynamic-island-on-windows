@@ -70,6 +70,9 @@ public sealed class SettingsWindow : Window
         stack.Children.Add(Switch("Tìm lời bài hát trên NetEase",
             "Ngoài LRCLIB, tìm thêm trên NetEase (Trung Quốc) để có nhiều bài hơn. Chỉ gửi tên bài và ca sĩ.",
             s.NetEaseLyrics, v => s.NetEaseLyrics = v));
+        stack.Children.Add(Switch("Nhận bản thử nghiệm (Beta)",
+            "Nhận cả các bản đang thử (đánh dấu Pre-release trên GitHub) trước khi thành bản chính thức. Có thể còn lỗi. Tắt đi thì ở lại bản beta đang có cho tới khi bản chính thức mới hơn ra.",
+            s.BetaChannel, v => s.BetaChannel = v));
         stack.Children.Add(Note("Luôn dùng: LRCLIB (tên bài, ca sĩ, để tìm lời) và GitHub (kiểm tra bản mới khi mở app và mỗi 6 giờ). Không có quảng cáo, không thống kê, không gửi nội dung thông báo hay copy.", top: 10));
 
         Content = new ScrollViewer { Content = stack, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, MaxHeight = 720 };

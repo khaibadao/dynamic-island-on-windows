@@ -1,5 +1,10 @@
 Bản chỉnh sửa từ [sadeeshasathsara/dynamic-island-on-windows](https://github.com/sadeeshasathsara/dynamic-island-on-windows) (MIT).
 
+### Mới trong v2.7.4
+- **Kênh thử nghiệm (Beta)**: Cài đặt & quyền riêng tư → "Nhận bản thử nghiệm (Beta)". Bản đang thử được đăng dạng Pre-release trên GitHub; ai không bật mục này sẽ chỉ nhận bản chính thức như trước
+- Dọn trang Releases: chỉ giữ bản v2.6.2 và bản mới nhất; các bản beta cũ tự được dọn, chỉ giữ 3 bản gần nhất
+- Gỡ phần code không còn dùng
+
 ### Mới trong v2.7.3
 - **Lịch học kiểu Calendar**: giờ bên trái, mỗi buổi một khối màu theo loại (xanh dương: trên lớp · cam: học thêm có thầy / cô · tím: tự học, Luyện…, BTVN… · xanh lá: đi dạy), vạch đỏ "bây giờ", buổi đã qua mờ đi, buổi đang học ghi "còn … phút", buổi kế tiếp ghi "sau …". Dòng đầu tóm tắt: số buổi, còn mấy buổi, tiếp theo là gì. Mở tab là tự cuộn tới chỗ "bây giờ"
 

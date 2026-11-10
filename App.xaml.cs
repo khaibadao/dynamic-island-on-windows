@@ -58,7 +58,7 @@ public partial class App : Application
 
         // Keep running if something goes wrong, and note it in startup.log
         bool atBoot = e.Args.Contains("--autostart");
-        CrashLog.Write($"Started v{typeof(App).Assembly.GetName().Version} {(atBoot ? "(with Windows)" : "(by hand)")}, " +
+        CrashLog.Write($"Started v{UpdateChecker.Show(UpdateChecker.Current)} {(atBoot ? "(with Windows)" : "(by hand)")}, " +
                        $"{TimeSpan.FromMilliseconds(Environment.TickCount64):h\\:mm\\:ss} after the PC started");
         DispatcherUnhandledException += (_, ev) => { CrashLog.Error("UI", ev.Exception); ev.Handled = true; };
         AppDomain.CurrentDomain.UnhandledException += (_, ev) => { if (ev.ExceptionObject is Exception ex) CrashLog.Error("app", ex); };
@@ -690,7 +690,7 @@ public partial class App : Application
         ShowOnIsland(new NotificationData
         {
             AppName = "Dynamic Island",
-            Title   = $"Có bản mới v{v.ToString(3)}",
+            Title   = $"Có bản mới v{UpdateChecker.Show(v)}",
             Body    = "Bấm để xem có gì mới và cập nhật",
             Glyph   = "\uE896",
             GlyphColor = "#4DA3FF",
@@ -720,7 +720,7 @@ public partial class App : Application
             ShowOnIsland(new NotificationData
             {
                 AppName = "Dynamic Island", Title = "Bạn đang dùng bản mới nhất",
-                Body = $"v{UpdateChecker.Current.ToString(3)}", Glyph = "\uE73E", GlyphColor = "#34C759"
+                Body = $"v{UpdateChecker.Show(UpdateChecker.Current)}", Glyph = "\uE73E", GlyphColor = "#34C759"
             }, keepInHistory: false, bypassDnd: true);
         else if (status == UpdateStatus.Failed)
             ShowOnIsland(new NotificationData

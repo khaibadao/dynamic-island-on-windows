@@ -33,8 +33,40 @@ public sealed class UpdateChecker
     /// <summary>A newer version is out.</summary>
     public event Action<Version>? Available;
 
-    public static Version Current =>
-        typeof(UpdateChecker).Assembly.GetName().Version is { } v ? new Version(v.Major, v.Minor, Math.Max(0, v.Build)) : new Version(0, 0, 0);
+    /// <summary>
+    /// Versions carry the beta number as their 4th part (2.8.0-beta.3 → 2.8.0.3) and a
+    /// finished release as 9999 (2.8.0 → 2.8.0.9999), so every beta of 2.8.0 is older
+    /// than 2.8.0 itself and plain comparisons just work.
+    /// </summary>
+    public const int Stable = 9999;
+
+    public static Version Current { get; } = ReadCurrent();
+
+    private static Version ReadCurrent()
+    {
+        var info = typeof(UpdateChecker).Assembly
+            .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+            .OfType<System.Reflection.AssemblyInformationalVersionAttribute>().FirstOrDefault()?.InformationalVersion;
+        if (info != null && ParseTag(info.Split('+')[0]) is { } fromInfo) return fromInfo;
+        return typeof(UpdateChecker).Assembly.GetName().Version is { } v ? new Version(v.Major, v.Minor, Math.Max(0, v.Build), Stable) : new Version(0, 0, 0, Stable);
+    }
+
+    /// <summary>"v2.8.0", "2.8.0-beta.3" → a version (see <see cref="Stable"/>); null if it isn't one.</summary>
+    internal static Version? ParseTag(string? tag)
+    {
+        var m = tag == null ? null : Regex.Match(tag.Trim(), @"^v?(\d+)\.(\d+)\.(\d+)(?:-beta\.?(\d+))?$", RegexOptions.IgnoreCase);
+        if (m is not { Success: true }) return null;
+        int beta = m.Groups[4].Success ? int.Parse(m.Groups[4].Value) : Stable;
+        return new Version(int.Parse(m.Groups[1].Value), int.Parse(m.Groups[2].Value), int.Parse(m.Groups[3].Value), Math.Min(beta, Stable));
+    }
+
+    public static bool IsBeta(Version v) => v.Revision >= 0 && v.Revision < Stable;
+
+    /// <summary>The release's tag: "v2.8.0" or "v2.8.0-beta.3".</summary>
+    public static string Tag(Version v) => IsBeta(v) ? $"v{v.ToString(3)}-beta.{v.Revision}" : $"v{v.ToString(3)}";
+
+    /// <summary>For people: "2.8.0" or "2.8.0 beta 3".</summary>
+    public static string Show(Version v) => IsBeta(v) ? $"{v.ToString(3)} beta {v.Revision}" : v.ToString(3);
 
     private static HttpClient CreateClient(bool followRedirects)
     {
@@ -73,6 +105,7 @@ public sealed class UpdateChecker
     /// </summary>
     private static async Task<Version?> LatestAsync()
     {
+        if (AppSettings.Current.BetaChannel) return await LatestWithBetasAsync();
         try
         {
             using var resp = await NoRedirect.GetAsync($"https://github.com/{Repo}/releases/latest", HttpCompletionOption.ResponseHeadersRead);
@@ -86,8 +119,7 @@ public sealed class UpdateChecker
             using var resp = await Http.GetAsync($"https://api.github.com/repos/{Repo}/releases/latest");
             if (!resp.IsSuccessStatusCode) { CrashLog.Write($"Update check (API): {(int)resp.StatusCode}"); return null; }
             using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
-            var tag = doc.RootElement.GetProperty("tag_name").GetString()?.TrimStart('v', 'V');
-            return Version.TryParse(tag, out var v) ? v : null;
+            return ParseTag(doc.RootElement.GetProperty("tag_name").GetString());
         }
         catch (Exception ex)
         {
@@ -96,16 +128,40 @@ public sealed class UpdateChecker
         }
     }
 
-    /// <summary>The version in a link like …/releases/tag/v2.3.0, or null.</summary>
+    /// <summary>
+    /// Beta channel: the newest of all releases, betas included (GitHub's "latest" link
+    /// leaves pre-releases out, which is what keeps everyone else on finished versions).
+    /// </summary>
+    private static async Task<Version?> LatestWithBetasAsync()
+    {
+        try
+        {
+            using var resp = await Http.GetAsync($"https://api.github.com/repos/{Repo}/releases?per_page=30");
+            if (!resp.IsSuccessStatusCode) { CrashLog.Write($"Update check (beta): {(int)resp.StatusCode}"); return null; }
+            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            return doc.RootElement.EnumerateArray()
+                .Where(r => !(r.TryGetProperty("draft", out var d) && d.GetBoolean()))
+                .Select(r => ParseTag(r.GetProperty("tag_name").GetString()))
+                .Where(v => v != null).Max();
+        }
+        catch (Exception ex)
+        {
+            CrashLog.Write($"Update check (beta) failed: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>The version in a link like …/releases/tag/v2.3.0 (or …/v2.8.0-beta.2), or null.</summary>
     internal static Version? VersionFromLink(string? link)
     {
-        var m = link == null ? null : Regex.Match(link, @"/tag/v?(\d+\.\d+\.\d+)$");
-        return m is { Success: true } && Version.TryParse(m.Groups[1].Value, out var v) ? v : null;
+        var m = link == null ? null : Regex.Match(link, @"/tag/([^/]+)$");
+        return m is { Success: true } ? ParseTag(m.Groups[1].Value) : null;
     }
 
     /// <summary>From the release notes, the sections for versions newer than <paramref name="current"/>, as plain text.</summary>
     internal static string ExtractChanges(string notes, Version current)
     {
+        if (current.Revision < 0) current = new Version(current.Major, current.Minor, Math.Max(0, current.Build), Stable);
         var keep = new StringBuilder();
         bool on = false;
         foreach (var raw in notes.Split('\n'))
@@ -114,7 +170,7 @@ public sealed class UpdateChecker
             var heading = Regex.Match(line, @"^###\s.*?v(\d+\.\d+\.\d+)");
             if (heading.Success)
             {
-                on = Version.TryParse(heading.Groups[1].Value, out var v) && v > current;
+                on = ParseTag(heading.Groups[1].Value) is { } v && v > current;
                 if (on) keep.AppendLine().AppendLine(line.TrimStart('#', ' ').Trim());
                 continue;
             }
@@ -129,7 +185,7 @@ public sealed class UpdateChecker
     {
         try
         {
-            var notes = await Http.GetStringAsync($"https://raw.githubusercontent.com/{Repo}/v{version.ToString(3)}/RELEASE_NOTES.md");
+            var notes = await Http.GetStringAsync($"https://raw.githubusercontent.com/{Repo}/{Tag(version)}/RELEASE_NOTES.md");
             var text = ExtractChanges(notes, Current);
             return text.Length > 0 ? text : "Không có ghi chú cho bản này.";
         }
@@ -151,7 +207,7 @@ public sealed class UpdateChecker
         {
             string arch = RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "arm64" : "x64";
             string name = $"DynamicIslandNotifier-{arch}.exe";
-            string tag = $"v{version.ToString(3)}";
+            string tag = Tag(version);
             string exe = Environment.ProcessPath ?? throw new InvalidOperationException("no exe path");
 
             // A fresh folder with a random name, so nothing can be swapped in on the way

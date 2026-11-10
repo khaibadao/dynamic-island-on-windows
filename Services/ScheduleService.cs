@@ -48,10 +48,6 @@ public sealed class ScheduleService
     public static ClassSlot? Now(DateTime now) =>
         On(now).FirstOrDefault(c => now.TimeOfDay >= c.Start && now.TimeOfDay < c.End);
 
-    /// <summary>The next class today, if any.</summary>
-    public static ClassSlot? NextToday(DateTime now) =>
-        On(now).FirstOrDefault(c => c.Start > now.TimeOfDay);
-
     /// <summary>Puts in a new timetable from one source (the old one from that source goes).</summary>
     public int Replace(IReadOnlyList<ClassSlot> slots, string origin)
     {

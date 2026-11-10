@@ -79,14 +79,6 @@ public sealed class TreeShape : Canvas
         return b;
     }
 
-    private static Brush Radial(params string[] colors)
-    {
-        var g = new RadialGradientBrush { GradientOrigin = new Point(0.4, 0.35), Center = new Point(0.42, 0.38), RadiusX = 0.7, RadiusY = 0.7 };
-        for (int i = 0; i < colors.Length; i++) g.GradientStops.Add(new GradientStop((Color)ColorConverter.ConvertFromString(colors[i]), i / (double)(colors.Length - 1)));
-        g.Freeze();
-        return g;
-    }
-
     private static Brush Linear(params string[] colors)
     {
         var g = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(0, 1) };
@@ -178,15 +170,6 @@ public sealed class TreeShape : Canvas
         var t = new TranslateTransform();
         e.RenderTransform = t;
         if (_animated) t.BeginAnimation(TranslateTransform.YProperty, Swing(0, -1.5, 1.3, delay));
-    }
-
-    private void Pulse(UIElement e, double cx, double cy, double delay = 0)
-    {
-        var s = new ScaleTransform(1, 1, cx, cy);
-        e.RenderTransform = s;
-        if (!_animated) return;
-        s.BeginAnimation(ScaleTransform.ScaleXProperty, Swing(1, 1.12, 1.1, delay));
-        s.BeginAnimation(ScaleTransform.ScaleYProperty, Swing(1, 1.12, 1.1, delay));
     }
 
     // ── Special stages ────────────────────────────────────────────────

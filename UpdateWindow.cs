@@ -39,10 +39,10 @@ public sealed class UpdateWindow : Window
         Topmost = true;
 
         var stack = new StackPanel { Margin = new Thickness(22, 18, 22, 18) };
-        stack.Children.Add(new TextBlock { Text = $"Có bản mới v{version.ToString(3)}", Foreground = Brush(0xF2, 0xF2, 0xF2), FontSize = 18, FontWeight = FontWeights.SemiBold });
+        stack.Children.Add(new TextBlock { Text = $"Có bản mới v{UpdateChecker.Show(version)}", Foreground = Brush(0xF2, 0xF2, 0xF2), FontSize = 18, FontWeight = FontWeights.SemiBold });
         stack.Children.Add(new TextBlock
         {
-            Text = $"Bạn đang dùng v{UpdateChecker.Current.ToString(3)}. Bản mới được kiểm tra mã SHA-256 trước khi cài, rồi app tự mở lại.",
+            Text = $"Bạn đang dùng v{UpdateChecker.Show(UpdateChecker.Current)}. Bản mới được kiểm tra mã SHA-256 trước khi cài, rồi app tự mở lại.",
             Foreground = Brush(0xA8, 0xF2, 0xF2, 0xF2), FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 12)
         });
 
