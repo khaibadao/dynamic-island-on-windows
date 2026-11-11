@@ -1,4 +1,4 @@
-# Releases (and their tags) to remove. Kept: v2.6.2 ("bản tuyệt vời nhất") and v2.7.3 (the latest).
+# Releases (and their tags) to remove. Kept: v2.6.2 ("bản tuyệt vời nhất") and the latest (v2.8.0).
 # The release workflow removes anything listed here; listing a tag that's already gone is harmless.
 v1.1.0
 v1.2.0
@@ -36,3 +36,5 @@ v2.6.1
 v2.7.0
 v2.7.1
 v2.7.2
+v2.7.3
+v2.7.4
