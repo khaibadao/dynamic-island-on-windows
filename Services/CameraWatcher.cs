@@ -1,6 +1,8 @@
 namespace DynamicIslandNotifier.Services;
 
 using System;
+using System.Diagnostics;
+using System.IO;
 using System.Threading;
 using Microsoft.Win32;
 
@@ -47,10 +49,35 @@ public sealed class CameraWatcher
             using var sub = key.OpenSubKey(name);
             if (sub == null) continue;
             if (sub.GetValue("LastUsedTimeStart") is long start && start != 0 &&
-                sub.GetValue("LastUsedTimeStop") is long stop && stop == 0)
+                sub.GetValue("LastUsedTimeStop") is long stop && stop == 0 &&
+                ReallyInUse(name, start, desktop: depth == 1))
                 return true;
             if (depth == 0 && name == "NonPackaged" && AnyInUse(sub, depth + 1)) return true;
         }
         return false;
+    }
+
+    /// <summary>
+    /// Windows sometimes never writes the stop time: an app that crashed or was
+    /// uninstalled mid-call stays "in use" forever (e.g. an old Discord folder).
+    /// A desktop app only counts while its .exe exists and is running; a Store app
+    /// only if it started within the last 12 hours.
+    /// </summary>
+    internal static bool ReallyInUse(string keyName, long startFileTime, bool desktop)
+    {
+        if (desktop)
+        {
+            string path = keyName.Replace('#', '\\');
+            if (!File.Exists(path)) return false;
+            try
+            {
+                foreach (var p in Process.GetProcessesByName(Path.GetFileNameWithoutExtension(path)))
+                    using (p) return true;
+            }
+            catch { }
+            return false;
+        }
+        try { return DateTime.UtcNow - DateTime.FromFileTimeUtc(startFileTime) < TimeSpan.FromHours(12); }
+        catch { return false; }
     }
 }

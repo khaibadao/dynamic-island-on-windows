@@ -80,15 +80,32 @@ public static class NativeInterop
             var monitor = MonitorFromPoint(new POINT { X = 0, Y = 0 }, MONITOR_DEFAULTTOPRIMARY);
             var info = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
             if (!GetMonitorInfo(monitor, ref info)) return;
-            double scale = Math.Max(1, GetDpiForWindow(hwnd)) / 96.0;
-            int width = (int)Math.Round(window.Width * scale);
+            // The main screen's own scale, not the window's: while the window still sits on
+            // another screen (or before Windows rescales it), its DPI is that screen's,
+            // which put the notch off to one side on mixed-scale setups.
+            double scale = (GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, out uint dpiX, out _) == 0 && dpiX > 0
+                            ? dpiX : Math.Max(1, GetDpiForWindow(hwnd))) / 96.0;
+            int width  = (int)Math.Round(window.Width * scale);
+            int height = (int)Math.Round(window.Height * scale);
             int screenW = info.rcMonitor.Right - info.rcMonitor.Left;
             int x = info.rcMonitor.Left + (screenW - width) / 2;
             int y = info.rcMonitor.Top + (int)Math.Round(topDip * scale);
-            SetWindowPos(hwnd, IntPtr.Zero, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+            SetWindowPos(hwnd, IntPtr.Zero, x, y, width, height, SWP_NOZORDER | SWP_NOACTIVATE);
+
+            // Moving onto the main screen can make Windows rescale the window afterwards:
+            // check where it really ended up and nudge it to the exact centre / top edge.
+            if (GetWindowRect(hwnd, out var r))
+            {
+                int realX = info.rcMonitor.Left + (screenW - (r.Right - r.Left)) / 2;
+                if (r.Left != realX || r.Top != y)
+                    SetWindowPos(hwnd, IntPtr.Zero, realX, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+            }
         }
         catch { }
     }
+
+    [DllImport("shcore.dll")] private static extern int GetDpiForMonitor(IntPtr monitor, int type, out uint dpiX, out uint dpiY);
+    private const int MDT_EFFECTIVE_DPI = 0;
 
     /// <summary>
     /// Whether the mouse pointer is inside the window right now, asked from

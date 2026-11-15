@@ -21,6 +21,12 @@ public sealed class BatteryWatcher
     /// <summary>Raised on a background thread.</summary>
     public event Action<NotificationData>? Notify;
 
+    /// <summary>
+    /// Charger plugged in (true) or out, with the battery level and the full notification
+    /// to use if the notch can't show its small version. Raised on a background thread.
+    /// </summary>
+    public event Action<int, bool, NotificationData>? Plugged;
+
     public void Start()
     {
         try
@@ -48,12 +54,14 @@ public sealed class BatteryWatcher
         int p = PowerManager.RemainingChargePercent;
         if (charging) _lowestWarned = 101;   // warn again after the next unplug
 
-        Notify?.Invoke(Make(
+        var data = Make(
             title: charging ? "Đang sạc pin" : "Đã rút sạc",
             body:  charging ? $"{p}%" : $"{p}%{RemainingText()}",
             charging,
             color: charging ? "#30D158" : (p <= 20 ? "#FF453A" : "#3A3A3C"),
-            p));
+            p);
+        if (Plugged != null) Plugged(p, charging, data);
+        else Notify?.Invoke(data);
     }
 
     private void OnPercentChanged()

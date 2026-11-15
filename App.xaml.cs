@@ -112,6 +112,11 @@ public partial class App : Application
         // Battery: charger plugged in / out, low battery
         _battery = new BatteryWatcher();
         _battery.Notify += data => _island.Dispatcher.BeginInvoke(new Action(() => ShowOnIsland(data, keepInHistory: false)));
+        // Plugged in / out: a small "⚡ 47%" out of the notch; a full notification only if it can't show
+        _battery.Plugged += (percent, charging, data) => _island.Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (_notch?.ShowCharging(percent, charging) != true) ShowOnIsland(data, keepInHistory: false);
+        }));
         Try("battery", () => _battery.Start());
 
         // Rebuild the history / muted lists each time the tray menu opens

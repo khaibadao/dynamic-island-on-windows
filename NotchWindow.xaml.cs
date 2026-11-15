@@ -635,6 +635,7 @@ public partial class NotchWindow : Window
             Expanded.Visibility = Visibility.Collapsed;
             EndMorph();
             ShowRest();
+            StallWatch.Doing = "resting";   // so later stalls aren't blamed on closing
             RestArea.BeginAnimation(OpacityProperty, new DoubleAnimation(0.2, 1, TimeSpan.FromMilliseconds(140)));
         };
         Expanded.BeginAnimation(OpacityProperty, fade);
@@ -831,6 +832,7 @@ public partial class NotchWindow : Window
                 break;
             case "schedule":
                 _scheduleDay = DateTime.Today;
+                ScheduleToDeadlinesBtn.Visibility = Visibility.Collapsed;
                 ShowScheduleImport(!ScheduleServiceHasAny);
                 break;
         }
@@ -853,6 +855,7 @@ public partial class NotchWindow : Window
     private void OnTick()
     {
         if (_focus.IsRunning || _pomo?.OnBreak == true) UpdateFocusTick();
+        QuickTimerTick();
         UpdatePillClock();
         UpdateCat();
         if (_expanded)
@@ -925,19 +928,15 @@ public partial class NotchWindow : Window
             var left = _focus.Remaining;
             PillClock.Text = $"{(int)left.TotalMinutes:00}:{left.Seconds:00}";
         }
+        else if (_timerEnd is { } end)
+        {
+            PillClock.Text = QuickTimer.Format(end - DateTime.Now);   // a quick timer counts down on the clock
+        }
         else
         {
             PillClock.Text = DateTime.Now.ToString("HH:mm");
         }
-
-        // In class (and no tree growing): "OSG202 · 25′" next to the time
-        var lesson = focus ? null : ScheduleService.Now(DateTime.Now);
-        if (lesson != null)
-        {
-            int left = Math.Max(1, (int)Math.Ceiling((lesson.End - DateTime.Now.TimeOfDay).TotalMinutes));
-            PillClass.Text = $"{Short(lesson.Subject, 10)} · {left}\u2032";
-        }
-        PillClass.Visibility = lesson != null ? Visibility.Visible : Visibility.Collapsed;
+        PillTimer.Visibility = !focus && _timerEnd != null ? Visibility.Visible : Visibility.Collapsed;
 
         // Style C: one fixed white for the digits, the bars and (a little softer) the rim
         PillLeaf.Visibility   = focus ? Visibility.Visible : Visibility.Collapsed;
@@ -1164,8 +1163,8 @@ public partial class NotchWindow : Window
     {
         Ambient.FrameRate = _energySaver ? 30 : 60;   // battery saver: still drifting, just fewer frames
         Ambient.Level = AmbientLevelNow();
-        // Lịch học keeps a plain black background: the blocks are easier to read
-        bool plain = _tab == "schedule";
+        // Lịch học and Hạn chót keep a plain black background, like a calendar: easier to read
+        bool plain = _tab is "schedule" or "deadlines";
         Ambient.Visibility = plain ? Visibility.Hidden : Visibility.Visible;
         Ambient.Play(_ambientOpen && !plain);
         // (no frame counting: listening to every frame makes WPF redraw the whole window non-stop)
@@ -1598,7 +1597,39 @@ public partial class NotchWindow : Window
         HeadsetPercent.Text = $"{d.Percent}%";
         HeadsetFill.Width = Math.Max(1.5, 16 * d.Percent / 100.0);
         HeadsetFill.Background = Frozen(colour);
+        HeadsetGlyph.Text = "";
+        HeadsetGlyph.Foreground = Brushes.White;
+        HeadsetSub.Visibility = Visibility.Visible;
+        HeadsetView.Width = 330;
+        _headsetTimer.Interval = TimeSpan.FromSeconds(4);
+        return PopPill();
+    }
 
+    /// <summary>
+    /// Charger plugged in / out: a small "⚡ Đang sạc · 47%" grows out of the pill for
+    /// about 2.5 s, instead of a full notification. False when the notch can't show it.
+    /// </summary>
+    public bool ShowCharging(int percent, bool charging)
+    {
+        if (!IsVisible || _expanded || !_enabled) return false;
+        var colour = charging ? Color.FromRgb(0x30, 0xD1, 0x58)
+                   : percent <= 20 ? Color.FromRgb(0xFF, 0x45, 0x3A) : Color.FromRgb(0xF2, 0xF2, 0xF2);
+        // Segoe icons: Battery0..10 = U+EBA0..EBAA, BatteryCharging0..10 = U+EBAB..EBB5
+        HeadsetGlyph.Text = char.ConvertFromUtf32((charging ? 0xEBAB : 0xEBA0) + Math.Clamp(percent / 10, 0, 10));
+        HeadsetGlyph.Foreground = Frozen(colour);
+        HeadsetName.Text = charging ? "Đang sạc" : "Đã rút sạc";
+        HeadsetSub.Visibility = Visibility.Collapsed;
+        HeadsetPercent.Text = $"{percent}%";
+        HeadsetFill.Width = Math.Max(1.5, 16 * percent / 100.0);
+        HeadsetFill.Background = Frozen(colour);
+        HeadsetView.Width = 210;
+        _headsetTimer.Interval = TimeSpan.FromSeconds(2.5);
+        return PopPill();
+    }
+
+    /// <summary>The headset / charging view grows out of the pill; it shrinks back on its timer.</summary>
+    private bool PopPill()
+    {
         EndWalk();
         Eyes.Stop();
         GrowForEyes(false);
@@ -1864,6 +1895,14 @@ public partial class NotchWindow : Window
         SkipBreakBtn.Content     = _pomo?.LongBreakNow == true ? "Xong nghỉ" : "Học tiếp luôn";
         PickedTree.Opacity       = idle ? 1 : 0.6;
         PickedTree.Cursor        = idle ? Cursors.Hand : Cursors.Arrow;
+
+        // Streak: days in a row with at least one grown tree
+        int streak = _focus.Streak();
+        bool plantedToday = _focus.Today().Any(s => s.Success);
+        FocusStreak.Visibility = streak > 0 ? Visibility.Visible : Visibility.Collapsed;
+        FocusStreakText.Text = $"\U0001F525 {streak} ngày liên tiếp";
+        FocusStreak.ToolTip = plantedToday ? "Hôm nay đã trồng cây, chuỗi được giữ!" : "Trồng một cây hôm nay để giữ chuỗi";
+        FocusStreak.Opacity = plantedToday ? 1 : 0.6;
 
         BigTree.Kind = kind;
         PickedTreeIcon.Kind = kind;
@@ -2232,8 +2271,19 @@ public partial class NotchWindow : Window
         DeadlineList.Children.Clear();
         var items = _deadlines?.Items ?? Array.Empty<Deadline>();
         var notes = _deadlines?.Notes ?? Array.Empty<QuickNote>();
-        NoDeadlinesText.Visibility = items.Count == 0 && notes.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        NoDeadlinesText.Visibility = items.Count == 0 && notes.Count == 0 && _timerEnd == null ? Visibility.Visible : Visibility.Collapsed;
         var now = DateTime.Now;
+
+        // A running quick timer sits on top; its badge counts down every second
+        _timerBadge = null;
+        if (_timerEnd is { } end)
+        {
+            string left = QuickTimer.Format(end - now);
+            var row = PlannerRow(TimerOrange, "", _timerLabel, $"Hẹn giờ {_timerMinutes} phút · xong lúc {end:HH:mm}", left,
+                strike: false, highlighted: false, remove: CancelQuickTimer, click: () => { });
+            _timerBadge = FindText(row, left);
+            DeadlineList.Children.Add(row);
+        }
 
         // Exams first (counted in days), then deadlines, then notes
         foreach (var d in items.Where(d => d.Exam))
@@ -2283,6 +2333,56 @@ public partial class NotchWindow : Window
     }
 
     /// <summary>One row in Hạn chót: a coloured mark, the name, a small line under it, a badge and ✕.</summary>
+    // ── Quick timer: "15p nấu mì" in the Hạn chót box ─────────────────
+    private static readonly Color TimerOrange = Color.FromRgb(0xFF, 0x9F, 0x0A);
+    private DateTime? _timerEnd;
+    private string _timerLabel = "";
+    private int _timerMinutes;
+    private TextBlock? _timerBadge;
+
+    private void StartQuickTimer(int minutes, string label)
+    {
+        _timerMinutes = minutes;
+        _timerLabel = label;
+        _timerEnd = DateTime.Now.AddMinutes(minutes);
+        UpdatePillClock();
+        RebuildDeadlines();
+    }
+
+    private void CancelQuickTimer()
+    {
+        _timerEnd = null;
+        _timerBadge = null;
+        UpdatePillClock();
+        RebuildDeadlines();
+    }
+
+    /// <summary>Every second: count down, and when it's time, ring.</summary>
+    private void QuickTimerTick()
+    {
+        if (_timerEnd is not { } end) return;
+        var left = end - DateTime.Now;
+        if (left > TimeSpan.Zero)
+        {
+            if (_timerBadge != null && DeadlinesTab.IsVisible) _timerBadge.Text = QuickTimer.Format(left);
+            return;
+        }
+        string label = _timerLabel;
+        int minutes = _timerMinutes;
+        CancelQuickTimer();
+        System.Media.SystemSounds.Exclamation.Play();
+        React("surprise");
+        Notice?.Invoke("Hết giờ ⏰", $"{label} · {minutes} phút đã xong");
+    }
+
+    private static TextBlock? FindText(DependencyObject root, string text)
+    {
+        if (root is TextBlock tb && tb.Text == text) return tb;
+        foreach (var child in LogicalTreeHelper.GetChildren(root))
+            if (child is DependencyObject d && FindText(d, text) is { } found) return found;
+        return null;
+    }
+
     private Border PlannerRow(Color colour, string? glyph, string title, string sub, string? badgeText,
                               bool strike, bool highlighted, Action remove, Action click)
     {
@@ -2425,6 +2525,11 @@ public partial class NotchWindow : Window
                     else { _deadlines.UpdateNote(noteId, text); ok = true; }
                 }
                 else if (_editingDeadline is { } id) ok = _deadlines.Update(id, text, out problem);
+                else if (QuickTimer.Parse(text) is { } timer)
+                {
+                    StartQuickTimer(timer.Minutes, timer.Label);   // "15p nấu mì": a countdown, not a note
+                    ok = true;
+                }
                 else if (!hasTime) { _deadlines.AddNote(text); ok = true; }
                 else ok = _deadlines.Add(text, out problem) != null;
                 if (!ok)
@@ -2872,17 +2977,23 @@ public partial class NotchWindow : Window
         ScheduleHint.Visibility = text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    /// <summary>After an import: show the classes (the day with the most, or today).</summary>
-    private void ScheduleImported(string message, bool ok)
+    /// <summary>
+    /// After an import: back to today's classes (never jump to another day, which used to land on
+    /// an empty Sunday). If exams / deadlines came in too, offer a button to the Hạn chót tab.
+    /// </summary>
+    private void ScheduleImported(string message, bool ok, bool toDeadlines = false)
     {
         SayScheduleHint(message, ok);
-        if (ok && ScheduleServiceHasAny)
-        {
-            _scheduleDay = ScheduleService.On(DateTime.Today).Count > 0 ? DateTime.Today
-                : Enumerable.Range(0, 7).Select(i => DateTime.Today.AddDays(i)).FirstOrDefault(d => ScheduleService.On(d).Count > 0, DateTime.Today);
-            ResizeAfter(() => ShowScheduleImport(false));
-        }
-        else ResizeAfter(() => ShowScheduleImport(true));
+        _scheduleDay = DateTime.Today;
+        ScheduleToDeadlinesBtn.Visibility = ok && toDeadlines ? Visibility.Visible : Visibility.Collapsed;
+        ResizeAfter(() => ShowScheduleImport(!(ok && ScheduleServiceHasAny)));
+    }
+
+    private void ScheduleToDeadlines_Click(object sender, RoutedEventArgs e)
+    {
+        ScheduleToDeadlinesBtn.Visibility = Visibility.Collapsed;
+        SayScheduleHint("");
+        SelectTab("deadlines", Array.IndexOf(Tabs, "deadlines") - Array.IndexOf(Tabs, _tab));
     }
 
     private async void SheetLink_KeyDown(object sender, KeyEventArgs e)
@@ -2925,11 +3036,12 @@ public partial class NotchWindow : Window
     private void SchedulePreviewSave_Click(object sender, RoutedEventArgs e)
     {
         if (_sheetPreview == null || _schedule == null) return;
+        bool toDeadlines = _sheetPreview.Exams.Count + _sheetPreview.Due.Count > 0;
         var msg = _schedule.Apply(_sheetPreview);
         _sheetPreview = null;
         SchedulePreview.Visibility = Visibility.Collapsed;
         SheetLink.Text = "";
-        ScheduleImported(msg, ok: true);
+        ScheduleImported(msg, ok: true, toDeadlines);
     }
 
     private void SchedulePreviewCancel_Click(object sender, RoutedEventArgs e)
@@ -3759,14 +3871,28 @@ public partial class NotchWindow : Window
 
     private UIElement MakeClipImageTile(ClipItem item, bool newest)
     {
-        if (!_thumbs.TryGetValue(item.Id, out var thumb))
-            _thumbs[item.Id] = thumb = ClipboardService.LoadImage(item, 190);
+        _thumbs.TryGetValue(item.Id, out var thumb);
 
         const double W = 150, H = 94;
         var box = new Grid { Width = W, Height = H, Clip = new RectangleGeometry(new Rect(0, 0, W, H), 10, 10) };
         box.Children.Add(new Border { Background = Frozen(Color.FromRgb(0x1C, 0x1C, 0x1E)) });
         // ImageBrush crops around the middle of the picture (an Image would keep its top-left)
-        if (thumb != null) box.Children.Add(new Border { Background = new ImageBrush(thumb) { Stretch = Stretch.UniformToFill } });
+        var picture = new Border();
+        box.Children.Add(picture);
+        if (thumb != null) picture.Background = new ImageBrush(thumb) { Stretch = Stretch.UniformToFill };
+        else
+        {
+            // Decrypting + decoding a picture took up to seconds on the UI thread (the
+            // Copy tab froze while opening): do it in the background, fade it in when ready.
+            var id = item.Id;
+            _ = System.Threading.Tasks.Task.Run(() => ClipboardService.LoadImage(item, 190)).ContinueWith(t =>
+            {
+                if (t.Result is not { } loaded) return;
+                _thumbs[id] = loaded;
+                picture.Background = new ImageBrush(loaded) { Stretch = Stretch.UniformToFill };
+                picture.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(150)));
+            }, System.Threading.Tasks.TaskScheduler.FromCurrentSynchronizationContext());
+        }
 
         // Time along the bottom on a soft shade
         var shade = new Border

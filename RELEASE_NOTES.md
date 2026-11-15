@@ -1,5 +1,19 @@
 Bản chỉnh sửa từ [sadeeshasathsara/dynamic-island-on-windows](https://github.com/sadeeshasathsara/dynamic-island-on-windows) (MIT).
 
+### Sửa trong v2.9.0
+- **Đôi mắt nhìn theo chuột trở lại** (và Mây đi dạo, nốt nhạc trôi): từ v2.7.2, trên máy từng gỡ một app có dùng camera (vd Discord bản cũ), Windows còn giữ bản ghi "đang dùng camera" mãi mãi, nên app tưởng bạn luôn đang gọi video và tắt hết hiệu ứng. Giờ chỉ tính app còn trên máy và đang chạy thật
+- **Tai thỏ gọn lại**: bỏ dòng môn đang học ("Toán thầy… · 89′") cạnh đồng hồ, chỉ còn giờ + sóng nhạc. Môn đang học vẫn xem đầy đủ trong tab Lịch học
+- **Lưu sheet xong vẫn ở hôm nay**: tab Lịch học không còn nhảy sang một ngày trống (Chủ nhật); sheet có lịch thi / hạn chót thì hiện nút **Mở tab Hạn chót →**
+- **Tai thỏ đúng giữa, sát mép trên** trên máy nhiều màn hình / màn hình phóng to khác 100%: tính theo đúng độ phóng to của màn hình chính, rồi kiểm tra lại vị trí thật sau khi đặt
+- **Tab Copy mở nhanh hơn**: ảnh thu nhỏ được đọc ngầm rồi hiện dần, không còn đứng hình cả giây khi có nhiều ảnh
+- startup.log ghi đúng lúc nào bị khựng (trước đây mọi lần khựng lúc tai thỏ nghỉ đều bị ghi nhầm là "đang đóng bảng")
+
+### Mới trong v2.9.0
+- **Hạn chót nền đen** như Lịch học, dễ đọc hơn
+- **⏱ Hẹn giờ nhanh**: gõ vào ô Hạn chót (hoặc Ctrl + Alt + N) kiểu "15p nấu mì", "phơi đồ 40 phút", "1h30p giặt đồ". Tai thỏ đếm ngược thay cho đồng hồ (có biểu tượng đồng hồ bấm giờ cam), hết giờ thì kêu và báo. Huỷ bằng nút xoá ở dòng hẹn giờ trong tab Hạn chót
+- **⚡ Cắm sạc gọn**: cắm / rút sạc thì tai thỏ phình nhẹ khoảng 2,5 giây với "Đang sạc · 47%" thay vì một thông báo to
+- **🔥 Chuỗi ngày học**: tab Trồng cây hiện số ngày liên tiếp có trồng cây (mờ đi nếu hôm nay chưa trồng, trồng một cây để giữ chuỗi)
+
 ### Sửa trong v2.8.0
 - **Tự mở khi bật máy chắc hơn**: lúc đăng nhập, app đợi thanh taskbar sẵn sàng rồi mới mở (trước đây trên vài máy nó mở quá sớm, kẹt lại, và bản mở sau bị chặn vì "đã có một bản đang chạy"); bỏ dấu "tải từ Internet" trên file (có thể làm Windows giữ app lại sau một hộp cảnh báo không ai thấy); app chạy từ Downloads / desktop / thư mục tạm thì được chép vào thư mục cài, để khỏi mất khi file bị xoá hay di chuyển
 - startup.log ghi thêm một dòng về tự mở (danh sách khởi động, Task Manager, lịch hẹn) để tìm nguyên nhân nếu vẫn còn máy không tự mở
