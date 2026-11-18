@@ -50,7 +50,7 @@
                 Height="64"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Top"
-                Margin="0,8,0,0"
+                Margin="0,6,0,0"
                 MouseEnter="PillBorder_MouseEnter"
                 MouseLeave="PillBorder_MouseLeave"
                 MouseLeftButtonUp="PillBorder_MouseLeftButtonUp">

@@ -115,14 +115,14 @@ public partial class NotchWindow : Window
         _history = history;
         _clips   = clips;
         _clips.Changed += () => Dispatcher.BeginInvoke(new Action(RebuildClipboard));
-        Deactivated += (_, _) => { if (_typing) EndTyping(collapse: !NativeInterop.IsCursorOver(Expanded)); };
+        Deactivated += (_, _) => { if (_typing) EndTyping(collapse: !OverPanel()); };
 
         _hoverTimer.Tick  += (_, _) => WatchPointer();
         _closeTimer.Tick  += (_, _) =>
         {
             _closeTimer.Stop();
             // Only the visible panel counts, not the window's transparent area.
-            if (!_seeking && !_typing && !_pinned && !_dragging && !_pickingFile && !NativeInterop.IsCursorOver(Expanded)) Collapse();
+            if (!_seeking && !_typing && !_pinned && !_dragging && !_pickingFile && !OverPanel()) Collapse();
         };
         _volumeTimer.Tick += (_, _) => { _volumeTimer.Stop(); VolumeView.Visibility = Visibility.Collapsed; ShowRest(); };
         _headsetTimer.Tick += (_, _) => HideHeadset();
@@ -139,7 +139,7 @@ public partial class NotchWindow : Window
             _seeking = false;
             _media.Seek(TimeSpan.FromSeconds(s));
             _lyricIndex = -1;
-            if (!NativeInterop.IsCursorOver(Expanded)) _closeTimer.Start();
+            if (!OverPanel()) _closeTimer.Start();
         };
 
         // Mây
@@ -271,7 +271,7 @@ public partial class NotchWindow : Window
     {
         // In the open panel: pointer close to Mây → she rolls over for a belly rub
         if (_expanded) CatPanel.BellyUp = NativeInterop.IsCursorNear(CatPanel, 18);
-        if (_expanded && _pinned && NativeInterop.KeyDown(0x1B) && NativeInterop.IsCursorOver(Expanded)) { Pinned = false; Collapse(); }
+        if (_expanded && _pinned && NativeInterop.KeyDown(0x1B) && OverPanel()) { Pinned = false; Collapse(); }
         if (!IsVisible || _expanded) { _dwellStart = null; return; }
 
         FrameworkElement? target = Pill.IsVisible ? Pill : StripHost.IsVisible ? StripHost : null;
@@ -281,7 +281,10 @@ public partial class NotchWindow : Window
         // the pill, you're usually aiming at a browser tab under it: the pill all but
         // disappears and clicks go straight through to the tab.
         bool over = NativeInterop.IsCursorOver(target);
-        bool atTop = over && NativeInterop.CursorBelowTop(this) <= TopEdgeZone;
+        // The capsule floats a few px below the edge: the gap above it counts as "the top" too
+        // (the pointer stops at the screen's edge, right above the capsule).
+        bool atTop = NativeInterop.CursorIn(target) is { } at && at.X >= 0 && at.X <= target.ActualWidth
+                     && NativeInterop.CursorBelowTop(this) <= TopEdgeZone;
         SetFaded(over && target == Pill && !atTop);
 
         // Pointer in the area around it (≈ the tab bar): the eyes come out and watch it.
@@ -299,7 +302,7 @@ public partial class NotchWindow : Window
     }
 
     /// <summary>The top strip of the notch (WPF units) where the pointer opens it.</summary>
-    private const double TopEdgeZone = 7;
+    private const double TopEdgeZone = 12;   // the 6 px gap above the capsule + its top 6 px
 
     private void SetFaded(bool faded)
     {
@@ -402,7 +405,7 @@ public partial class NotchWindow : Window
         var now = DateTime.UtcNow;
         var c = NativeInterop.CursorIn(Pill);
         double w = Pill.ActualWidth, h = Pill.ActualHeight;
-        bool inZone = !_inCall && c is { } p0 && Math.Abs(p0.X - w / 2) <= ZoneHalfWidth && p0.Y >= -4 && p0.Y <= ZoneHeight;
+        bool inZone = !_inCall && c is { } p0 && Math.Abs(p0.X - w / 2) <= ZoneHalfWidth && p0.Y >= -10 && p0.Y <= ZoneHeight;
 
         if (!inZone || c is not { } p || !CanShowEyes)
         {
@@ -510,9 +513,10 @@ public partial class NotchWindow : Window
         var width = new DoubleAnimation(up ? 66 : 0, dur) { EasingFunction = ease };
         if (!up) width.Completed += (_, _) => { if (!_eyesUp) Eyes.Visibility = Visibility.Collapsed; };
         Eyes.BeginAnimation(WidthProperty, width);
-        Eyes.BeginAnimation(HeightProperty, new DoubleAnimation(up ? 28 : 22, dur) { EasingFunction = ease });
-        Pill.BeginAnimation(HeightProperty, new DoubleAnimation(up ? 31 : 24, dur) { EasingFunction = ease });
+        Eyes.BeginAnimation(HeightProperty, new DoubleAnimation(up ? 26 : 22, dur) { EasingFunction = ease });
+        // The capsule keeps its height; an empty one gets a little wider so the eyes fit
         PillFace.BeginAnimation(OpacityProperty, new DoubleAnimation(up ? 0 : 1, TimeSpan.FromMilliseconds(up ? 160 : 260)));
+        UpdatePillClock();
     }
 
     /// <summary>Mây peeks out from behind the right end of the strip / pill.</summary>
@@ -536,6 +540,14 @@ public partial class NotchWindow : Window
     }
     private readonly TransformGroup _catGroup = new();
 
+    /// <summary>
+    /// The pointer is on the open panel, or in the small gap between it and the screen's
+    /// top edge (the panel floats a few px below the edge, iPhone-style).
+    /// </summary>
+    private bool OverPanel() =>
+        NativeInterop.IsCursorOver(Expanded)
+        || (Expanded.IsVisible && NativeInterop.CursorIn(Expanded) is { } p
+            && p.X >= 0 && p.X <= Expanded.ActualWidth && p.Y < 0 && NativeInterop.CursorBelowTop(this) <= TopEdgeZone);
     private void Expanded_MouseEnter(object sender, MouseEventArgs e) => _closeTimer.Stop();
     private void Expanded_MouseLeave(object sender, MouseEventArgs e)
     {
@@ -588,7 +600,7 @@ public partial class NotchWindow : Window
             Expanded.UpdateLayout();
             double w = Math.Max(1, Expanded.ActualWidth), h = Math.Max(1, Expanded.ActualHeight);
             BeginMorph();
-            var grow = new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.18 };
+            var grow = new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.32 };   // iPhone-like spring
             var dur  = TimeSpan.FromMilliseconds(360);
             var sx = new DoubleAnimation(Math.Clamp(fromWidth / w, 0.15, 1), 1, dur) { EasingFunction = grow };
             var sy = new DoubleAnimation(Math.Clamp(fromHeight / h, 0.04, 1), 1, dur) { EasingFunction = grow };
@@ -622,7 +634,7 @@ public partial class NotchWindow : Window
 
         // Shrinks back into the notch, then the resting notch returns.
         bool pill = true;   // the LED clock pill is always there
-        double toWidth = pill ? Math.Max(140, Pill.ActualWidth) : 200;
+        double toWidth = pill ? Math.Max(124, Pill.ActualWidth) : 200;
         double w = Math.Max(1, Expanded.ActualWidth), h = Math.Max(1, Expanded.ActualHeight);
 
         BeginMorph();
@@ -640,7 +652,7 @@ public partial class NotchWindow : Window
         };
         Expanded.BeginAnimation(OpacityProperty, fade);
         ExpandedScale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(1, Math.Clamp(toWidth / w, 0.15, 1), dur) { EasingFunction = ease });
-        ExpandedScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(1, Math.Clamp((pill ? 22 : 9) / h, 0.04, 1), dur) { EasingFunction = ease });
+        ExpandedScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(1, Math.Clamp((pill ? 32 : 9) / h, 0.04, 1), dur) { EasingFunction = ease });
     }
 
     private void BeginMorph()
@@ -865,7 +877,7 @@ public partial class NotchWindow : Window
             if (ClipboardTab.IsVisible) RefreshClipTimes();
 
             // Safety net in case MouseLeave never came: close once the pointer is gone.
-            if (!_seeking && !_typing && !_pinned && !_dragging && !_closeTimer.IsEnabled && !NativeInterop.IsCursorOver(Expanded))
+            if (!_seeking && !_typing && !_pinned && !_dragging && !_closeTimer.IsEnabled && !OverPanel())
                 _closeTimer.Start();
         }
     }
@@ -920,9 +932,19 @@ public partial class NotchWindow : Window
     /// The LED clock: the time (HH:mm), or the time left on the tree (mm:ss) in green.
     /// Lit in the song's colour while music plays; the rim matches.
     /// </summary>
+    private static readonly Brush TimerBrush = Frozen(Color.FromRgb(0xFF, 0x9F, 0x0A));
+    private static readonly Brush FocusBrush = Frozen(FocusGreen);
+
+    /// <summary>
+    /// iPhone-style: no clock while resting. Left: the leaf (tree), stopwatch (timer) or the
+    /// song's cover; right: the time left (tree / timer) and the sound bars. The capsule
+    /// springs wider when it has something to show, and back to a small pill when not.
+    /// </summary>
     private void UpdatePillClock()
     {
         bool focus = _focus.IsRunning;
+        bool timer = !focus && _timerEnd != null;
+        bool music = _hasMusic && _playing;
         if (focus)
         {
             var left = _focus.Remaining;
@@ -930,24 +952,44 @@ public partial class NotchWindow : Window
         }
         else if (_timerEnd is { } end)
         {
-            PillClock.Text = QuickTimer.Format(end - DateTime.Now);   // a quick timer counts down on the clock
+            PillClock.Text = QuickTimer.Format(end - DateTime.Now);   // a quick timer counts down
         }
-        else
-        {
-            PillClock.Text = DateTime.Now.ToString("HH:mm");
-        }
-        PillTimer.Visibility = !focus && _timerEnd != null ? Visibility.Visible : Visibility.Collapsed;
-
-        // Style C: one fixed white for the digits, the bars and (a little softer) the rim
-        PillLeaf.Visibility   = focus ? Visibility.Visible : Visibility.Collapsed;
-        SwayLeaf(focus);
-        DndDot.Visibility     = QuickActions.DoNotDisturb ? Visibility.Visible : Visibility.Collapsed;
-        PillClock.On          = PillWhite;
-        PillClock.Off         = null;
+        PillClock.Visibility = focus || timer ? Visibility.Visible : Visibility.Collapsed;
+        PillClock.On         = focus ? FocusBrush : TimerBrush;
+        PillClock.Off        = null;
         PillClockGlow.Opacity = 0;
-        Pill.BorderBrush      = PillRim;
-        PillGlow.Color        = Neutral;
-        PillGlow.Opacity      = 0.25;
+
+        PillLeaf.Visibility  = focus ? Visibility.Visible : Visibility.Collapsed;
+        SwayLeaf(focus);
+        PillTimer.Visibility = timer ? Visibility.Visible : Visibility.Collapsed;
+        // The cover sits on the left only when nothing else needs that spot
+        PillLeft.Visibility  = music && !focus && !timer ? Visibility.Visible : Visibility.Collapsed;
+        PillArt.ImageSource  = _ambientArt;
+        PillArtNote.Visibility = _ambientArt == null ? Visibility.Visible : Visibility.Collapsed;
+        DndDot.Visibility    = QuickActions.DoNotDisturb ? Visibility.Visible : Visibility.Collapsed;
+
+        // Width: small and empty at rest, wider with something on both sides
+        double want = focus || timer ? (music ? 232 : 200) : music ? 210 : _eyesUp ? 150 : 124;
+        SizePill(want);
+    }
+
+    private double _pillWant = 124;
+
+    /// <summary>Springs the capsule to a new width (a small overshoot, like the iPhone's).</summary>
+    private void SizePill(double width)
+    {
+        if (Math.Abs(width - _pillWant) < 0.5) return;
+        _pillWant = width;
+        if (!Pill.IsVisible || _inCall)
+        {
+            Pill.BeginAnimation(WidthProperty, null);
+            Pill.Width = width;
+            return;
+        }
+        Pill.BeginAnimation(WidthProperty, new DoubleAnimation(width, TimeSpan.FromMilliseconds(480))
+        {
+            EasingFunction = new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.45 }
+        });
     }
 
     private static string Short(string s, int max) => s.Length <= max ? s : s[..(max - 1)] + "…";
@@ -1069,8 +1111,9 @@ public partial class NotchWindow : Window
         Expanded.BorderBrush   = border;
         VolumeView.BorderBrush = border;
 
-        PillGlow.Color       = hasColour ? vivid : Neutral;
-        PillGlow.Opacity     = hasColour ? 0.45 : 0.3;
+        // The capsule keeps a plain dark shadow; the sound bars take the song's colour
+        var bars = hasColour ? Frozen(ColorExtractor.Mix(vivid, Colors.White, 0.25)) : Brushes.White;
+        foreach (var bar in new[] { Bar1, Bar2, Bar3, Bar4, Bar5, Bar6, Bar7 }) bar.Fill = bars;
         ExpandedGlow.Color   = hasColour ? vivid : Neutral;
         ExpandedGlow.Opacity = hasColour ? 0.4 : 0.3;
         UpdateStrip();
@@ -1173,6 +1216,7 @@ public partial class NotchWindow : Window
     private void SetAmbientArt(BitmapSource? art)
     {
         _ambientArt = art;
+        if (_ready) UpdatePillClock();   // the cover on the capsule's left
         try { Ambient.SetArt(art); }
         catch (Exception ex) { CrashLog.Write($"Ambient: {ex.Message}"); Ambient.SetArt(null); }
         ApplyAmbient();
@@ -3458,7 +3502,7 @@ public partial class NotchWindow : Window
         Keyboard.ClearFocus();
         NativeInterop.SetActivatable(this, false);
         if (collapse) Collapse();
-        else if (_expanded && !NativeInterop.IsCursorOver(Expanded)) _closeTimer.Start();
+        else if (_expanded && !OverPanel()) _closeTimer.Start();
     }
 
     // ── Giữ im Dynamic: pinned open ───────────────────────────────────
@@ -3475,7 +3519,7 @@ public partial class NotchWindow : Window
             UpdatePinButton();
             PinnedChanged?.Invoke(value);
             if (value) _closeTimer.Stop();
-            else if (_expanded && !NativeInterop.IsCursorOver(Expanded)) _closeTimer.Start();
+            else if (_expanded && !OverPanel()) _closeTimer.Start();
         }
     }
 
@@ -3487,7 +3531,7 @@ public partial class NotchWindow : Window
     {
         Pinned = on;
         if (on && !_expanded) Expand();
-        else if (!on && _expanded && !NativeInterop.IsCursorOver(Expanded)) Collapse();
+        else if (!on && _expanded && !OverPanel()) Collapse();
     }
 
     private void Pin_Click(object sender, RoutedEventArgs e) => Pinned = !Pinned;
@@ -3541,7 +3585,7 @@ public partial class NotchWindow : Window
         finally
         {
             _dragging = false;
-            if (_expanded && !_pinned && !NativeInterop.IsCursorOver(Expanded)) _closeTimer.Start();
+            if (_expanded && !_pinned && !OverPanel()) _closeTimer.Start();
         }
     }
 

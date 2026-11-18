@@ -1,5 +1,13 @@
 Bản chỉnh sửa từ [sadeeshasathsara/dynamic-island-on-windows](https://github.com/sadeeshasathsara/dynamic-island-on-windows) (MIT).
 
+### Thử nghiệm trong v2.10.0-beta.1: tai thỏ kiểu iPhone
+- **Viên đen lơ lửng**: tai thỏ thành một viên bo tròn đen tuyền, cách mép trên một chút, không viền, giống Dynamic Island trên iPhone
+- **Không còn đồng hồ** lúc nghỉ: không có gì thì chỉ là viên nhỏ. Đang trồng cây hoặc hẹn giờ thì vẫn đếm ngược (xanh lá / cam)
+- **Chia hai bên**: nghe nhạc thì ảnh bìa bên trái, sóng nhạc (theo màu bài hát) bên phải, giữa để trống
+- **Nảy đàn hồi**: viên phình ra / co lại có nảy nhẹ khi đổi trạng thái; thông báo mọc ra từ chính viên rồi thu về lại viên
+- Bảng mở rộng, âm lượng, tai nghe và pin cũng thành khối bo tròn lơ lửng
+- Mở bảng vẫn bằng cách đẩy chuột chạm mép trên (khoảng hở phía trên viên cũng tính); rê lên viên thì viên mờ đi để bấm xuyên xuống tab như cũ
+
 ### Sửa trong v2.9.0
 - **Đôi mắt nhìn theo chuột trở lại** (và Mây đi dạo, nốt nhạc trôi): từ v2.7.2, trên máy từng gỡ một app có dùng camera (vd Discord bản cũ), Windows còn giữ bản ghi "đang dùng camera" mãi mãi, nên app tưởng bạn luôn đang gọi video và tắt hết hiệu ứng. Giờ chỉ tính app còn trên máy và đang chạy thật
 - **Tai thỏ gọn lại**: bỏ dòng môn đang học ("Toán thầy… · 89′") cạnh đồng hồ, chỉ còn giờ + sóng nhạc. Môn đang học vẫn xem đầy đủ trong tab Lịch học

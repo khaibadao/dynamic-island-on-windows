@@ -57,44 +57,47 @@ public sealed class IslandAnimator
 
         // Drop whatever animation still holds these values (e.g. a hide that was
         // interrupted), then start from the small hidden circle.
+        // iPhone-style: the notification grows straight out of the resting capsule
+        // (same place, same size), springing a little past its size and settling.
         StopAll();
-        _pill.Width  = 64;
-        _pill.Height = 64;
+        _pill.Width  = REST_W;
+        _pill.Height = REST_H;
+        _pill.Opacity = 1;
         _hoverPanel.Opacity    = 0;
         _hoverPanel.Visibility = Visibility.Collapsed;
         _contentRoot.Opacity   = 0;
-        _pillTransform.Y       = -150;
+        _pillTransform.Y       = 0;
 
-        SlideY(-150, 0, 450, new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.5 }, () =>
-        {
-            if (gen != _generation) return;
-            double targetH = hasBody ? PILL_H_OPEN_BODY : PILL_H_OPEN;
-            SizePill(PILL_W_OPEN, targetH, 350,
-                new CubicEase { EasingMode = EasingMode.EaseOut },
-                onDone: () => { if (gen == _generation) onFullyOpen(); });
-            FadeIn(_contentRoot, 250, delay: 100);
-        });
+        double targetH = hasBody ? PILL_H_OPEN_BODY : PILL_H_OPEN;
+        SizePill(PILL_W_OPEN, targetH, 520,
+            new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.35 },
+            onDone: () => { if (gen == _generation) onFullyOpen(); });
+        FadeIn(_contentRoot, 220, delay: 160);
     }
 
     public void Collapse(Action onHidden)
     {
         int gen = ++_generation;
-        FadeOut(_contentRoot, 150, () =>
+        FadeOut(_contentRoot, 140, () =>
         {
             if (gen != _generation) return;
-            SizePill(64, 64, 300, new CubicEase { EasingMode = EasingMode.EaseIn }, onDone: () =>
+            // Shrinks back into the capsule, which then hands over to the resting notch
+            SizePill(REST_W, REST_H, 340, new CubicEase { EasingMode = EasingMode.EaseInOut }, onDone: () =>
             {
                 if (gen != _generation) return;
-                SlideY(0, -150, 300, new CubicEase { EasingMode = EasingMode.EaseIn },
-                    onDone: () => { if (gen == _generation) onHidden(); });
+                FadeOut(_pill, 120, () => { if (gen == _generation) onHidden(); });
             });
         });
     }
+
+    /// <summary>The resting capsule's size on the notch (where notifications grow from).</summary>
+    private const double REST_W = 124, REST_H = 32;
 
     private void StopAll()
     {
         _pill.BeginAnimation(FrameworkElement.WidthProperty,  null);
         _pill.BeginAnimation(FrameworkElement.HeightProperty, null);
+        _pill.BeginAnimation(UIElement.OpacityProperty, null);
         _pillTransform.BeginAnimation(TranslateTransform.YProperty, null);
         _contentRoot.BeginAnimation(UIElement.OpacityProperty, null);
         _hoverPanel.BeginAnimation(UIElement.OpacityProperty, null);
